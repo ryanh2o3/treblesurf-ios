@@ -1,0 +1,17 @@
+//
+//  TrebleSurfTests.swift
+//  TrebleSurfTests
+//
+//  Created by Ryan Patton on 03/05/2025.
+//
+
+import Testing
+@testable import TrebleSurf
+
+struct TrebleSurfTests {
+
+    @Test func example() async throws {
+        // Write your test here and use APIs like `#expect(...)` to check expected conditions.
+    }
+
+}
