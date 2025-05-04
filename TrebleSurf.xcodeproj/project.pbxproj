@@ -6,6 +6,12 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		973A435E2DC6A6790070162F /* createFiles.sh in Resources */ = {isa = PBXBuildFile; fileRef = 973A435D2DC6A6730070162F /* createFiles.sh */; };
+		973A43F92DC949BC0070162F /* GoogleSignIn in Frameworks */ = {isa = PBXBuildFile; productRef = 973A43F82DC949BC0070162F /* GoogleSignIn */; };
+		973A43FB2DC949BC0070162F /* GoogleSignInSwift in Frameworks */ = {isa = PBXBuildFile; productRef = 973A43FA2DC949BC0070162F /* GoogleSignInSwift */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		97C14C2A2DC69B2300CA90C9 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -24,14 +30,28 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		973A435D2DC6A6730070162F /* createFiles.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = createFiles.sh; sourceTree = "<group>"; };
 		97C14C192DC69B2200CA90C9 /* TrebleSurf.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = TrebleSurf.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		97C14C292DC69B2300CA90C9 /* TrebleSurfTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TrebleSurfTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		97C14C332DC69B2300CA90C9 /* TrebleSurfUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TrebleSurfUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		973A43DE2DC80F840070162F /* Exceptions for "TrebleSurf" folder in "TrebleSurf" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 97C14C182DC69B2200CA90C9 /* TrebleSurf */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		97C14C1B2DC69B2200CA90C9 /* TrebleSurf */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				973A43DE2DC80F840070162F /* Exceptions for "TrebleSurf" folder in "TrebleSurf" target */,
+			);
 			path = TrebleSurf;
 			sourceTree = "<group>";
 		};
@@ -52,6 +72,8 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				973A43F92DC949BC0070162F /* GoogleSignIn in Frameworks */,
+				973A43FB2DC949BC0070162F /* GoogleSignInSwift in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -75,6 +97,7 @@
 		97C14C102DC69B2200CA90C9 = {
 			isa = PBXGroup;
 			children = (
+				973A435D2DC6A6730070162F /* createFiles.sh */,
 				97C14C1B2DC69B2200CA90C9 /* TrebleSurf */,
 				97C14C2C2DC69B2300CA90C9 /* TrebleSurfTests */,
 				97C14C362DC69B2300CA90C9 /* TrebleSurfUITests */,
@@ -112,6 +135,8 @@
 			);
 			name = TrebleSurf;
 			packageProductDependencies = (
+				973A43F82DC949BC0070162F /* GoogleSignIn */,
+				973A43FA2DC949BC0070162F /* GoogleSignInSwift */,
 			);
 			productName = TrebleSurf;
 			productReference = 97C14C192DC69B2200CA90C9 /* TrebleSurf.app */;
@@ -195,6 +220,9 @@
 			);
 			mainGroup = 97C14C102DC69B2200CA90C9;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				973A43F72DC949BC0070162F /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 97C14C1A2DC69B2200CA90C9 /* Products */;
 			projectDirPath = "";
@@ -212,6 +240,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				973A435E2DC6A6790070162F /* createFiles.sh in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -393,12 +422,15 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_ASSET_PATHS = "\"TrebleSurf/Preview Content\"";
 				DEVELOPMENT_TEAM = MKY76KZ74C;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = TrebleSurf/Info.plist;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.sports";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -422,12 +454,15 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_ASSET_PATHS = "\"TrebleSurf/Preview Content\"";
 				DEVELOPMENT_TEAM = MKY76KZ74C;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = TrebleSurf/Info.plist;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.sports";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -558,6 +593,30 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		973A43F72DC949BC0070162F /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/google/GoogleSignIn-iOS.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 8.0.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		973A43F82DC949BC0070162F /* GoogleSignIn */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 973A43F72DC949BC0070162F /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */;
+			productName = GoogleSignIn;
+		};
+		973A43FA2DC949BC0070162F /* GoogleSignInSwift */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 973A43F72DC949BC0070162F /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */;
+			productName = GoogleSignInSwift;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 97C14C112DC69B2200CA90C9 /* Project object */;
 }
