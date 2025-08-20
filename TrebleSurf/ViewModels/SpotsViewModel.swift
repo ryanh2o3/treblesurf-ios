@@ -24,6 +24,7 @@ class SpotsViewModel: ObservableObject {
                 dataStore.fetchRegionSpots(region: "Donegal") { [weak self] result in
                     switch result {
                     case .success(let spots):
+                        print("Spots \(spots)")
                         Task { @MainActor in
                             self?.spots = spots
                             self?.isLoading = false

@@ -12,7 +12,7 @@ struct BuoysView: View {
                 headerSection
                 
                 // Buoy filter
-                buoyFilter
+//                buoyFilter
                 
                 // Buoy list or details
                 if let selectedBuoy = selectedBuoy {
@@ -41,43 +41,43 @@ struct BuoysView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
     
-    private var buoyFilter: some View {
-        HStack {
-            Text("Filter by:")
-                .font(.subheadline)
-                .foregroundColor(.secondary)
-            
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    filterButton("All", tag: nil)
-                    filterButton("NOAA", tag: "NOAA")
-                    filterButton("CDIP", tag: "CDIP")
-                    filterButton("Nearby", tag: "Nearby")
-                }
-            }
-        }
-    }
+//    private var buoyFilter: some View {
+//        HStack {
+//            Text("Filter by:")
+//                .font(.subheadline)
+//                .foregroundColor(.secondary)
+//            
+//            ScrollView(.horizontal, showsIndicators: false) {
+//                HStack(spacing: 8) {
+//                    filterButton("All", tag: nil)
+//                    filterButton("NOAA", tag: "NOAA")
+//                    filterButton("CDIP", tag: "CDIP")
+//                    filterButton("Nearby", tag: "Nearby")
+//                }
+//            }
+//        }
+//    }
     
-    private func filterButton(_ title: String, tag: String?) -> some View {
-        Button {
-            viewModel.selectedFilter = tag
-        } label: {
-            Text(title)
-                .font(.subheadline)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
-                .background(
-                    viewModel.selectedFilter == tag ?
-                    Color.blue.opacity(0.8) :
-                    Color.gray.opacity(0.2)
-                )
-                .foregroundColor(
-                    viewModel.selectedFilter == tag ?
-                    .white : .primary
-                )
-                .cornerRadius(20)
-        }
-    }
+//    private func filterButton(_ title: String, tag: String?) -> some View {
+//        Button {
+//            viewModel.selectedFilter = tag
+//        } label: {
+//            Text(title)
+//                .font(.subheadline)
+//                .padding(.horizontal, 12)
+//                .padding(.vertical, 6)
+//                .background(
+//                    viewModel.selectedFilter == tag ?
+//                    Color.blue.opacity(0.8) :
+//                    Color.gray.opacity(0.2)
+//                )
+//                .foregroundColor(
+//                    viewModel.selectedFilter == tag ?
+//                    .white : .primary
+//                )
+//                .cornerRadius(20)
+//        }
+//    }
     
     private var buoyListView: some View {
         ScrollView {

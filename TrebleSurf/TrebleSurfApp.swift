@@ -8,18 +8,13 @@
 import SwiftUI
 import GoogleSignIn
 
-class SettingsStore: ObservableObject {
-    @Published var isDarkMode: Bool = false
-    // Add other app settings here as needed
-}
-
 @main
 struct TrebleSurfApp: App {
     @StateObject private var settingsStore = SettingsStore()
     @StateObject private var dataStore = DataStore()
     @State private var isAuthenticated = false
     @State private var isLoading = true
-
+    @State private var authError: String?
 
     var body: some Scene {
         WindowGroup {
@@ -29,29 +24,54 @@ struct TrebleSurfApp: App {
                         } else if isAuthenticated {
                             MainTabView(isAuthenticated: $isAuthenticated)
                                 .environmentObject(settingsStore)
-                                .preferredColorScheme(settingsStore.isDarkMode ? .dark : .light)
+                                .currentTheme(settingsStore.selectedTheme)
+                                .preferredColorScheme(settingsStore.getPreferredColorScheme())
                                 .accentColor(.blue)
                                 .onOpenURL { url in
-                                    GIDSignIn.sharedInstance.handle(url)
+                                    if !UIDevice.current.isSimulator {
+                                        GIDSignIn.sharedInstance.handle(url)
+                                    }
                                 }.environmentObject(dataStore)
                         } else {
                             SignInView(isAuthenticated: $isAuthenticated)
                         }
                     }
                     .onAppear {
-                        GIDSignIn.sharedInstance.restorePreviousSignIn { user, error in
-                            if let user = user {
-                                print("Restored previous sign-in for user: \(user.profile?.name ?? "Unknown")")
-                                isAuthenticated = true
-                            } else if let error = error {
-                                print("Failed to restore previous sign-in: \(error.localizedDescription)")
-                                isAuthenticated = false
-                            }
-                            isLoading = false
-                        }
+                        checkAuthenticationState()
                     }
                 }
         
+    }
+    
+    private func checkAuthenticationState() {
+        if UIDevice.current.isSimulator {
+            // Skip Google sign-in restoration in simulator
+            print("Running in simulator - skipping authentication")
+            print("AuthManager state:")
+            AuthManager.shared.printAuthState()
+            isLoading = false
+            isAuthenticated = false
+        } else {
+            print("Running on device - attempting to restore authentication")
+            GIDSignIn.sharedInstance.restorePreviousSignIn { user, error in
+                if let user = user {
+                    print("Restored previous sign-in for user: \(user.profile?.name ?? "Unknown")")
+                    isAuthenticated = true
+                    // Print authentication state after successful restoration
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+                        AuthManager.shared.printAuthState()
+                    }
+                } else if let error = error {
+                    print("Failed to restore previous sign-in: \(error.localizedDescription)")
+                    isAuthenticated = false
+                    authError = error.localizedDescription
+                } else {
+                    print("No previous sign-in found")
+                    isAuthenticated = false
+                }
+                isLoading = false
+            }
+        }
     }
 }
 
@@ -62,6 +82,9 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     }
     
     func application(_ app: UIApplication, open url: URL, options: [UIApplication.OpenURLOptionsKey: Any] = [:]) -> Bool {
+        if UIDevice.current.isSimulator {
+            return false
+        }
         return GIDSignIn.sharedInstance.handle(url)
-    }
+        }
 }

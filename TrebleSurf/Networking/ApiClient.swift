@@ -9,9 +9,32 @@ import Foundation
 
 class APIClient {
     static let shared = APIClient()
+    
+    // MARK: - Environment Configuration
+    private var baseURL: String {
+        #if DEBUG
+        return "http://localhost:8080"
+        #else
+        return "https://treblesurf.com"
+        #endif
+    }
+    
+    // Alternative environment detection using build configuration
+    // Uncomment the following if you prefer to use build configuration flags
+    /*
+    private var baseURL: String {
+        #if DEVELOPMENT
+        return "http://localhost:8080"
+        #elseif STAGING
+        return "https://staging.treblesurf.com"
+        #else
+        return "https://treblesurf.com"
+        #endif
+    }
+    */
 
     func request<T: Decodable>(_ endpoint: String, method: String = "GET", completion: @escaping (Result<T, Error>) -> Void) {
-        guard let url = URL(string: "https://treblesurf.com\(endpoint)") else {
+        guard let url = URL(string: "\(baseURL)\(endpoint)") else {
             return
         }
         
@@ -48,7 +71,7 @@ class APIClient {
     
     func makeAuthenticatedRequest<T: Decodable>(to endpoint: String, completion: @escaping (Result<T, Error>) -> Void) {
         AuthManager.shared.refreshTokenIfNeeded { success in
-            guard success else {
+            if !success {
                 let error = NSError(domain: "APIClient", code: 1, userInfo: [NSLocalizedDescriptionKey: "Token refresh failed"])
                 print("Error: \(error.localizedDescription)")
                 completion(.failure(error))
@@ -69,7 +92,7 @@ class APIClient {
                 return
             }
             
-            guard let url = URL(string: "https://treblesurf.com\(endpoint)") else {
+            guard let url = URL(string: "\(self.baseURL)\(endpoint)") else {
                 let error = NSError(domain: "APIClient", code: 4, userInfo: [NSLocalizedDescriptionKey: "Invalid URL"])
                 print("Error: \(error.localizedDescription)")
                 completion(.failure(error))
@@ -102,6 +125,21 @@ class APIClient {
                     completion(.failure(error))
                 }
             }.resume()
+        }
+    }
+    
+    // Make a request that can work with or without authentication
+    func makeFlexibleRequest<T: Decodable>(to endpoint: String, requiresAuth: Bool = false, completion: @escaping (Result<T, Error>) -> Void) {
+        if requiresAuth && !AuthManager.shared.isAuthenticated {
+            let error = NSError(domain: "APIClient", code: 6, userInfo: [NSLocalizedDescriptionKey: "Authentication required but user is not authenticated"])
+            completion(.failure(error))
+            return
+        }
+        
+        if requiresAuth {
+            makeAuthenticatedRequest(to: endpoint, completion: completion)
+        } else {
+            request(endpoint, method: "GET", completion: completion)
         }
     }
 }

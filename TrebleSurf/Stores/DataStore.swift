@@ -7,12 +7,18 @@
 import Foundation
 import SwiftUI
 class DataStore: ObservableObject {
+    static let shared = DataStore()
+
     @Published var currentConditions = ConditionData(from: [:])
     // Cache for storing multiple spot conditions with timestamps
     private var spotConditionsCache: [String: (conditions: ConditionData, timestamp: Date)] = [:]
     
     @Published var regionSpots: [SpotData] = []
     private var regionSpotsCache: [String: (spots: [SpotData], timestamp: Date)] = [:]
+    
+    // Using only the flattened format
+        @Published var currentForecastEntries: [ForecastEntry] = []
+        private var spotForecastCache: [String: (forecast: [ForecastEntry], timestamp: Date)] = [:]
     
     // Current selected spot ID
     @Published var currentSpotId: String = ""
@@ -76,6 +82,58 @@ class DataStore: ObservableObject {
         }
     }
     
+    func fetchForecast(for spotId: String, completion: @escaping (Bool) -> Void = {_ in}) {
+            // Check if we have cached data that's still valid
+            if let cached = spotForecastCache[spotId],
+               Date().timeIntervalSince(cached.timestamp) < cacheExpirationInterval {
+                
+                // Use cached data but ensure updates on main thread
+                DispatchQueue.main.async {
+                    self.currentForecastEntries = cached.forecast
+                    completion(true)
+                }
+                return
+            }
+
+            // Split the spotId into components
+            let components = spotId.split(separator: "#")
+            guard components.count == 3 else {
+                print("Invalid spotId format")
+                completion(false)
+                return
+            }
+            
+            let country = String(components[0])
+            let region = String(components[1])
+            let spot = String(components[2])
+            
+            // Make API call and convert response to ForecastEntry objects directly
+            APIClient.shared.fetchForecast(country: country, region: region, spot: spot) { [weak self] (result: Result<[ForecastResponse], Error>) in
+                guard let self = self else { return }
+                
+                switch result {
+                case .success(let responses):
+                    // Convert to ForecastEntry objects
+                    let entries = responses.toForecastEntries()
+                    
+                    // Update on main thread
+                    DispatchQueue.main.async {
+                        // Update current forecast with flattened data
+                        self.currentForecastEntries = entries
+                        
+                        // Cache the flattened data with current timestamp
+                        self.spotForecastCache[spotId] = (entries, Date())
+                        
+                        completion(true)
+                    }
+                    
+                case .failure(let error):
+                    print("Error fetching forecast: \(error)")
+                    completion(false)
+                }
+            }
+        }
+    
     func fetchRegionSpots(region: String, completion: @escaping (Result<[SpotData], Error>) -> Void) {
         // Check if we have cached data that's still valid
         if let cached = regionSpotsCache[region],
@@ -88,12 +146,15 @@ class DataStore: ObservableObject {
             return
         }
 
+        print("Fetching spots for region: \(region)")
+        
         // For now we only handle Donegal, but this could be expanded
         APIClient.shared.fetchDonegalSpots { [weak self] result in
             guard let self = self else { return }
-            
+            print("result \(result)")
             switch result {
             case .success(let spots):
+                print("Successfully fetched \(spots.count) spots for region: \(region)")
                 // Cache the data with current timestamp
                 self.regionSpotsCache[region] = (spots, Date())
                 
@@ -104,7 +165,8 @@ class DataStore: ObservableObject {
                 }
                 
             case .failure(let error):
-                print("Error fetching spots: \(error)")
+                print("Error fetching spots for region \(region): \(error)")
+                print("Error details: \(error.localizedDescription)")
                 completion(.failure(error))
             }
         }
@@ -191,5 +253,9 @@ class DataStore: ObservableObject {
         spotConditionsCache = spotConditionsCache.filter {
             now.timeIntervalSince($0.value.timestamp) < cacheExpirationInterval
         }
+        
+        spotForecastCache = spotForecastCache.filter {
+                    now.timeIntervalSince($0.value.timestamp) < cacheExpirationInterval
+                }
     }
 }

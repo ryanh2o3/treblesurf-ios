@@ -3,121 +3,107 @@
 import SwiftUI
 import Charts
 
+
 struct SpotForecastView: View {
-    @StateObject private var viewModel = SpotForecastViewModel()
-    let spotId: String
+    @StateObject private var viewModel: SpotForecastViewModel
+        @EnvironmentObject var dataStore: DataStore
+        var spotId: String
+        @State private var spotImage: Image? = nil
+        @State private var selectedTable = 0 // 0 = surf/wind, 1 = weather
+        @State private var currentForecastEntry: ForecastEntry? = nil
+        
+    
+    init(spotId: String) {
+        self.spotId = spotId
+        _viewModel = StateObject(wrappedValue: SpotForecastViewModel(dataStore: DataStore.shared))
+    }
     
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                // Forecast period selector
-                Picker("Forecast Period", selection: $viewModel.selectedPeriod) {
-                    Text("Today").tag(ForecastPeriod.today)
-                    Text("Tomorrow").tag(ForecastPeriod.tomorrow)
-                    Text("Week").tag(ForecastPeriod.week)
-                }
-                .pickerStyle(SegmentedPickerStyle())
-                .padding(.horizontal)
-                
-                // Wave height chart
-                VStack(alignment: .leading) {
-                    Text("Wave Height").font(.headline)
-                    
-                    Chart {
-                        ForEach(viewModel.forecastData) { point in
-                            LineMark(
-                                x: .value("Time", point.time),
-                                y: .value("Height", point.waveHeight)
-                            )
-                            .foregroundStyle(Color.blue)
-                            
-                            PointMark(
-                                x: .value("Time", point.time),
-                                y: .value("Height", point.waveHeight)
-                            )
-                            .foregroundStyle(Color.blue)
+        VStack(spacing: 0) {
+            ZStack {
+                        if let spotImage = spotImage {
+                            spotImage
+                                .resizable()
+                                .aspectRatio(contentMode: .fill)
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 200)
                         }
-                    }
-                    .frame(height: 200)
-                }
-                .padding()
-                .background(Color(.systemBackground))
-                .cornerRadius(12)
-                .shadow(radius: 2)
-                .padding(.horizontal)
-                
-                // Wind forecast
-                VStack(alignment: .leading) {
-                    Text("Wind").font(.headline)
-                    
-                    ForEach(viewModel.windForecast) { hourly in
-                        HStack {
-                            Text(hourly.time)
-                            Spacer()
-                            Image(systemName: "arrow.up.right")
-                                .rotationEffect(.degrees(Double(hourly.direction)))
-                            Text("\(hourly.speed) kts")
-                                .frame(width: 60, alignment: .trailing)
-                            Text(hourly.description)
-                                .frame(width: 80, alignment: .trailing)
-                        }
-                        .padding(.vertical, 4)
-                        Divider()
+                        
+                Image(systemName: "arrow.down")
+                                    .font(.system(size: 40, weight: .bold))
+                                    .foregroundColor(.blue)
+                                    .rotationEffect(Angle(degrees: currentForecastEntry?.swellDirection ?? dataStore.currentConditions.swellDirection))
+                                    .animation(.default, value: currentForecastEntry?.swellDirection)
+                            }
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                            .padding(.horizontal, 12)
+                            .padding(.bottom, 8)
+            // Mode toggle buttons
+            HStack {
+                ForEach(ForecastViewMode.allCases) { mode in
+                    Button(action: {
+                        viewModel.setViewMode(mode)
+                    }) {
+                        Text(mode.rawValue)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 2)
+                            .background(viewModel.selectedMode == mode ? Color.blue : Color.gray.opacity(0.3))
+                            .foregroundColor(viewModel.selectedMode == mode ? .white : .primary)
+                            .cornerRadius(20)
                     }
                 }
-                .padding()
-                .background(Color(.systemBackground))
-                .cornerRadius(12)
-                .shadow(radius: 2)
-                .padding(.horizontal)
-                
-                // Tide chart
-                TideChartView(tideData: viewModel.tideData)
-                    .frame(height: 180)
-                    .padding()
-                    .background(Color(.systemBackground))
-                    .cornerRadius(12)
-                    .shadow(radius: 2)
-                    .padding(.horizontal)
             }
-            .padding(.bottom, 20)
+            .padding(.horizontal)
+            ScrollView {
+                SurfTableView(entries: viewModel.filteredEntries) { visibleEntry in
+                    print("Entry became visible: \(visibleEntry.dateForecastedFor)")
+                    currentForecastEntry = visibleEntry
+                }
+                .frame(width: UIScreen.main.bounds.width)
+                
+                
+                // Table toggle indicators
+                HStack(spacing: 8) {
+                    ForEach(0..<2) { index in
+                        Circle()
+                            .fill(selectedTable == index ? Color.gray : Color.secondary)
+                            .frame(width: 8, height: 8)
+                            .onTapGesture {
+                                withAnimation {
+                                    selectedTable = index
+                                }
+                            }
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 8)
+            }
         }
-        .task {
-            await viewModel.loadForecastData(spotId: spotId)
+        .clipShape(RoundedRectangle(cornerRadius: 20))
+        .padding()
+        .onAppear {
+            viewModel.fetchForecast(for: spotId) { success in
+                if !success {
+                    print("Failed to fetch conditions for spot: \(spotId)")
+                }
+                let firstEntry = viewModel.filteredEntries.first
+                currentForecastEntry = firstEntry
+                
+            }
+            dataStore.fetchSpotImage(for: spotId) { image in
+                self.spotImage = image
+            }
         }
     }
-}
-
-class SpotForecastViewModel: ObservableObject {
-    @Published var selectedPeriod: ForecastPeriod = .today
-    @Published var forecastData: [ForecastPoint] = []
-    @Published var windForecast: [WindForecast] = []
-    @Published var tideData: [TidePoint] = []
     
-    func loadForecastData(spotId: String) async {
-        // Fetch forecast data for the specified spot
+    private var dateFormatter: DateFormatter {
+        let df = DateFormatter()
+        df.dateStyle = .medium
+        return df
     }
 }
 
-enum ForecastPeriod {
-    case today, tomorrow, week
-}
 
-struct ForecastPoint: Identifiable {
-    let id = UUID()
-    let time: Date
-    let waveHeight: Double
-    let period: Double
-    let direction: Int
-}
-
-struct WindForecast: Identifiable {
-    let id: UUID
-    let time: String
-    let speed: Int
-    let direction: Int
-    let description: String
-}
 
 struct TidePoint: Identifiable {
     let id: UUID
@@ -156,9 +142,4 @@ struct TideChartView: View {
             }
         }
     }
-}
-
-#Preview {
-    SpotForecastView(spotId: "example_spot_id")
-        
 }

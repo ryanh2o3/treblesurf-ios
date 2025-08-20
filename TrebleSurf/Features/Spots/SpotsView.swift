@@ -17,8 +17,8 @@ struct SpotsView: View {
 
     var body: some View {
         NavigationView {
-            ScrollView {
-            VStack {
+            
+            VStack(spacing: 0) {
                 // Top Buttons
                 HStack {
                     Button(action: { selectedTab = "Live" }) {
@@ -83,7 +83,12 @@ struct SpotsView: View {
                                                     .padding()
                                             }
                 } else {
-                    SpotForecastView(spotId: "Ballymastocker")
+                    if !selectedSpot.isEmpty {
+                        SpotForecastView(spotId: dynamicSpotId).id(dynamicSpotId)
+                    } else {
+                        Text("Select a spot to view conditions")
+                            .padding()
+                    }
                 }
                 
             }
@@ -101,7 +106,5 @@ struct SpotsView: View {
                         }
         }
     }
-
-}
 
 #Preview {SpotsView()}

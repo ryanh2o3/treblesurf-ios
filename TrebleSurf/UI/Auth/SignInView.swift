@@ -8,6 +8,7 @@
 import SwiftUI
 import GoogleSignIn
 import GoogleSignInSwift
+import UIKit
 
 struct SignInView: View {
     @Binding var isAuthenticated: Bool
@@ -15,8 +16,33 @@ struct SignInView: View {
 
     var body: some View {
         VStack {
-            GoogleSignInButton(action: handleSignInButton)
-                .disabled(isSigningIn)
+            if UIDevice.current.isSimulator {
+                VStack(spacing: 16) {
+                    Image(systemName: "iphone.slash")
+                        .font(.system(size: 48))
+                        .foregroundColor(.secondary)
+                    
+                    Text("Google Sign-In Disabled")
+                        .font(.title2)
+                        .fontWeight(.semibold)
+                    
+                    Text("Google Sign-In is not available in the iOS Simulator. Please test on a physical device.")
+                        .font(.body)
+                        .foregroundColor(.secondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal)
+                    
+                    Button("Continue Without Sign-In (Demo)") {
+                        // For demo purposes, you can set a mock authentication state
+                        isAuthenticated = true
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
+                .padding()
+            } else {
+                GoogleSignInButton(action: handleSignInButton)
+                    .disabled(isSigningIn)
+            }
         }
     }
 

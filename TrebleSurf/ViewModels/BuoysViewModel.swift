@@ -45,9 +45,26 @@ class BuoysViewModel: ObservableObject {
     
     @MainActor
     func loadBuoys() async {
-            let buoyNames = ["M4", "M6"]
+            var buoyNames = ["M4", "M6"]
+        var buoyLocations: [BuoyLocation] = []
             loadedHistoricalDataBuoyIds.removeAll()
 
+        do {
+            // Only fetch current buoy data
+            let buoyResponses = try await withCheckedThrowingContinuation { continuation in
+                APIClient.shared.fetchBuoys(region: "NorthAtlantic") { result in
+                    continuation.resume(with: result)
+                }
+            }
+            
+            buoyNames = buoyResponses.map { response in
+                response.name
+            }
+            buoyLocations = buoyResponses
+        } catch {
+            print("Error fetching buoy data: \(error)")
+        }
+        
             do {
                 // Only fetch current buoy data
                 let buoyResponses = try await withCheckedThrowingContinuation { continuation in
@@ -58,7 +75,8 @@ class BuoysViewModel: ObservableObject {
                 
                 // Create buoys with empty historical data
                 let buoys = buoyResponses.map { response in
-                    convertToBuoy(response: response, historicalData: [])
+                    let locationData = buoyLocations.first { $0.name == response.name }
+                    return convertToBuoy(response: response, historicalData: [], locationData: locationData)
                 }
                 
                 self.buoys = buoys
@@ -106,7 +124,7 @@ class BuoysViewModel: ObservableObject {
     }
     }
 
-private func convertToBuoy(response: BuoyResponse, historicalData: [WaveDataPoint]) -> Buoy {
+private func convertToBuoy(response: BuoyResponse, historicalData: [WaveDataPoint], locationData: BuoyLocation?) -> Buoy {
     // Extract region from region_buoy
     let regionParts = response.region_buoy.split(separator: "_")
     let organization = regionParts.first.map(String.init) ?? "Unknown"
@@ -119,14 +137,17 @@ private func convertToBuoy(response: BuoyResponse, historicalData: [WaveDataPoin
     
     // Get wave height with fallback to 0
     let waveHeight = response.WaveHeight ?? 0.0
-    
+        
+    let latitude = locationData.map { String(format: "%.2f", $0.latitude) } ?? "N/A"
+    let longitude = locationData.map { String(format: "%.2f", $0.longitude) } ?? "N/A"
+        
     return Buoy(
         id: response.name,
         name: response.name,
         stationId: response.name,
         organization: organization,
-        latitude: "N/A",
-        longitude: "N/A",
+        latitude: latitude,
+        longitude: longitude,
         lastUpdated: lastUpdated,
         waveHeight: String(format: "%.1f", waveHeight),
         wavePeriod: String(format: "%.1f", response.WavePeriod ?? 0),

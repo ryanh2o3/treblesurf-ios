@@ -34,6 +34,16 @@ extension APIClient {
 }
 
 extension APIClient {
+    func fetchBuoys(region: String, completion: @escaping (Result<[BuoyLocation], Error>) -> Void) {
+        let endpoint = "/api/regionBuoys?region=\(region)"
+        
+        request(endpoint, method: "GET") { (result: Result<[BuoyLocation], Error>) in
+            completion(result)
+        }
+    }
+}
+
+extension APIClient {
     func fetchBuoyData(buoyNames: [String], completion: @escaping (Result<[BuoyResponse], Error>) -> Void) {
         let buoysParam = buoyNames.joined(separator: ",")
         let endpoint = "/api/getMultipleBuoyData?buoys=\(buoysParam)"
@@ -57,11 +67,14 @@ extension APIClient {
 extension APIClient {
     func fetchSurfReports(country: String, region: String, spot: String, completion: @escaping (Result<[SurfReportResponse], Error>) -> Void) {
         let endpoint = "/api/getTodaySpotReports?country=\(country)&region=\(region)&spot=\(spot)"
-        makeAuthenticatedRequest(to: endpoint) { (result: Result<[SurfReportResponse], Error>) in
+        
+        // Use flexible request method that can handle authentication gracefully
+        makeFlexibleRequest(to: endpoint, requiresAuth: true) { (result: Result<[SurfReportResponse], Error>) in
             switch result {
             case .success(let surfReport):
                 completion(.success(surfReport))
             case .failure(let error):
+                print("Failed to fetch surf reports: \(error.localizedDescription)")
                 completion(.failure(error))
             }
         }
@@ -71,11 +84,14 @@ extension APIClient {
 extension APIClient {
     func getReportImage(key: String, completion: @escaping (Result<SurfReportImageResponse, Error>) -> Void) {
         let endpoint = "/api/getReportImage?key=\(key)"
-        makeAuthenticatedRequest(to: endpoint) { (result: Result<SurfReportImageResponse, Error>) in
+        
+        // Use flexible request method that can handle authentication gracefully
+        makeFlexibleRequest(to: endpoint, requiresAuth: true) { (result: Result<SurfReportImageResponse, Error>) in
             switch result {
             case .success(let reportImage):
                 completion(.success(reportImage))
             case .failure(let error):
+                print("Failed to fetch report image: \(error.localizedDescription)")
                 completion(.failure(error))
             }
         }
@@ -89,6 +105,14 @@ extension APIClient {
         let endpoint = "/api/currentConditions?country=\(country)&region=\(region)&spot=\(spot)"
         print("Fetching current conditions: \(spot)")
         request(endpoint, method: "GET") { (result: Result<[CurrentConditionsResponse], Error>) in
+            completion(result)
+        }
+    }
+    
+    func fetchForecast(country: String, region: String, spot: String, completion: @escaping (Result<[ForecastResponse], Error>) -> Void) {
+        let endpoint = "/api/forecast?country=\(country)&region=\(region)&spot=\(spot)"
+        print("Fetching forecast: \(spot)")
+        request(endpoint, method: "GET") { (result: Result<[ForecastResponse], Error>) in
             completion(result)
         }
     }

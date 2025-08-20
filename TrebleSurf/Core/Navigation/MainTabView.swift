@@ -29,6 +29,12 @@ struct MainTabView: View {
                     Label("Spots", systemImage: "mappin")
                 }
                 .tag(3)
+            
+            SettingsView()
+                .tabItem {
+                    Label("Settings", systemImage: "gear")
+                }
+                .tag(4)
         }
         .accentColor(.blue)
     }

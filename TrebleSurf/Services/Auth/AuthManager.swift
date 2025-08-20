@@ -222,4 +222,42 @@ class AuthManager {
             return ["X-CSRF-Token": csrf]
         }
     
+    // Check if user is authenticated
+    var isAuthenticated: Bool {
+        return jwtToken != nil
+    }
+    
+    // Check if running in simulator
+    var isSimulator: Bool {
+        #if targetEnvironment(simulator)
+        return true
+        #else
+        return false
+        #endif
+    }
+    
+    // Clear all authentication data
+    func signOut() {
+        jwtToken = nil
+        csrfToken = nil
+        currentUser = nil
+        print("User signed out, authentication data cleared")
+    }
+    
+    // Debug method to print current authentication state
+    func printAuthState() {
+        print("=== Authentication State ===")
+        print("Is Simulator: \(isSimulator)")
+        print("Has JWT Token: \(jwtToken != nil)")
+        print("Has CSRF Token: \(csrfToken != nil)")
+        print("Is Authenticated: \(isAuthenticated)")
+        if let token = jwtToken {
+            print("JWT Token exists (length: \(token.count))")
+        }
+        if let csrf = csrfToken {
+            print("CSRF Token exists (length: \(csrf.count))")
+        }
+        print("==========================")
+    }
+    
 }

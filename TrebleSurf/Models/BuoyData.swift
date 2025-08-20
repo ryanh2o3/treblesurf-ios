@@ -19,3 +19,11 @@ struct BuoyResponse: Decodable {
     let name: String
     let region_buoy: String
 }
+
+struct BuoyLocation: Decodable {
+    let region_buoy: String
+    let latitude: Double
+    let longitude: Double
+    let name: String
+    
+}

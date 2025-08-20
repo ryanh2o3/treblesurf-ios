@@ -48,6 +48,12 @@ struct HomeView: View {
                 .padding(.vertical)
             }
             .navigationTitle("TrebleSurf")
+            .navigationBarTitleDisplayMode(.large)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    ThemeToggleButton()
+                }
+            }
             .onAppear {
                 viewModel.loadData()
             }
