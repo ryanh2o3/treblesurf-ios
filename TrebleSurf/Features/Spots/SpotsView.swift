@@ -93,130 +93,10 @@ struct SpotsView: View {
     }
     
     private func spotDetailView(_ spot: SpotData) -> some View {
-        Group {
-            if selectedViewMode == "Live" {
-                // Live mode: whole page scrolls
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 20) {
-                        // Back button
-                        Button {
-                            selectedSpot = nil
-                        } label: {
-                            HStack(spacing: 8) {
-                                Image(systemName: "chevron.left")
-                                Text("Back to Spots")
-                            }
-                            .foregroundColor(.blue)
-                        }
-                        
-                        // Spot info
-                        VStack(alignment: .leading, spacing: 12) {
-                            HStack {
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(spot.name)
-                                        .font(.title2)
-                                        .fontWeight(.bold)
-                                    
-                                    Text("\(spot.type) • \(spot.countryRegionSpot)")
-                                        .font(.subheadline)
-                                        .foregroundColor(.secondary)
-                                }
-                                
-                                Spacer()
-                                
-                                // Spot image if available
-                                if let imageString = spot.imageString, !imageString.isEmpty,
-                                   let uiImage = imageString.toUIImage() {
-                                    Image(uiImage: uiImage)
-                                        .resizable()
-                                        .aspectRatio(contentMode: .fill)
-                                        .frame(width: 80, height: 80)
-                                        .clipShape(RoundedRectangle(cornerRadius: 12))
-                                        .accessibilityLabel("Spot image for \(spot.name)")
-                                }
-                                
-                                // Refresh indicator
-                                if viewModel.isRefreshing {
-                                    ProgressView()
-                                        .scaleEffect(0.8)
-                                        .frame(width: 20, height: 20)
-                                }
-                            }
-                            
-                            HStack(spacing: 16) {
-                                Label {
-                                    Text("\(spot.beachDirection)°")
-                                } icon: {
-                                    Image(systemName: "location.north")
-                                        .foregroundColor(.blue)
-                                }
-                                .font(.caption)
-                                
-                                Label {
-                                    Text(spot.idealSwellDirection)
-                                } icon: {
-                                    Image(systemName: "water.waves")
-                                        .foregroundColor(.blue)
-                                }
-                                .font(.caption)
-                            }
-                        }
-                        
-                        // View mode toggle
-                        HStack(spacing: 0) {
-                            Button(action: { selectedViewMode = "Live" }) {
-                                Text("Live")
-                                    .font(.subheadline)
-                                    .fontWeight(.medium)
-                                    .padding(.horizontal, 16)
-                                    .padding(.vertical, 8)
-                                    .background(
-                                        RoundedRectangle(cornerRadius: 8)
-                                            .fill(selectedViewMode == "Live" ? Color.blue : Color(.systemGray5))
-                                    )
-                                    .foregroundColor(selectedViewMode == "Live" ? .white : .primary)
-                            }
-                            
-                            Button(action: { selectedViewMode = "Forecast" }) {
-                                Text("Forecast")
-                                    .font(.subheadline)
-                                    .fontWeight(.medium)
-                                    .padding(.horizontal, 16)
-                                    .padding(.vertical, 8)
-                                    .background(
-                                        RoundedRectangle(cornerRadius: 8)
-                                            .fill(selectedViewMode == "Forecast" ? Color.blue : Color(.systemGray5))
-                                    )
-                                    .foregroundColor(selectedViewMode == "Forecast" ? .white : .primary)
-                            }
-                        }
-                        .background(
-                            RoundedRectangle(cornerRadius: 8)
-                                .fill(Color(.systemGray6))
-                        )
-                        .padding(.vertical, 8)
-                        
-                        // Live content
-                        LiveSpotView(spotId: spot.id, refreshTrigger: viewModel.isRefreshing)
-                            .id(spot.id)
-                            .frame(maxWidth: .infinity)
-                    }
-                }
-                .refreshable {
-                    // Refresh the specific spot data
-                    await viewModel.refreshSpotData(for: spot.id)
-                    
-                    // Refresh surf reports for this specific spot
-                    await viewModel.refreshSpotSurfReports(for: spot)
-                    
-                    // Refresh based on current view mode
-                    dataStore.fetchConditions(for: spot.id) { _ in }
-                }
-                        } else {
-                // Forecast mode: initial page scroll, then sticky header
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 20) {
-                    // Back button
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                // Back button
+                HStack() {
                     Button {
                         selectedSpot = nil
                     } label: {
@@ -227,109 +107,90 @@ struct SpotsView: View {
                         .foregroundColor(.blue)
                     }
                     
-                    // Spot info
-                    VStack(alignment: .leading, spacing: 12) {
-                        HStack {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(spot.name)
-                                    .font(.title2)
-                                    .fontWeight(.bold)
-                                
-                                Text("\(spot.type) • \(spot.countryRegionSpot)")
-                                    .font(.subheadline)
-                                    .foregroundColor(.secondary)
-                            }
-                            
-                            Spacer()
-                            
-                            // Spot image if available
-                            if let imageString = spot.imageString, !imageString.isEmpty,
-                               let uiImage = imageString.toUIImage() {
-                                Image(uiImage: uiImage)
-                                    .resizable()
-                                    .aspectRatio(contentMode: .fill)
-                                    .frame(width: 80, height: 80)
-                                    .clipShape(RoundedRectangle(cornerRadius: 12))
-                                    .accessibilityLabel("Spot image for \(spot.name)")
-                            }
-                            
-                            // Refresh indicator
-                            if viewModel.isRefreshing {
-                                ProgressView()
-                                    .scaleEffect(0.8)
-                                    .frame(width: 20, height: 20)
-                            }
+                    Text("\(spot.type) • \(spot.name)")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                }
+                
+                // Spot info
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack {
+                        // Spot image if available
+                        if let imageString = spot.imageString, !imageString.isEmpty,
+                           let uiImage = imageString.toUIImage() {
+                            Image(uiImage: uiImage)
+                                .resizable()
+                                .aspectRatio(contentMode: .fill)
+                                .frame(width: 80, height: 80)
+                                .clipShape(RoundedRectangle(cornerRadius: 12))
+                                .accessibilityLabel("Spot image for \(spot.name)")
                         }
                         
-                        HStack(spacing: 16) {
-                            Label {
-                                Text("\(spot.beachDirection)°")
-                            } icon: {
-                                Image(systemName: "location.north")
-                                    .foregroundColor(.blue)
-                            }
-                            .font(.caption)
-                            
-                            Label {
-                                Text(spot.idealSwellDirection)
-                            } icon: {
-                                Image(systemName: "water.waves")
-                                    .foregroundColor(.blue)
-                            }
-                            .font(.caption)
+                        // Refresh indicator
+                        if viewModel.isRefreshing {
+                            ProgressView()
+                                .scaleEffect(0.8)
+                                .frame(width: 20, height: 20)
                         }
                     }
-                    
-                    // View mode toggle
-                    HStack(spacing: 0) {
-                        Button(action: { selectedViewMode = "Live" }) {
-                            Text("Live")
-                                .font(.subheadline)
-                                .fontWeight(.medium)
-                                .padding(.horizontal, 16)
-                                .padding(.vertical, 8)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 8)
-                                        .fill(selectedViewMode == "Live" ? Color.blue : Color(.systemGray5))
-                                )
-                                .foregroundColor(selectedViewMode == "Live" ? .white : .primary)
-                        }
-                        
-                        Button(action: { selectedViewMode = "Forecast" }) {
-                            Text("Forecast")
-                                .font(.subheadline)
-                                .fontWeight(.medium)
-                                .padding(.horizontal, 16)
-                                .padding(.vertical, 8)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 8)
-                                        .fill(selectedViewMode == "Forecast" ? Color.blue : Color(.systemGray5))
-                                )
-                                .foregroundColor(selectedViewMode == "Forecast" ? .white : .primary)
-                        }
+                }
+                
+                // View mode toggle
+                HStack(spacing: 0) {
+                    Button(action: { selectedViewMode = "Live" }) {
+                        Text("Live")
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 8)
+                            .background(
+                                RoundedRectangle(cornerRadius: 8)
+                                    .fill(selectedViewMode == "Live" ? Color.blue : Color(.systemGray5))
+                            )
+                            .foregroundColor(selectedViewMode == "Live" ? .white : .primary)
                     }
-                    .background(
-                        RoundedRectangle(cornerRadius: 8)
-                            .fill(Color(.systemGray6))
-                    )
-                    .padding(.vertical, 8)
                     
-                    // Forecast content (handles its own scrolling)
+                    Button(action: { selectedViewMode = "Forecast" }) {
+                        Text("Forecast")
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 8)
+                            .background(
+                                RoundedRectangle(cornerRadius: 8)
+                                    .fill(selectedViewMode == "Forecast" ? Color.blue : Color(.systemGray5))
+                            )
+                            .foregroundColor(selectedViewMode == "Forecast" ? .white : .primary)
+                    }
+                }
+                .background(
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(Color(.systemGray6))
+                )
+                .padding(.vertical, 8)
+                
+                // Content based on selected view mode
+                if selectedViewMode == "Live" {
+                    LiveSpotView(spotId: spot.id, refreshTrigger: viewModel.isRefreshing)
+                        .id(spot.id)
+                        .frame(maxWidth: .infinity)
+                } else {
                     SpotForecastView(spotId: spot.id)
                         .id(spot.id)
                         .frame(maxWidth: .infinity)
-                    }
                 }
-                .refreshable {
-                    // Refresh the specific spot data
-                    await viewModel.refreshSpotData(for: spot.id)
-                    
-                    // Refresh surf reports for this specific spot
-                    await viewModel.refreshSpotSurfReports(for: spot)
-                    
-                    // For forecast view, we need to trigger a refresh through the view model
-                    // This will be handled automatically when the cache is cleared
-                }
+            }
+        }
+        .refreshable {
+            // Refresh the specific spot data
+            await viewModel.refreshSpotData(for: spot.id)
+            
+            // Refresh surf reports for this specific spot
+            await viewModel.refreshSpotSurfReports(for: spot)
+            
+            // Refresh based on current view mode
+            if selectedViewMode == "Live" {
+                dataStore.fetchConditions(for: spot.id) { _ in }
             }
         }
     }

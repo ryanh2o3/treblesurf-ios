@@ -234,6 +234,29 @@ class APIClient {
                 let decoded = try JSONDecoder().decode(T.self, from: data)
                 completion(.success(decoded))
             } catch {
+                // Provide better error information for debugging
+                if let decodingError = error as? DecodingError {
+                    print("JSON Decoding Error:")
+                    switch decodingError {
+                    case .typeMismatch(let type, let context):
+                        print("  Type mismatch: Expected \(type) at \(context.codingPath)")
+                        print("  Debug: \(context.debugDescription)")
+                        // Print the problematic JSON data for debugging
+                        if let jsonString = String(data: data, encoding: .utf8) {
+                            print("  Raw JSON data: \(jsonString)")
+                        }
+                    case .keyNotFound(let key, let context):
+                        print("  Key not found: \(key) at \(context.codingPath)")
+                    case .valueNotFound(let type, let context):
+                        print("  Value not found: Expected \(type) at \(context.codingPath)")
+                    case .dataCorrupted(let context):
+                        print("  Data corrupted: \(context)")
+                    @unknown default:
+                        print("  Unknown decoding error: \(decodingError)")
+                    }
+                } else {
+                    print("Non-decoding error: \(error)")
+                }
                 completion(.failure(error))
             }
         }.resume()
