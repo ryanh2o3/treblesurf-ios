@@ -27,9 +27,51 @@ struct LiveSpotView: View {
                 
                 // Recent surf report card
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("Recent Report")
-                        .font(.headline)
-                        .padding(.horizontal, 6)
+                    // Title and report buttons on same line
+                    HStack {
+                        Text("Recent Report")
+                            .font(.headline)
+                        
+                        Spacer()
+                        
+                        // Report submission buttons
+                        HStack(spacing: 8) {
+                            Button(action: {
+                                viewModel.showQuickForm = true
+                            }) {
+                                HStack(spacing: 6) {
+                                    Image(systemName: "plus")
+                                        .font(.subheadline)
+                                        .foregroundColor(.green)
+                                    Image(systemName: "camera.circle.fill")
+                                        .font(.subheadline)
+                                        .foregroundColor(.green)
+                                }
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 8)
+                                .background(Color.green.opacity(0.1))
+                                .cornerRadius(10)
+                            }
+                            
+                            Button(action: {
+                                viewModel.showReportForm = true
+                            }) {
+                                HStack(spacing: 6) {
+                                    Image(systemName: "plus")
+                                        .font(.subheadline)
+                                        .foregroundColor(.blue)
+                                    Image(systemName: "doc.text")
+                                        .font(.subheadline)
+                                        .foregroundColor(.blue)
+                                }
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 8)
+                                .background(Color.blue.opacity(0.1))
+                                .cornerRadius(10)
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 6)
                     
                     if viewModel.isLoading {
                         HStack {
@@ -77,44 +119,6 @@ struct LiveSpotView: View {
                         .cornerRadius(12)
                         .padding(.horizontal, 6)
                     }
-                    
-                    // Report submission buttons
-                    HStack(spacing: 12) {
-                        Button(action: {
-                            viewModel.showQuickForm = true
-                        }) {
-                            HStack {
-                                Image(systemName: "camera.circle.fill")
-                                    .foregroundColor(.green)
-                                Text("Quick Photo Report")
-                                    .font(.subheadline)
-                                    .fontWeight(.medium)
-                                    .foregroundColor(.green)
-                            }
-                            .frame(maxWidth: .infinity)
-                            .padding()
-                            .background(Color.green.opacity(0.1))
-                            .cornerRadius(12)
-                        }
-                        
-                        Button(action: {
-                            viewModel.showReportForm = true
-                        }) {
-                            HStack {
-                                Image(systemName: "doc.text")
-                                    .foregroundColor(.blue)
-                                Text("Detailed Report")
-                                    .font(.subheadline)
-                                    .fontWeight(.medium)
-                                    .foregroundColor(.blue)
-                            }
-                            .frame(maxWidth: .infinity)
-                            .padding()
-                            .background(Color.blue.opacity(0.1))
-                            .cornerRadius(12)
-                        }
-                    }
-                    .padding(.horizontal, 6)
                 }
                 
                 // Surf conditions grid

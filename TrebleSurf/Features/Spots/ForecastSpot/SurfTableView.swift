@@ -3,10 +3,44 @@ import SwiftUI
 private let rowHeight: CGFloat = 80
 private let rowSpacing: CGFloat = 4
 
+// MARK: - Helper Functions
+private func writtenSurfSize(_ size: Double) -> String {
+    switch size {
+    case 0: return "Flat"
+    case 0..<1: return "Small"
+    case 1..<2: return "Medium"
+    default: return "Large"
+    }
+}
+
+private func getDirection(from degrees: Double) -> String {
+    let dirs = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"]
+    let index = Int((degrees + 22.5) / 45.0) % 8
+    return dirs[index]
+}
+
+private func getSwellColor(for entry: ForecastEntry) -> Color {
+    switch writtenSurfSize(entry.surfSize) {
+    case "Flat": return .blue
+    case "Small": return .green
+    case "Medium": return .orange
+    default: return .red
+    }
+}
+
+private func getWindColor(for entry: ForecastEntry) -> Color {
+    switch entry.surfMessiness.lowercased() {
+    case "clean": return .green
+    case "choppy": return .orange
+    default: return .gray
+    }
+}
+
 struct SurfTableView: View {
     let entries: [ForecastEntry]
+    let selectedEntry: ForecastEntry?
     var onEntryVisible: ((ForecastEntry) -> Void)? = nil
-    @State private var scrollOffset: CGFloat = 0
+    @State private var visibleEntryIndex: Int = 0
     
     // Group entries by day
     var entriesByDay: [Date: [ForecastEntry]] {
@@ -35,69 +69,39 @@ struct SurfTableView: View {
     
     var body: some View {
         ScrollView {
-            ScrollViewReader { proxy in
-                VStack(spacing: 24) {
-                    // Hidden tracking view at the top
-                    GeometryReader { geometry in
-                        Color.clear
-                            .preference(key: ScrollOffsetPreferenceKey.self,
-                                        value: geometry.frame(in: .global).minY)
-                    }
-                    .frame(height: 0)
-                    
-                    ForEach(sortedDays, id: \.self) { day in
-                        if let dayEntries = entriesByDay[day] {
-                            CombinedForecastCard(day: day, entries: dayEntries, onEntryVisible: onEntryVisible)
-                                .shadow(color: Color.black.opacity(0.1), radius: 5, x: 0, y: 2)
-                                .id(day)
+            VStack(spacing: 24) {
+                ForEach(Array(sortedDays.enumerated()), id: \.element) { dayIndex, day in
+                    if let dayEntries = entriesByDay[day] {
+                        CombinedForecastCard(
+                            day: day, 
+                            entries: dayEntries, 
+                            selectedEntry: selectedEntry, 
+                            dayIndex: dayIndex,
+                            onEntryVisible: onEntryVisible
+                        )
+                        .shadow(color: Color.black.opacity(0.1), radius: 5, x: 0, y: 2)
+                        .id(day)
+                        .onAppear {
+                            // Update selection when this day card becomes visible
+                            if let firstEntry = dayEntries.first {
+                                onEntryVisible?(firstEntry)
+                            }
                         }
                     }
-                }
-                .onPreferenceChange(ScrollOffsetPreferenceKey.self) { value in
-                    scrollOffset = value
                 }
             }
         }
     }
     
-    // Helper functions
-    func writtenSurfSize(_ size: Double) -> String {
-        switch size {
-        case 0: return "Flat"
-        case 0..<1: return "Small"
-        case 1..<2: return "Medium"
-        default: return "Large"
-        }
-    }
-    
-    func getDirection(from degrees: Double) -> String {
-        let dirs = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"]
-        let index = Int((degrees + 22.5) / 45.0) % 8
-        return dirs[index]
-    }
-    
-    func getSwellColor(for entry: ForecastEntry) -> Color {
-        switch writtenSurfSize(entry.surfSize) {
-        case "Flat": return .blue
-        case "Small": return .green
-        case "Medium": return .orange
-        default: return .red
-        }
-    }
-    
-    func getWindColor(for entry: ForecastEntry) -> Color {
-        switch entry.surfMessiness.lowercased() {
-        case "clean": return .green
-        case "choppy": return .orange
-        default: return .gray
-        }
-    }
+
 }
 
 // Combined forecast card with swipeable content
 struct CombinedForecastCard: View {
     let day: Date
     let entries: [ForecastEntry]
+    let selectedEntry: ForecastEntry?
+    let dayIndex: Int
     var onEntryVisible: ((ForecastEntry) -> Void)? = nil
     @State private var currentPage = 0
     
@@ -144,10 +148,10 @@ struct CombinedForecastCard: View {
                                 .frame(width: 20)
                 // Swipeable content
                 TabView(selection: $currentPage) {
-                    SurfContent(entries: entries, onEntryVisible: onEntryVisible)
+                    SurfContent(entries: entries, selectedEntry: selectedEntry, onEntryVisible: onEntryVisible)
                         .tag(0)
                     
-                    WeatherContent(entries: entries)
+                    WeatherContent(entries: entries, selectedEntry: selectedEntry)
                         .tag(1)
                 }
                 .tabViewStyle(PageTabViewStyle(indexDisplayMode: .never))
@@ -181,6 +185,7 @@ struct CombinedForecastCard: View {
 // Surf and wind content
 struct SurfContent: View {
     let entries: [ForecastEntry]
+    let selectedEntry: ForecastEntry?
     var onEntryVisible: ((ForecastEntry) -> Void)? = nil
     
     var body: some View {
@@ -230,55 +235,17 @@ struct SurfContent: View {
                 }
                 .frame(height: rowHeight)
                 .id("entry-\(index)")
+                .opacity(selectedEntry?.id == entry.id ? 1.0 : 0.6)
                 .onAppear {
-                    onEntryVisible?(entry) // Notify when entry is visible
+                    // Update selection when this row becomes visible
+                    onEntryVisible?(entry)
                 }
-                .background(
-                    GeometryReader { geometry in
-                        Color.clear
-                            .preference(
-                                key: EntryPreferenceKey.self,
-                                value: [EntryPreference(entry: entry, rect: geometry.frame(in: .named("surfContent")))]
-                            )
-                            .onAppear {
-                                print("Geometry frame for \(entry.dateForecastedFor): \(geometry.frame(in: .named("surfContent")))")
-                            }
-                    }
-                )
             }
         }
-        .coordinateSpace(name: "surfContent")
-        .onPreferenceChange(EntryPreferenceKey.self) { preferences in
-                   let screenMidPoint = UIScreen.main.bounds.height / 2
-                   
-                   // Find entry closest to the screen midpoint
-                   let sortedByDistanceToCenter = preferences.sorted {
-                       abs($0.rect.midY - screenMidPoint) < abs($1.rect.midY - screenMidPoint)
-                   }
-                   
-                   if let closestEntry = sortedByDistanceToCenter.first {
-                       onEntryVisible?(closestEntry.entry)
-                   }
-               }
             
     }
     
-    // Helper functions
-    func writtenSurfSize(_ size: Double) -> String {
-        SurfTableView(entries: []).writtenSurfSize(size)
-    }
-    
-    func getDirection(from degrees: Double) -> String {
-        SurfTableView(entries: []).getDirection(from: degrees)
-    }
-    
-    func getSwellColor(for entry: ForecastEntry) -> Color {
-        SurfTableView(entries: []).getSwellColor(for: entry)
-    }
-    
-    func getWindColor(for entry: ForecastEntry) -> Color {
-        SurfTableView(entries: []).getWindColor(for: entry)
-    }
+
     
     
 }
@@ -286,6 +253,7 @@ struct SurfContent: View {
 // Weather content
 struct WeatherContent: View {
     let entries: [ForecastEntry]
+    let selectedEntry: ForecastEntry?
     
     var body: some View {
         VStack(alignment: .leading, spacing: rowSpacing) {
@@ -317,6 +285,7 @@ struct WeatherContent: View {
                     .frame(maxWidth: .infinity, alignment: .trailing)
                 }
                 .frame(height: rowHeight)
+                .opacity(selectedEntry?.id == entry.id ? 1.0 : 0.6)
             }
         }
     }
@@ -341,28 +310,4 @@ struct WeatherContent: View {
 //            return "cloud.sun"
 //        }
 //    }
-}
-
-struct ScrollOffsetPreferenceKey: PreferenceKey {
-    static var defaultValue: CGFloat = 0
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = nextValue()
-    }
-}
-
-// Add this preference key for tracking entry positions
-struct EntryPreference: Equatable {
-    let entry: ForecastEntry
-    let rect: CGRect
-    
-    static func == (lhs: EntryPreference, rhs: EntryPreference) -> Bool {
-        lhs.entry.id == rhs.entry.id
-    }
-}
-
-struct EntryPreferenceKey: PreferenceKey {
-    static var defaultValue: [EntryPreference] = []
-    static func reduce(value: inout [EntryPreference], nextValue: () -> [EntryPreference]) {
-        value.append(contentsOf: nextValue())
-    }
 }

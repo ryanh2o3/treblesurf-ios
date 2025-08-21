@@ -59,7 +59,7 @@ struct ForecastData: Codable {
 }
 
 // Flattened structure for storage and easier usage
-struct ForecastEntry: Codable, Identifiable {
+struct ForecastEntry: Codable, Identifiable, Equatable {
     let id: String
     let spotId: String
     let forecastTimestamp: Date

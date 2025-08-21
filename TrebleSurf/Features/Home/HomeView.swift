@@ -1,4 +1,5 @@
 import SwiftUI
+import Foundation
 
 struct HomeView: View {
     @ObservedObject var viewModel = HomeViewModel()
@@ -6,65 +7,134 @@ struct HomeView: View {
     
     var body: some View {
         NavigationView {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
-                    // Date header
-                    Text(viewModel.formattedCurrentDate)
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
-                        .padding(.horizontal)
+            MainLayout {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 20) {
+                    // Header with title and theme toggle
+                    HStack {
+                        Text("Treble Surf")
+                            .font(.title2)
+                            .fontWeight(.bold)
+                        
+                        Spacer()
+                        
+                        ThemeToggleButton()
+                    }
+                    .padding(.horizontal)
                     
                     // Current conditions card
-                    if let condition = viewModel.currentCondition {
+                    if viewModel.isLoadingConditions {
+                        currentConditionLoadingView()
+                    } else if let condition = viewModel.currentCondition {
                         currentConditionView(condition)
                     }
                     
-                    // Featured spots section
+                    // Recent reports section (replacing featured spots)
                     VStack(alignment: .leading) {
-                        Text("Featured Spots")
+                        Text("Recent Reports")
                             .font(.headline)
                             .padding(.horizontal)
                         
                         ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 15) {
-                                ForEach(viewModel.featuredSpots) { spot in
-                                    featuredSpotCard(spot)
+                            HStack(alignment: .top, spacing: 15) {
+                                ForEach(viewModel.recentReports) { report in
+                                    reportCard(report)
+                                        .onTapGesture {
+                                            selectedReport = report
+                                        }
                                 }
                             }
                             .padding(.horizontal)
                         }
                     }
                     
-                    // Recent reports section
+                    // Weather buoys section
                     VStack(alignment: .leading) {
-                        Text("Recent Reports")
+                        Text("Weather Buoys")
                             .font(.headline)
                             .padding(.horizontal)
                         
-                        ForEach(viewModel.recentReports) { report in
-                            reportRow(report)
-                                .onTapGesture {
-                                    selectedReport = report
-                                }
+                        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 16) {
+                            ForEach(viewModel.weatherBuoys) { buoy in
+                                weatherBuoyCard(buoy)
+                            }
                         }
+                        .padding(.horizontal)
                     }
+                    }
+                    .padding(.vertical)
                 }
-                .padding(.vertical)
-            }
-            .navigationTitle("TrebleSurf")
-            .navigationBarTitleDisplayMode(.large)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    ThemeToggleButton()
+                .refreshable {
+                    await viewModel.refreshData()
                 }
-            }
-            .onAppear {
-                viewModel.loadData()
-            }
-            .sheet(item: $selectedReport) { report in
-                SurfReportDetailView(report: report)
+                            .navigationBarHidden(true)
+
+                .onAppear {
+                    viewModel.loadData()
+                }
+                .sheet(item: $selectedReport) { report in
+                    SurfReportDetailView(report: report)
+                }
             }
         }
+    }
+    
+    private func currentConditionLoadingView() -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Current Conditions")
+                .font(.headline)
+            
+            HStack {
+                VStack(alignment: .leading) {
+                    HStack {
+                        ProgressView()
+                            .scaleEffect(0.8)
+                        Text("Loading...")
+                            .font(.title)
+                            .fontWeight(.bold)
+                    }
+                    Text("Wave Height")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                
+                Spacer()
+                
+                VStack(alignment: .leading) {
+                    HStack {
+                        ProgressView()
+                            .scaleEffect(0.8)
+                        Text("Loading...")
+                            .font(.title3)
+                    }
+                    Text("Wind")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                
+                Spacer()
+                
+                VStack(alignment: .leading) {
+                    HStack {
+                        ProgressView()
+                            .scaleEffect(0.8)
+                        Text("Loading...")
+                            .font(.title3)
+                    }
+                    Text("Temp")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+            }
+            
+            Text("Loading conditions for Ballyhiernan...")
+                .font(.subheadline)
+                .foregroundColor(.secondary)
+        }
+        .padding()
+        .background(Color.gray.opacity(0.1))
+        .cornerRadius(12)
+        .padding(.horizontal)
     }
     
     private func currentConditionView(_ condition: CurrentCondition) -> some View {
@@ -108,87 +178,152 @@ struct HomeView: View {
                 .foregroundColor(.secondary)
         }
         .padding()
-        .background(Color(.systemBackground))
+        .background(Color.gray.opacity(0.1))
         .cornerRadius(12)
-        .shadow(radius: 2)
         .padding(.horizontal)
     }
     
-    private func featuredSpotCard(_ spot: FeaturedSpot) -> some View {
-        VStack(alignment: .leading) {
-            Rectangle()
-                .fill(Color.gray.opacity(0.3))
-                .aspectRatio(1.5, contentMode: .fit)
-                .cornerRadius(8)
-                .overlay(
-                    Text("Image")
-                        .foregroundColor(.secondary)
-                )
-            
-            Text(spot.name)
-                .font(.headline)
-            
-            HStack {
-                Text(spot.waveHeight)
-                Spacer()
-                Text(spot.quality)
-            }
-            .font(.subheadline)
-            
-            Text(spot.distance)
-                .font(.caption)
-                .foregroundColor(.secondary)
-        }
-        .frame(width: 160)
-        .padding(8)
-        .background(Color(.systemBackground))
-        .cornerRadius(12)
-        .shadow(radius: 2)
-    }
-    
-    private func reportRow(_ report: SurfReport) -> some View {
-        HStack {
+    private func reportCard(_ report: SurfReport) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // Image section
             if let imageData = report.imageData,
-                       let data = Data(base64Encoded: imageData),
-                       let uiImage = UIImage(data: data) {
-                        Image(uiImage: uiImage)
-                            .resizable()
-                            .frame(width: 60, height: 60)
-                            .cornerRadius(8)
-                    } else {
-                        Rectangle()
-                            .fill(Color.gray.opacity(0.3))
-                            .frame(width: 60, height: 60)
-                            .cornerRadius(8)
-                            .overlay(
-                                Text("Photo")
-                                    .foregroundColor(.secondary)
-                            )
-                    }
+               let data = Data(base64Encoded: imageData),
+               let uiImage = UIImage(data: data) {
+                Image(uiImage: uiImage)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .frame(width: 160, height: 100)
+                    .clipped()
+            } else {
+                Rectangle()
+                    .fill(Color.gray.opacity(0.3))
+                    .frame(width: 160, height: 100)
+                    .overlay(
+                        VStack {
+                            Image(systemName: "photo")
+                                .font(.system(size: 24))
+                                .foregroundColor(.secondary)
+                            Text("No Photo")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                    )
+            }
             
+            // Content section
             VStack(alignment: .leading, spacing: 4) {
                 Text(report.countryRegionSpot)
                     .font(.headline)
+                    .lineLimit(1)
                 
                 HStack {
                     Text(report.surfSize)
+                        .font(.subheadline)
+                        .foregroundColor(.primary)
                     Text("•")
+                        .foregroundColor(.secondary)
                     Text(report.quality)
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
                 }
-                .font(.subheadline)
                 
                 Text(report.time)
                     .font(.caption)
                     .foregroundColor(.secondary)
             }
-            
-            Spacer()
+            .padding(12)
         }
-        .padding(.horizontal)
-        .padding(.vertical, 6)
+        .frame(width: 160, height: 180)
+        .background(Color.gray.opacity(0.1))
+        .cornerRadius(12)
         .onReceive(report.objectWillChange) { _ in
-                // Force UI update when imageData changes
+            // Force UI update when imageData changes
+        }
+    }
+    
+    private func weatherBuoyCard(_ buoy: WeatherBuoy) -> some View {
+        VStack(alignment: .leading, spacing: 16) {
+            // Header with buoy name and loading indicator
+            HStack {
+                HStack(spacing: 8) {
+                    Circle()
+                        .fill(
+                            LinearGradient(
+                                colors: [Color.blue, Color.blue.opacity(0.7)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .frame(width: 32, height: 32)
+                        .overlay(
+                            Image(systemName: "water.waves")
+                                .font(.system(size: 14))
+                                .foregroundColor(.white)
+                        )
+                    
+                    Text(buoy.name)
+                        .font(.headline)
+                        .fontWeight(.bold)
+                }
+                
+                Spacer()
+                
+                if buoy.isLoading {
+                    ProgressView()
+                        .scaleEffect(0.8)
+                }
             }
+            
+            // Data grid
+            VStack(alignment: .leading, spacing: 12) {
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(buoy.waveHeight)
+                            .font(.title3)
+                            .fontWeight(.semibold)
+                        Text("Wave Height")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    
+                    Spacer()
+                    
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(buoy.wavePeriod)
+                            .font(.title3)
+                            .fontWeight(.semibold)
+                        Text("Period")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                }
+                
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(buoy.waveDirection)
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                        Text("Direction")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    
+                    Spacer()
+                    
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(buoy.waterTemperature)
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                        Text("Water")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                }
+            }
+        }
+        .padding(16)
+        .background(Color.gray.opacity(0.1))
+        .cornerRadius(12)
     }
 }
 
@@ -311,8 +446,8 @@ struct SurfReportDetailView: View {
                         
                         VStack(alignment: .leading, spacing: 8) {
                             DetailRow(label: "Reporter", value: report.reporter)
-                            DetailRow(label: "Email", value: report.userEmail)
-                            DetailRow(label: "Date Reported", value: report.dateReported)
+                            OptionalDetailRow(label: "Email", value: report.userEmail)
+                            DetailRow(label: "Date Reported", value: report.formattedDateReported)
                         }
                         .padding(.horizontal)
                     }
@@ -374,5 +509,16 @@ struct DetailRow: View {
             Spacer()
         }
         .padding(.vertical, 4)
+    }
+}
+
+struct OptionalDetailRow: View {
+    let label: String
+    let value: String?
+    
+    var body: some View {
+        if let value = value {
+            DetailRow(label: label, value: value)
+        }
     }
 }

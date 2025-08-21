@@ -7,7 +7,7 @@ struct SurfReportResponse: Decodable {
     let reporter: String
     let surfSize: String
     let time: String
-    let userEmail: String
+    let userEmail: String?
     let windAmount: String
     let windDirection: String
     let countryRegionSpot: String
@@ -39,7 +39,7 @@ class SurfReport: ObservableObject, Identifiable {
     let reporter: String
     let surfSize: String
     let time: String
-    let userEmail: String
+    let userEmail: String?
     let windAmount: String
     let windDirection: String
     let countryRegionSpot: String
@@ -47,7 +47,15 @@ class SurfReport: ObservableObject, Identifiable {
     
     @Published var imageData: String? // Make this observable
     
-    init(consistency: String, imageKey: String?, messiness: String, quality: String, reporter: String, surfSize: String, time: String, userEmail: String, windAmount: String, windDirection: String, countryRegionSpot: String, dateReported: String, imageData: String? = nil) {
+    /// Computed property that returns a user-friendly formatted date
+    var formattedDateReported: String {
+        if let date = Date.parseDateReported(dateReported) {
+            return date.formatForDisplay()
+        }
+        return dateReported // Fallback to original string if parsing fails
+    }
+    
+    init(consistency: String, imageKey: String?, messiness: String, quality: String, reporter: String, surfSize: String, time: String, userEmail: String?, windAmount: String, windDirection: String, countryRegionSpot: String, dateReported: String, imageData: String? = nil) {
         self.consistency = consistency
         self.imageKey = imageKey
         self.messiness = messiness

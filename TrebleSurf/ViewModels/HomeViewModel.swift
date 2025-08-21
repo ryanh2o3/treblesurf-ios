@@ -1,5 +1,7 @@
 import Foundation
 import Combine
+import UIKit
+import SwiftUI
 
 // MARK: - Cache Models
 struct CachedSurfReports {
@@ -14,10 +16,37 @@ struct CachedSurfReports {
     }
 }
 
+// MARK: - Weather Buoy Model
+struct WeatherBuoy: Identifiable {
+    let id = UUID()
+    let name: String
+    let waveHeight: String
+    let windDirection: String
+    let waveDirection: String
+    let wavePeriod: String
+    let temperature: String
+    let waterTemperature: String
+    let isLoading: Bool
+    
+    init(name: String, waveHeight: String = "Loading...", windDirection: String = "Loading...", waveDirection: String = "Loading...", wavePeriod: String = "Loading...",  temperature: String = "Loading...", waterTemperature: String = "Loading...", isLoading: Bool = true) {
+        self.name = name
+        self.waveHeight = waveHeight
+        self.windDirection = windDirection
+        self.waveDirection = waveDirection
+        self.wavePeriod = wavePeriod
+        self.temperature = temperature
+        self.waterTemperature = waterTemperature
+        self.isLoading = isLoading
+    }
+}
+
 class HomeViewModel: ObservableObject {
     @Published var currentCondition: CurrentCondition?
     @Published var featuredSpots: [FeaturedSpot] = []
     @Published var recentReports: [SurfReport] = []
+    @Published var weatherBuoys: [WeatherBuoy] = []
+    @Published var spots: [SpotData] = []
+    @Published var isLoadingConditions: Bool = true
     
     // MARK: - Caching Properties
     private var surfReportsCache: [String: CachedSurfReports] = [:]
@@ -33,6 +62,15 @@ class HomeViewModel: ObservableObject {
     init() {
         // Initial setup
         setupCacheCleanup()
+        setupWeatherBuoys()
+    }
+    
+    // MARK: - Weather Buoys Setup
+    private func setupWeatherBuoys() {
+        weatherBuoys = [
+            WeatherBuoy(name: "M4"),
+            WeatherBuoy(name: "M6")
+        ]
     }
     
     // MARK: - Cache Management
@@ -95,9 +133,20 @@ class HomeViewModel: ObservableObject {
     
     // MARK: - Public Methods
     func loadData() {
-        // Placeholder for data loading
         loadMockData()
+        fetchSpots()
         fetchSurfReports()
+        fetchWeatherBuoys()
+    }
+    
+    @MainActor
+    func refreshData() async {
+        // Clear cache and reload all data
+        surfReportsCache.removeAll()
+        fetchSpots()
+        fetchSurfReports()
+        fetchWeatherBuoys()
+        updateCurrentConditionsFromBallyhiernan()
     }
     
     func refreshSurfReports() {
@@ -108,6 +157,157 @@ class HomeViewModel: ObservableObject {
     }
     
     // MARK: - Private Methods
+    private func fetchSpots() {
+        APIClient.shared.fetchSpots(country: "Ireland", region: "Donegal") { [weak self] result in
+            switch result {
+            case .success(let spots):
+                DispatchQueue.main.async {
+                    self?.spots = spots
+                    self?.updateCurrentConditionsFromBallyhiernan()
+                }
+            case .failure(let error):
+                print("Failed to fetch spots: \(error.localizedDescription)")
+            }
+        }
+    }
+    
+    private func updateCurrentConditionsFromBallyhiernan() {
+        // Always use Ballyhiernan Spot for current conditions
+        let ballyhiernanSpot = "Ballyhiernan"
+        
+        // Set loading state
+        DispatchQueue.main.async {
+            self.isLoadingConditions = true
+        }
+        
+        // Fetch current conditions for Ballyhiernan
+        APIClient.shared.fetchCurrentConditions(country: "Ireland", region: "Donegal", spot: ballyhiernanSpot) { [weak self] result in
+            DispatchQueue.main.async {
+                self?.isLoadingConditions = false
+                
+                switch result {
+                case .success(let conditionsResponses):
+                    if let firstCondition = conditionsResponses.first {
+                        let condition = self?.createCurrentCondition(from: firstCondition.data, spotName: ballyhiernanSpot)
+                        self?.currentCondition = condition
+                    } else {
+                        // Fallback to mock data if no conditions available
+                        self?.currentCondition = CurrentCondition(
+                            waveHeight: "1.5m",
+                            windDirection: "W",
+                            windSpeed: "15 km/h",
+                            temperature: "18°C",
+                            summary: "No data available for \(ballyhiernanSpot)"
+                        )
+                    }
+                case .failure(let error):
+                    print("Failed to fetch current conditions for Ballyhiernan: \(error.localizedDescription)")
+                    // Fallback to mock data on error
+                    self?.currentCondition = CurrentCondition(
+                        waveHeight: "1.5m",
+                        windDirection: "W",
+                        windSpeed: "15 km/h",
+                        temperature: "18°C",
+                        summary: "Unable to load conditions for \(ballyhiernanSpot)"
+                    )
+                }
+            }
+        }
+    }
+    
+    private func createCurrentCondition(from data: ConditionData, spotName: String) -> CurrentCondition {
+        // Keep wave height in meters
+        let waveHeightString = String(format: "%.1fm", data.surfSize)
+        
+        // Convert wind direction from degrees to cardinal direction
+        let windDirectionString = getWindDirectionString(from: data.windDirection)
+        
+        // Convert wind speed from m/s to km/h
+        let windSpeedInKmh = data.windSpeed * 3.6
+        let windSpeedString = String(format: "%.0f km/h", windSpeedInKmh)
+        
+        // Keep temperature in Celsius
+        let temperatureString = String(format: "%.0f°C", data.temperature)
+        
+        // Create summary based on actual data
+        let summary = "Current conditions at \(spotName): \(data.surfMessiness) waves, \(data.formattedRelativeWindDirection) wind"
+        
+        return CurrentCondition(
+            waveHeight: waveHeightString,
+            windDirection: windDirectionString,
+            windSpeed: windSpeedString,
+            temperature: temperatureString,
+            summary: summary
+        )
+    }
+    
+    private func getWindDirectionString(from degrees: Double) -> String {
+        let directions = ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"]
+        let index = Int((degrees + 11.25) / 22.5) % 16
+        return directions[index]
+    }
+    
+    private func fetchWeatherBuoys() {
+        let buoyNames = ["M4", "M6"]
+        
+        APIClient.shared.fetchBuoyData(buoyNames: buoyNames) { [weak self] result in
+            switch result {
+            case .success(let buoyResponses):
+                DispatchQueue.main.async {
+                    self?.updateWeatherBuoys(with: buoyResponses)
+                }
+            case .failure(let error):
+                print("Failed to fetch buoy data: \(error.localizedDescription)")
+                // Update buoys with error state
+                DispatchQueue.main.async {
+                    self?.updateWeatherBuoysWithError()
+                }
+            }
+        }
+    }
+    
+    private func updateWeatherBuoys(with responses: [BuoyResponse]) {
+        for (index, response) in responses.enumerated() {
+            if index < weatherBuoys.count {
+                let buoy = createWeatherBuoy(from: response)
+                weatherBuoys[index] = buoy
+            }
+        }
+    }
+    
+    private func updateWeatherBuoysWithError() {
+        for index in weatherBuoys.indices {
+            weatherBuoys[index] = WeatherBuoy(
+                name: weatherBuoys[index].name,
+                waveHeight: "Error",
+                windDirection: "Error",
+                temperature: "Error",
+                waterTemperature: "Error",
+                isLoading: false
+            )
+        }
+    }
+    
+    private func createWeatherBuoy(from response: BuoyResponse) -> WeatherBuoy {
+        let waveHeight = response.WaveHeight != nil ? String(format: "%.1fm", response.WaveHeight!) : "N/A"
+        let wavePeriod = response.WavePeriod != nil ? String(format: "%.1fs", response.WavePeriod!) : "N/A"
+        let windDirection = response.WindDirection != nil ? String(format: "%d°", response.WindDirection!) : "N/A"
+        let waveDirection = response.MeanWaveDirection != nil ? String(format: "%d°", response.MeanWaveDirection!) : "N/A"
+        let temperature = response.AirTemperature != nil ? String(format: "%.1f°C", response.AirTemperature!) : "N/A"
+        let waterTemperature = response.SeaTemperature != nil ? String(format: "%.1f°C", response.SeaTemperature!) : "N/A"
+        
+        return WeatherBuoy(
+            name: response.name,
+            waveHeight: waveHeight,
+            windDirection: windDirection,
+            waveDirection: waveDirection,
+            wavePeriod: wavePeriod,
+            temperature: temperature,
+            waterTemperature: waterTemperature,
+            isLoading: false
+        )
+    }
+    
     private func fetchSurfReports() {
         // Check cache first
         if let cachedReports = getCachedReports(country: "Ireland", region: "Donegal") {
@@ -196,13 +396,39 @@ class HomeViewModel: ObservableObject {
             
             // Cache the results
             self.cacheReports(allReports, country: "Ireland", region: "Donegal")
+            
+            // Preload surf report images for better user experience
+            let imageKeys = allReports.compactMap { $0.imageKey }.filter { !$0.isEmpty }
+            if !imageKeys.isEmpty {
+                print("📱 Preloading \(imageKeys.count) surf report images")
+                // Note: We can't preload without the actual image data
+                // The images will be cached when they're first accessed
+            }
         }
     }
         
     private func fetchImage(for key: String, completion: @escaping (SurfReportImageResponse?) -> Void) {
+        // First, check the dedicated image cache
+        ImageCacheService.shared.getCachedSurfReportImageData(for: key) { cachedImageData in
+            if let cachedImageData = cachedImageData {
+                print("✅ Using cached surf report image for key: \(key)")
+                // Create a mock response with the cached image data
+                let mockResponse = SurfReportImageResponse(imageData: cachedImageData.base64EncodedString(), contentType: "image/jpeg")
+                completion(mockResponse)
+                return
+            }
+            
+            // If not cached, fetch from API
             APIClient.shared.getReportImage(key: key) { result in
                 switch result {
                 case .success(let imageData):
+                    // Cache the image for future use
+                    if let decodedImageData = Data(base64Encoded: imageData.imageData),
+                       let uiImage = UIImage(data: decodedImageData) {
+                        if let pngData = uiImage.pngData() {
+                            ImageCacheService.shared.cacheSurfReportImage(pngData, for: key)
+                        }
+                    }
                     completion(imageData)
                 case .failure(let error):
                     print("Failed to fetch image for key \(key): \(error.localizedDescription)")
@@ -210,6 +436,7 @@ class HomeViewModel: ObservableObject {
                 }
             }
         }
+    }
     
     // Parse timestamp with multiple format support
     private func parseTimestamp(_ timestamp: String) -> Date? {
@@ -260,13 +487,13 @@ class HomeViewModel: ObservableObject {
     }
     
     private func loadMockData() {
-        // Load sample data
+        // Load sample data with correct units
         currentCondition = CurrentCondition(
-            waveHeight: "2-3ft",
+            waveHeight: "1.5m",
             windDirection: "W",
-            windSpeed: "5mph",
-            temperature: "68°F",
-            summary: "Mild conditions"
+            windSpeed: "12 km/h",
+            temperature: "18°C",
+            summary: "Loading conditions..."
         )
         
         featuredSpots = [

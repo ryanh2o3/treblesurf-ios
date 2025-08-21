@@ -1,5 +1,6 @@
 import Foundation
 import Combine
+import UIKit
 
 
 struct CurrentConditions {
@@ -103,6 +104,14 @@ class LiveSpotViewModel: ObservableObject {
                     
                     self?.recentReports = reports
                     
+                    // Preload surf report images for better user experience
+                    let imageKeys = reports.compactMap { $0.imageKey }.filter { !$0.isEmpty }
+                    if !imageKeys.isEmpty {
+                        print("📱 Preloading \(imageKeys.count) surf report images")
+                        // Note: We can't preload without the actual image data
+                        // The images will be cached when they're first accessed
+                    }
+                    
                 case .failure(let error):
                     self?.errorMessage = "Failed to load surf reports"
                 }
@@ -111,13 +120,32 @@ class LiveSpotViewModel: ObservableObject {
     }
     
     private func fetchImage(for key: String, completion: @escaping (SurfReportImageResponse?) -> Void) {
-        APIClient.shared.getReportImage(key: key) { result in
-            switch result {
-            case .success(let imageData):
-                completion(imageData)
-            case .failure(let error):
-                print("Failed to fetch image for key \(key): \(error.localizedDescription)")
-                completion(nil)
+        // First, check the dedicated image cache
+        ImageCacheService.shared.getCachedSurfReportImageData(for: key) { cachedImageData in
+            if let cachedImageData = cachedImageData {
+                print("✅ Using cached surf report image for key: \(key)")
+                // Create a mock response with the cached image data
+                let mockResponse = SurfReportImageResponse(imageData: cachedImageData.base64EncodedString(), contentType: "image/jpeg")
+                completion(mockResponse)
+                return
+            }
+            
+            // If not cached, fetch from API
+            APIClient.shared.getReportImage(key: key) { result in
+                switch result {
+                case .success(let imageData):
+                    // Cache the image for future use
+                    if let decodedImageData = Data(base64Encoded: imageData.imageData),
+                       let uiImage = UIImage(data: decodedImageData) {
+                        if let pngData = uiImage.pngData() {
+                            ImageCacheService.shared.cacheSurfReportImage(pngData, for: key)
+                        }
+                    }
+                    completion(imageData)
+                case .failure(let error):
+                    print("Failed to fetch image for key \(key): \(error.localizedDescription)")
+                    completion(nil)
+                }
             }
         }
     }

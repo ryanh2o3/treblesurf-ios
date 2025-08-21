@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct MainTabView: View {
     @State private var selectedTab = 0
@@ -36,5 +37,15 @@ struct MainTabView: View {
                 .tag(4)
         }
         .accentColor(.blue)
+        .background(Color(.systemBackground))
+        .onAppear {
+            // Ensure consistent tab bar appearance
+            let appearance = UITabBarAppearance()
+            appearance.configureWithOpaqueBackground()
+            appearance.backgroundColor = UIColor.systemBackground
+            
+            UITabBar.appearance().standardAppearance = appearance
+            UITabBar.appearance().scrollEdgeAppearance = appearance
+        }
     }
 }

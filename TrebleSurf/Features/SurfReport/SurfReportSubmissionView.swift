@@ -14,7 +14,7 @@ struct SurfReportSubmissionView: View {
                 stepContent
                 navigationButtons
             }
-            .navigationTitle("Submit Report")
+            .navigationTitle("Detailed Report")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {

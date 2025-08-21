@@ -6,42 +6,39 @@ struct BuoysView: View {
     @State private var selectedBuoy: Buoy?
     
     var body: some View {
-        MainLayout {
-            VStack(spacing: 16) {
-                // Header - only show when not in detail view
-                if selectedBuoy == nil {
-                    headerSection
+        NavigationView {
+            MainLayout {
+                VStack(spacing: 16) {
+                    // Header with title and theme toggle
+                    HStack {
+                        Text("Buoys")
+                            .font(.title2)
+                            .fontWeight(.bold)
+                        
+                        Spacer()
+                        
+                        ThemeToggleButton()
+                    }
+                    .padding(.horizontal)
+                    
+                    // Buoy list or details
+                    if let selectedBuoy = selectedBuoy {
+                        buoyDetailView(selectedBuoy)
+                    } else {
+                        buoyListView
+                    }
                 }
-                
-                // Buoy filter
-//                buoyFilter
-                
-                // Buoy list or details
-                if let selectedBuoy = selectedBuoy {
-                    buoyDetailView(selectedBuoy)
-                } else {
-                    buoyListView
+                .padding()
+                .task {
+                    await viewModel.loadBuoys()
                 }
             }
-            .padding()
-            .task {
-                await viewModel.loadBuoys()
-            }
+            .navigationBarHidden(true)
+
         }
     }
     
-    private var headerSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Buoy Data")
-                .font(.largeTitle)
-                .fontWeight(.bold)
-            
-            Text("Real-time wave and wind conditions")
-                .font(.subheadline)
-                .foregroundColor(.secondary)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
+
     
 //    private var buoyFilter: some View {
 //        HStack {

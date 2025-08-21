@@ -149,20 +149,36 @@ struct WeatherForecastCard: View {
         .cornerRadius(10)
     }
     
-    // Using helper functions from parent
+    // Helper functions - standalone implementations
     func writtenSurfSize(_ size: Double) -> String {
-        SurfTableView(entries: []).writtenSurfSize(size)
+        switch size {
+        case 0: return "Flat"
+        case 0..<1: return "Small"
+        case 1..<2: return "Medium"
+        default: return "Large"
+        }
     }
     
     func getDirection(from degrees: Double) -> String {
-        SurfTableView(entries: []).getDirection(from: degrees)
+        let dirs = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"]
+        let index = Int((degrees + 22.5) / 45.0) % 8
+        return dirs[index]
     }
     
     func getSwellColor(for entry: ForecastEntry) -> Color {
-        SurfTableView(entries: []).getSwellColor(for: entry)
+        switch writtenSurfSize(entry.surfSize) {
+        case "Flat": return .blue
+        case "Small": return .green
+        case "Medium": return .orange
+        default: return .red
+        }
     }
     
     func getWindColor(for entry: ForecastEntry) -> Color {
-        SurfTableView(entries: []).getWindColor(for: entry)
+        switch entry.surfMessiness.lowercased() {
+        case "clean": return .green
+        case "choppy": return .orange
+        default: return .gray
+        }
     }
 }
