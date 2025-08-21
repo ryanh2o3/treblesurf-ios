@@ -31,5 +31,5 @@ struct ThemeToggleButton: View {
 
 #Preview {
     ThemeToggleButton()
-        .environmentObject(SettingsStore())
+        .environmentObject(SettingsStore.shared)
 }

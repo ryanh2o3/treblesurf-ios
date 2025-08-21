@@ -11,12 +11,33 @@ import GoogleSignInSwift
 import UIKit
 
 struct SignInView: View {
-    @Binding var isAuthenticated: Bool
+    @StateObject private var authManager = AuthManager.shared
     @State private var isSigningIn = false
+    @State private var showDevSignIn = false
+    @State private var devEmail = ""
 
     var body: some View {
-        VStack {
+        VStack(spacing: 20) {
+            // App Logo/Title
+            VStack(spacing: 16) {
+                Image(systemName: "wave.3.right")
+                    .font(.system(size: 64))
+                    .foregroundColor(.blue)
+                
+                Text("TrebleSurf")
+                    .font(.largeTitle)
+                    .fontWeight(.bold)
+                
+                Text("Your surf companion")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+            }
+            .padding(.top, 40)
+            
+            Spacer()
+            
             if UIDevice.current.isSimulator {
+                // Simulator Mode
                 VStack(spacing: 16) {
                     Image(systemName: "iphone.slash")
                         .font(.system(size: 48))
@@ -26,23 +47,36 @@ struct SignInView: View {
                         .font(.title2)
                         .fontWeight(.semibold)
                     
-                    Text("Google Sign-In is not available in the iOS Simulator. Please test on a physical device.")
+                    Text("Google Sign-In is not available in the iOS Simulator. Use development mode to test the app.")
                         .font(.body)
                         .foregroundColor(.secondary)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal)
                     
-                    Button("Continue Without Sign-In (Demo)") {
-                        // For demo purposes, you can set a mock authentication state
-                        isAuthenticated = true
+                    Button("Development Sign-In") {
+                        showDevSignIn = true
                     }
                     .buttonStyle(.borderedProminent)
                 }
                 .padding()
             } else {
-                GoogleSignInButton(action: handleSignInButton)
-                    .disabled(isSigningIn)
+                // Device Mode
+                VStack(spacing: 16) {
+                    GoogleSignInButton(action: handleSignInButton)
+                        .disabled(isSigningIn)
+                    
+                    if isSigningIn {
+                        ProgressView("Signing in...")
+                            .progressViewStyle(CircularProgressViewStyle())
+                    }
+                }
             }
+            
+            Spacer()
+        }
+        .padding()
+        .sheet(isPresented: $showDevSignIn) {
+            DevSignInView()
         }
     }
 
@@ -57,29 +91,105 @@ struct SignInView: View {
 
         isSigningIn = true
         GIDSignIn.sharedInstance.signIn(withPresenting: rootViewController) { signInResult, error in
-            isSigningIn = false
-            if let error = error {
-                print("Sign-in failed: \(error.localizedDescription)")
-                return
-            }
+            DispatchQueue.main.async {
+                isSigningIn = false
+                
+                if let error = error {
+                    print("Sign-in failed: \(error.localizedDescription)")
+                    return
+                }
 
-            if let result = signInResult {
-                AuthManager.shared.authenticateWithBackend(user: result.user) { success, responseData in
-                    DispatchQueue.main.async {
-                        print ("responseData", responseData)
-                        if success {
-                            if let responseData = responseData,
-                               let json = try? JSONSerialization.jsonObject(with: responseData) as? [String: Any],
-                               let csrfToken = json["csrf_token"] as? String {
-                                AuthManager.shared.csrfTokenValue = csrfToken
+                if let result = signInResult {
+                    authManager.authenticateWithBackend(user: result.user) { success, user in
+                        DispatchQueue.main.async {
+                            if success {
+                                print("Successfully authenticated user: \(user?.email ?? "Unknown")")
+                            } else {
+                                print("Backend authentication failed")
                             }
-                            isAuthenticated = true
-                        } else {
-                            print("Backend authentication failed")
                         }
                     }
                 }
             }
         }
     }
+}
+
+// MARK: - Development Sign-In View
+struct DevSignInView: View {
+    @Environment(\.dismiss) private var dismiss
+    @StateObject private var authManager = AuthManager.shared
+    @State private var email = "dev@treblesurf.com"
+    @State private var isSigningIn = false
+    
+    var body: some View {
+        NavigationView {
+            VStack(spacing: 20) {
+                Image(systemName: "hammer.fill")
+                    .font(.system(size: 48))
+                    .foregroundColor(.orange)
+                
+                Text("Development Mode")
+                    .font(.title2)
+                    .fontWeight(.semibold)
+                
+                Text("Create a development session for testing purposes. This bypasses Google authentication.")
+                    .font(.body)
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal)
+                
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Email Address")
+                        .font(.headline)
+                    
+                    TextField("Enter email", text: $email)
+                        .textFieldStyle(RoundedBorderTextFieldStyle())
+                        .keyboardType(.emailAddress)
+                        .autocapitalization(.none)
+                        .disableAutocorrection(true)
+                }
+                
+                Button("Create Development Session") {
+                    createDevSession()
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(email.isEmpty || isSigningIn)
+                
+                if isSigningIn {
+                    ProgressView("Creating session...")
+                        .progressViewStyle(CircularProgressViewStyle())
+                }
+                
+                Spacer()
+            }
+            .padding()
+            .navigationTitle("Dev Sign-In")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Cancel") {
+                        dismiss()
+                    }
+                }
+            }
+        }
+    }
+    
+    private func createDevSession() {
+        isSigningIn = true
+        
+        authManager.createDevSession(email: email) { success in
+            DispatchQueue.main.async {
+                isSigningIn = false
+                if success {
+                    dismiss()
+                }
+            }
+        }
+    }
+}
+
+#Preview {
+    SignInView()
 }

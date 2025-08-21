@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SettingsView: View {
     @EnvironmentObject var settingsStore: SettingsStore
+    @EnvironmentObject var authManager: AuthManager
     @Environment(\.colorScheme) var colorScheme
     
     var body: some View {
@@ -108,6 +109,39 @@ struct SettingsView: View {
                     Text("Status")
                 }
                 
+                // User Account Section
+                if let user = authManager.currentUser {
+                    Section {
+                        HStack {
+                            AsyncImage(url: URL(string: user.picture)) { image in
+                                image
+                                    .resizable()
+                                    .aspectRatio(contentMode: .fill)
+                            } placeholder: {
+                                Image(systemName: "person.circle.fill")
+                                    .foregroundColor(.secondary)
+                            }
+                            .frame(width: 40, height: 40)
+                            .clipShape(Circle())
+                            
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(user.name)
+                                    .font(.subheadline)
+                                    .fontWeight(.medium)
+                                Text(user.email)
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                            
+                            Spacer()
+                        }
+                        
+                        LogoutButton()
+                    } header: {
+                        Text("Account")
+                    }
+                }
+                
                 // App Info Section
                 Section {
                     HStack {
@@ -184,5 +218,5 @@ struct ThemeOptionRow: View {
 
 #Preview {
     SettingsView()
-        .environmentObject(SettingsStore())
+        .environmentObject(SettingsStore.shared)
 }

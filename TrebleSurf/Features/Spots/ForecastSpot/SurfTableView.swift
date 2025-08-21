@@ -53,7 +53,6 @@ struct SurfTableView: View {
                         }
                     }
                 }
-                .padding()
                 .onPreferenceChange(ScrollOffsetPreferenceKey.self) { value in
                     scrollOffset = value
                 }

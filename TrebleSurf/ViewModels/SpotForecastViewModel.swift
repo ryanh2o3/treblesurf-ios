@@ -75,4 +75,12 @@ class SpotForecastViewModel: ObservableObject {
     func fetchForecast(for spotId: String, completion: @escaping (Bool) -> Void) {
         dataStore.fetchForecast(for: spotId, completion: completion)
     }
+    
+    // Refresh forecast data by clearing cache and refetching
+    func refreshForecast(for spotId: String, completion: @escaping (Bool) -> Void) {
+        // Clear the specific spot's forecast cache
+        dataStore.clearSpotCache(for: spotId)
+        // Refetch the forecast
+        dataStore.fetchForecast(for: spotId, completion: completion)
+    }
 }

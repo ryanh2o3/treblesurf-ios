@@ -36,7 +36,7 @@ struct SpotForecastView: View {
                                     .animation(.default, value: currentForecastEntry?.swellDirection)
                             }
                             .clipShape(RoundedRectangle(cornerRadius: 12))
-                            .padding(.horizontal, 12)
+                            .padding(.horizontal, 6)
                             .padding(.bottom, 8)
             // Mode toggle buttons
             HStack {
@@ -53,14 +53,12 @@ struct SpotForecastView: View {
                     }
                 }
             }
-            .padding(.horizontal)
+            .padding(.horizontal, 6)
             ScrollView {
                 SurfTableView(entries: viewModel.filteredEntries) { visibleEntry in
-                    print("Entry became visible: \(visibleEntry.dateForecastedFor)")
                     currentForecastEntry = visibleEntry
                 }
-                .frame(width: UIScreen.main.bounds.width)
-                
+                .frame(maxWidth: .infinity)                
                 
                 // Table toggle indicators
                 HStack(spacing: 8) {
@@ -80,7 +78,6 @@ struct SpotForecastView: View {
             }
         }
         .clipShape(RoundedRectangle(cornerRadius: 20))
-        .padding()
         .onAppear {
             viewModel.fetchForecast(for: spotId) { success in
                 if !success {

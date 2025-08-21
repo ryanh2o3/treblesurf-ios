@@ -5,6 +5,38 @@
 //  Created by Ryan Patton on 11/05/2025.
 //
 
+// Enum for relative wind direction types
+enum RelativeWindDirection: String, CaseIterable {
+    case offshore = "Offshore"
+    case onshore = "Onshore"
+    case crossshore = "Crossshore"
+    case crossOnshore = "Cross-Onshore"
+    case crossOffshore = "Cross-Offshore"
+    
+    // Display value that removes 'shore' from Cross-Onshore and Cross-Offshore
+    var displayValue: String {
+        switch self {
+        case .crossOnshore:
+            return "Cross-On"
+        case .crossOffshore:
+            return "Cross-Off"
+        default:
+            return self.rawValue
+        }
+    }
+    
+    // Initialize from string with fallback
+    init(from string: String) {
+        if let direction = RelativeWindDirection.allCases.first(where: { $0.rawValue == string }) {
+            self = direction
+        } else {
+            // If no match found, we'll handle this in the displayValue
+            // For now, just store the original string
+            self = .crossshore // This won't be used when we have a custom string
+        }
+    }
+}
+
 struct CurrentConditionsResponse: Codable {
     let data: ConditionData
     let forecast_timestamp: String
@@ -29,6 +61,19 @@ struct ConditionData: Codable {
     let waveEnergy: Double
     let windDirection: Double
     let windSpeed: Double
+    
+    // Computed property for formatted relative wind direction
+    var formattedRelativeWindDirection: String {
+        // Check if it matches our specific Cross-Onshore/Cross-Offshore cases
+        if relativeWindDirection == "Cross-Onshore" {
+            return "Cross-On"
+        } else if relativeWindDirection == "Cross-Offshore" {
+            return "Cross-Off"
+        } else {
+            // For all other cases, return the original value
+            return relativeWindDirection
+        }
+    }
 
     // Custom initializer
     init(from data: [String: Any]) {

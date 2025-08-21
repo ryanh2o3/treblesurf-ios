@@ -22,6 +22,8 @@ struct LocationData: Codable, Identifiable {
 }
 
 class LocationStore: NSObject, ObservableObject {
+    static let shared = LocationStore()
+    
     @Published var country: String = ""
     @Published var region: String = ""
     @Published var spot: String = ""
@@ -34,7 +36,7 @@ class LocationStore: NSObject, ObservableObject {
     private let locationManager = CLLocationManager()
     private let geocoder = CLGeocoder()
     
-    override init() {
+    private override init() {
         super.init()
         setupLocationManager()
         loadSavedLocations()
@@ -159,5 +161,28 @@ extension LocationStore: CLLocationManagerDelegate {
     func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
         print("Location manager error: \(error.localizedDescription)")
         isLocationServiceEnabled = false
+    }
+    
+    /// Reset the store to its initial state - clears all location data
+    func resetToInitialState() {
+        DispatchQueue.main.async {
+            // Reset all published properties to initial values
+            self.country = ""
+            self.region = ""
+            self.spot = ""
+            self.coordinates = nil
+            self.isLocationServiceEnabled = false
+            self.savedLocations = []
+            
+            // Clear saved locations from disk
+            self.savedLocationsData = Data()
+            UserDefaults.standard.removeObject(forKey: "savedLocations")
+            UserDefaults.standard.synchronize()
+            
+            // Stop location updates
+            self.locationManager.stopUpdatingLocation()
+            
+            print("LocationStore reset to initial state")
+        }
     }
 }

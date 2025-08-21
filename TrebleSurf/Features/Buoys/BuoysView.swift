@@ -8,8 +8,10 @@ struct BuoysView: View {
     var body: some View {
         MainLayout {
             VStack(spacing: 16) {
-                // Header
-                headerSection
+                // Header - only show when not in detail view
+                if selectedBuoy == nil {
+                    headerSection
+                }
                 
                 // Buoy filter
 //                buoyFilter
@@ -180,7 +182,6 @@ struct BuoysView: View {
                     Text("Depth: \(buoy.depth)")
                 }
             }
-            .padding()
             .onAppear {
                 Task {
                     await viewModel.loadHistoricalDataForBuoy(id: buoy.id) { updatedBuoy in
@@ -291,7 +292,7 @@ struct ReadingCard: View {
             }
         }
         .padding()
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity, minHeight: 100, alignment: .leading)
         .background(Color.gray.opacity(0.1))
         .cornerRadius(12)
     }

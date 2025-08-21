@@ -27,6 +27,8 @@ enum ThemeMode: String, CaseIterable, Identifiable {
 }
 
 class SettingsStore: ObservableObject {
+    static let shared = SettingsStore()
+    
     @Published var selectedTheme: ThemeMode = .system {
         didSet {
             UserDefaults.standard.set(selectedTheme.rawValue, forKey: "selectedTheme")
@@ -42,7 +44,7 @@ class SettingsStore: ObservableObject {
     
     private var cancellables = Set<AnyCancellable>()
     
-    init() {
+    private init() {
         loadSettings()
         setupThemeObserver()
     }
@@ -108,5 +110,24 @@ class SettingsStore: ObservableObject {
     
     func refreshTheme() {
         updateColorScheme()
+    }
+    
+    /// Reset the store to its initial state - resets theme preferences
+    func resetToInitialState() {
+        DispatchQueue.main.async {
+            // Reset to system theme (default)
+            self.selectedTheme = .system
+            self.isDarkMode = false
+            
+            // Clear UserDefaults
+            UserDefaults.standard.removeObject(forKey: "selectedTheme")
+            UserDefaults.standard.removeObject(forKey: "isDarkMode")
+            UserDefaults.standard.synchronize()
+            
+            // Update color scheme
+            self.updateColorScheme()
+            
+            print("SettingsStore reset to initial state")
+        }
     }
 }

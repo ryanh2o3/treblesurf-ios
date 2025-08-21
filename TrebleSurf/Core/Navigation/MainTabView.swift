@@ -2,7 +2,6 @@ import SwiftUI
 
 struct MainTabView: View {
     @State private var selectedTab = 0
-    @Binding var isAuthenticated: Bool
 
     var body: some View {
         TabView(selection: $selectedTab) {

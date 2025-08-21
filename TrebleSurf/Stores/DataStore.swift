@@ -10,8 +10,38 @@ class DataStore: ObservableObject {
     static let shared = DataStore()
 
     @Published var currentConditions = ConditionData(from: [:])
+    @Published var currentConditionsTimestamp: String = ""
     // Cache for storing multiple spot conditions with timestamps
-    private var spotConditionsCache: [String: (conditions: ConditionData, timestamp: Date)] = [:]
+    private var spotConditionsCache: [String: (conditions: ConditionData, forecastTimestamp: String, timestamp: Date)] = [:]
+    
+    // Computed property for relative time display
+    var relativeTimeDisplay: String {
+        guard !currentConditionsTimestamp.isEmpty else { return "Unknown" }
+        
+        // Convert Unix timestamp to Date
+        if let timestamp = Double(currentConditionsTimestamp) {
+            let date = Date(timeIntervalSince1970: timestamp)
+            let now = Date()
+            let timeInterval = now.timeIntervalSince(date)
+            
+            let minutes = Int(timeInterval / 60)
+            let hours = Int(timeInterval / 3600)
+            let days = Int(timeInterval / 86400)
+            print("current timestamp", currentConditionsTimestamp)
+            
+            if days > 0 {
+                return "\(days) day\(days == 1 ? "" : "s") ago"
+            } else if hours > 0 {
+                return "\(hours) hour\(hours == 1 ? "" : "s") ago"
+            } else if minutes > 0 {
+                return "\(minutes) min\(minutes == 1 ? "" : "s") ago"
+            } else {
+                return "Just now"
+            }
+        }
+        
+        return "Unknown"
+    }
     
     @Published var regionSpots: [SpotData] = []
     private var regionSpotsCache: [String: (spots: [SpotData], timestamp: Date)] = [:]
@@ -36,6 +66,7 @@ class DataStore: ObservableObject {
             DispatchQueue.main.async {
                 self.currentSpotId = spotId
                 self.currentConditions = cached.conditions
+                self.currentConditionsTimestamp = cached.forecastTimestamp
                 completion(true)
             }
             return
@@ -64,12 +95,13 @@ class DataStore: ObservableObject {
                     DispatchQueue.main.async {
                         // Update current conditions
                         self.currentConditions = firstResponse.data
+                        self.currentConditionsTimestamp = firstResponse.generated_at
                         
                         // Update current spot ID
                         self.currentSpotId = spotId
                         
                         // Cache the data with current timestamp
-                        self.spotConditionsCache[spotId] = (firstResponse.data, Date())
+                        self.spotConditionsCache[spotId] = (firstResponse.data, firstResponse.generated_at, Date())
                         
                         completion(true)
                     }
@@ -257,5 +289,72 @@ class DataStore: ObservableObject {
         spotForecastCache = spotForecastCache.filter {
                     now.timeIntervalSince($0.value.timestamp) < cacheExpirationInterval
                 }
+    }
+    
+    // Clear specific caches for refresh
+    func clearSpotCache(for spotId: String? = nil) {
+        if let spotId = spotId {
+            // Clear specific spot cache
+            spotConditionsCache.removeValue(forKey: spotId)
+            spotForecastCache.removeValue(forKey: spotId)
+        } else {
+            // Clear all spot caches
+            spotConditionsCache.removeAll()
+            spotForecastCache.removeAll()
+        }
+    }
+    
+    // Clear region spots cache for refresh
+    func clearRegionSpotsCache(for region: String? = nil) {
+        if let region = region {
+            regionSpotsCache.removeValue(forKey: region)
+        } else {
+            regionSpotsCache.removeAll()
+        }
+    }
+    
+    // Refresh all data (clear all caches)
+    func refreshAllData() {
+        clearSpotCache()
+        clearRegionSpotsCache()
+        currentConditions = ConditionData(from: [:])
+        currentConditionsTimestamp = ""
+        currentForecastEntries = []
+    }
+    
+    // Refresh data for a specific spot
+    func refreshSpotData(for spotId: String) {
+        clearSpotCache(for: spotId)
+        // Reset current conditions if this is the currently selected spot
+        if currentSpotId == spotId {
+            currentConditions = ConditionData(from: [:])
+            currentConditionsTimestamp = ""
+        }
+    }
+    
+    // Refresh all data for a specific region
+    func refreshRegionData(for region: String) {
+        clearRegionSpotsCache(for: region)
+        // Clear all spot caches for spots in this region
+        // This will force fresh data when spots are accessed
+    }
+    
+    /// Reset the store to its initial state - clears all data and caches
+    func resetToInitialState() {
+        DispatchQueue.main.async {
+            // Reset all published properties to initial values
+            self.currentConditions = ConditionData(from: [:])
+            self.currentConditionsTimestamp = ""
+            self.currentForecastEntries = []
+            self.currentSpotId = ""
+            self.regionSpots = []
+            
+            // Clear all caches
+            self.spotConditionsCache.removeAll()
+            self.spotForecastCache.removeAll()
+            self.regionSpotsCache.removeAll()
+            
+            print("DataStore reset to initial state")
+        }
     }
 }
