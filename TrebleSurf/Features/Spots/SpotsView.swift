@@ -29,6 +29,7 @@ struct SpotsView: View {
     @StateObject private var viewModel: SpotsViewModel = SpotsViewModel()
     @State private var selectedSpot: SpotData?
     @State private var selectedViewMode: String = "Live"
+    @State private var selectedForecastEntry: ForecastEntry? = nil
     
     var body: some View {
         NavigationView {
@@ -95,7 +96,7 @@ struct SpotsView: View {
     private func spotDetailView(_ spot: SpotData) -> some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
-                // Back button
+                // Back button and spot info
                 HStack() {
                     Button {
                         selectedSpot = nil
@@ -110,34 +111,50 @@ struct SpotsView: View {
                     Text("\(spot.type) • \(spot.name)")
                         .font(.subheadline)
                         .foregroundColor(.secondary)
-                }
-                
-                // Spot info
-                VStack(alignment: .leading, spacing: 12) {
-                    HStack {
-                        // Spot image if available
-                        if let imageString = spot.imageString, !imageString.isEmpty,
-                           let uiImage = imageString.toUIImage() {
-                            Image(uiImage: uiImage)
-                                .resizable()
-                                .aspectRatio(contentMode: .fill)
-                                .frame(width: 80, height: 80)
-                                .clipShape(RoundedRectangle(cornerRadius: 12))
-                                .accessibilityLabel("Spot image for \(spot.name)")
-                        }
-                        
-                        // Refresh indicator
-                        if viewModel.isRefreshing {
-                            ProgressView()
-                                .scaleEffect(0.8)
-                                .frame(width: 20, height: 20)
-                        }
+                    
+                    Spacer()
+                    
+                    // Refresh indicator
+                    if viewModel.isRefreshing {
+                        ProgressView()
+                            .scaleEffect(0.8)
+                            .frame(width: 20, height: 20)
                     }
                 }
                 
-                // View mode toggle
+                // Spot image - moved here to be shared between live and forecast views
+                if let imageString = spot.imageString, !imageString.isEmpty,
+                   let uiImage = imageString.toUIImage() {
+                    ZStack(alignment: .bottom) {
+                        Image(uiImage: uiImage)
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 200)
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                        
+                        // Overlay with key data and direction arrow - shared between both views
+                        VStack(spacing: 12) {
+                            // Key data display - will be populated by child views
+                            if selectedViewMode == "Live" {
+                                LiveSpotOverlay(spotId: spot.id)
+                            } else {
+                                ForecastSpotOverlay(spotId: spot.id, selectedForecastEntry: selectedForecastEntry)
+                            }
+                        }
+                        .padding(.bottom, 8)
+                        .animation(.easeInOut(duration: 0.3), value: selectedViewMode)
+                    }
+                    .padding(.horizontal, 6)
+                    .padding(.bottom, 8)
+                }
+                
+                // View mode toggle - moved here to save space
                 HStack(spacing: 0) {
-                    Button(action: { selectedViewMode = "Live" }) {
+                    Button(action: { 
+                        selectedViewMode = "Live"
+                        selectedForecastEntry = nil // Clear forecast entry when switching to live
+                    }) {
                         Text("Live")
                             .font(.subheadline)
                             .fontWeight(.medium)
@@ -150,7 +167,10 @@ struct SpotsView: View {
                             .foregroundColor(selectedViewMode == "Live" ? .white : .primary)
                     }
                     
-                    Button(action: { selectedViewMode = "Forecast" }) {
+                    Button(action: { 
+                        selectedViewMode = "Forecast"
+                        selectedForecastEntry = nil // Clear forecast entry when switching to forecast
+                    }) {
                         Text("Forecast")
                             .font(.subheadline)
                             .fontWeight(.medium)
@@ -171,13 +191,19 @@ struct SpotsView: View {
                 
                 // Content based on selected view mode
                 if selectedViewMode == "Live" {
-                    LiveSpotView(spotId: spot.id, refreshTrigger: viewModel.isRefreshing)
+                    LiveSpotView(spotId: spot.id, refreshTrigger: viewModel.isRefreshing, spotImage: nil)
                         .id(spot.id)
                         .frame(maxWidth: .infinity)
                 } else {
-                    SpotForecastView(spotId: spot.id)
-                        .id(spot.id)
-                        .frame(maxWidth: .infinity)
+                    SpotForecastView(
+                        spotId: spot.id, 
+                        spotImage: nil,
+                        onForecastSelectionChanged: { forecastEntry in
+                            selectedForecastEntry = forecastEntry
+                        }
+                    )
+                    .id(spot.id)
+                    .frame(maxWidth: .infinity)
                 }
             }
         }
@@ -276,6 +302,121 @@ struct SpotCard: View {
         .padding()
         .background(Color.gray.opacity(0.1))
         .cornerRadius(12)
+    }
+}
+
+// Overlay components for the shared spot image
+struct LiveSpotOverlay: View {
+    @EnvironmentObject var dataStore: DataStore
+    let spotId: String
+    
+    var body: some View {
+        VStack(spacing: 8) {
+            // Key data display for live view
+            HStack(spacing: 16) {
+                VStack(spacing: 4) {
+                    Text("Swell")
+                        .font(.caption)
+                        .foregroundColor(.white)
+                    Text("\(dataStore.currentConditions.swellHeight, specifier: "%.1f")m")
+                        .font(.title2)
+                        .fontWeight(.bold)
+                        .foregroundColor(.white)
+                }
+                
+                VStack(spacing: 4) {
+                    Text("Wind")
+                        .font(.caption)
+                        .foregroundColor(.white)
+                    Text("\(Int(dataStore.currentConditions.windSpeed * 3.6)) km/h")
+                        .font(.title2)
+                        .fontWeight(.bold)
+                        .foregroundColor(.white)
+                }
+                
+                VStack(spacing: 4) {
+                    Text("Temp")
+                        .font(.caption)
+                        .foregroundColor(.white)
+                    Text("\(Int(dataStore.currentConditions.temperature))°C")
+                        .font(.title2)
+                        .fontWeight(.bold)
+                        .foregroundColor(.white)
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+            .background(Color.black.opacity(0.6))
+            .cornerRadius(12)
+            
+            // Direction arrow for live view
+            Image(systemName: "arrow.down")
+                .font(.system(size: 40, weight: .bold))
+                .foregroundColor(.white)
+                .rotationEffect(Angle(degrees: dataStore.currentConditions.swellDirection))
+                .scaleEffect(1.0)
+        }
+        .onAppear {
+            // Fetch current conditions when overlay appears
+            dataStore.fetchConditions(for: spotId) { _ in }
+        }
+    }
+}
+
+struct ForecastSpotOverlay: View {
+    @EnvironmentObject var dataStore: DataStore
+    let spotId: String
+    let selectedForecastEntry: ForecastEntry?
+    
+    var body: some View {
+        VStack(spacing: 8) {
+            // Key data display for forecast view
+            if let entry = selectedForecastEntry {
+                HStack(spacing: 16) {
+                    VStack(spacing: 4) {
+                        Text("Swell")
+                            .font(.caption)
+                            .foregroundColor(.white)
+                        Text("\(entry.swellHeight, specifier: "%.1f")m")
+                            .font(.title2)
+                            .fontWeight(.bold)
+                            .foregroundColor(.white)
+                    }
+                    
+                    VStack(spacing: 4) {
+                        Text("Wind")
+                            .font(.caption)
+                            .foregroundColor(.white)
+                        Text("\(Int(entry.windSpeed * 3.6)) km/h")
+                            .font(.title2)
+                            .fontWeight(.bold)
+                            .foregroundColor(.white)
+                    }
+                    
+                    VStack(spacing: 4) {
+                        Text("Temp")
+                            .font(.caption)
+                            .foregroundColor(.white)
+                        Text("\(Int(entry.temperature))°C")
+                            .font(.title2)
+                            .fontWeight(.bold)
+                            .foregroundColor(.white)
+                    }
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+                .background(Color.black.opacity(0.6))
+                .cornerRadius(12)
+            }
+            
+            // Direction arrow for forecast view
+            Image(systemName: "arrow.down")
+                .font(.system(size: 40, weight: .bold))
+                .foregroundColor(.white)
+                .rotationEffect(Angle(degrees: selectedForecastEntry?.swellDirection ?? dataStore.currentConditions.swellDirection))
+                .animation(.easeInOut(duration: 0.4), value: selectedForecastEntry?.id)
+                .scaleEffect(1.0)
+        }
     }
 }
 

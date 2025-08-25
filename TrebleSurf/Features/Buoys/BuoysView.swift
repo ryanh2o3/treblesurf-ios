@@ -261,36 +261,4 @@ struct BuoyCard: View {
     }
 }
 
-struct ReadingCard: View {
-    let title: String
-    let value: String
-    let unit: String
-    let icon: String
-    
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Image(systemName: icon)
-                    .foregroundColor(.blue)
-                
-                Text(title)
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-            }
-            
-            HStack(alignment: .firstTextBaseline) {
-                Text(value)
-                    .font(.title3)
-                    .fontWeight(.bold)
-                
-                Text(unit)
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-            }
-        }
-        .padding()
-        .frame(maxWidth: .infinity, minHeight: 100, alignment: .leading)
-        .background(Color.gray.opacity(0.1))
-        .cornerRadius(12)
-    }
-}
+

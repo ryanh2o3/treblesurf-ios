@@ -5,23 +5,16 @@ struct LiveSpotView: View {
     @EnvironmentObject var dataStore: DataStore
     var spotId: String
     var refreshTrigger: Bool = false // Add refresh trigger
-    @State private var spotImage: Image? = nil
+    var spotImage: Image? = nil // This will be nil since parent handles the image
     @StateObject private var viewModel = LiveSpotViewModel()
     @State private var selectedReport: SurfReport?
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 8) {
-                // Current conditions header
+                // Current conditions header - removed duplicate spot image
                 VStack(alignment: .leading, spacing: 6) {
-                    
-                    if let spotImage = spotImage {
-                        spotImage
-                            .resizable()
-                            .aspectRatio(contentMode: .fill)
-                            .frame(height: 150)
-                            .clipShape(RoundedRectangle(cornerRadius: 12))
-                    }
+                    // Content will be populated by parent view
                 }
                 .padding(.horizontal, 6)
                 
@@ -279,10 +272,7 @@ struct LiveSpotView: View {
             // Fetch surf reports for this spot
             viewModel.fetchSurfReports(for: spotId)
             
-            // Fetch spot image
-//            dataStore.fetchSpotImage(for: spotId) { image in
-//                self.spotImage = image
-//            }
+
         }
         .onChange(of: refreshTrigger) { _, newValue in
             // Refresh data when refresh trigger changes
