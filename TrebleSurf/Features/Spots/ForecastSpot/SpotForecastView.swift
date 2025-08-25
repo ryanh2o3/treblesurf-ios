@@ -42,6 +42,7 @@ struct SpotForecastView: View {
     @State private var selectedCardIndex: Int = 0
     @State private var scrollOffset: CGFloat = 0
     @State private var isUserScrolling: Bool = false
+    @State private var lastSelectionTime: Date = Date()
 
         
     init(spotId: String, spotImage: Image? = nil, onForecastSelectionChanged: ((ForecastEntry) -> Void)? = nil) {
@@ -163,18 +164,26 @@ struct SpotForecastView: View {
                         handleScrollOffsetChange(offset)
                     }
                     
-                    HStack(spacing: 12) {
+                    HStack(spacing: 0) {
                         ForEach(Array(viewModel.filteredEntries.enumerated()), id: \.element.id) { index, entry in
-                            ForecastCard(
-                                entry: entry,
-                                isSelected: index == selectedCardIndex,
-                                onTap: {
-                                    selectCard(at: index, entry: entry, scrollAction: { index in
-                                        scrollProxy.scrollTo(index, anchor: .center)
-                                    })
+                            HStack(spacing: 0) {
+                                ForecastCard(
+                                    entry: entry,
+                                    isSelected: index == selectedCardIndex,
+                                    onTap: {
+                                        selectCard(at: index, entry: entry, scrollAction: { index in
+                                            scrollProxy.scrollTo(index, anchor: .center)
+                                        })
+                                    }
+                                )
+                                .id(index)
+                                
+                                // Add spacing after each card, with larger spacing between days
+                                if index < viewModel.filteredEntries.count - 1 {
+                                    Spacer()
+                                        .frame(width: spacingAfterCard(at: index))
                                 }
-                            )
-                            .id(index)
+                            }
                         }
                     }
                     .padding(.horizontal, 16)
@@ -197,7 +206,10 @@ struct SpotForecastView: View {
                 selectFirstCard()
             }
             .onChange(of: selectedCardIndex) { newIndex in
-                handleSelectionChange(newIndex)
+                // Only handle manual selection changes, not auto-selection changes
+                if !isUserScrolling {
+                    handleSelectionChange(newIndex)
+                }
             }
         }
     }
@@ -335,7 +347,7 @@ struct SpotForecastView: View {
     }
     
     private func selectCard(at index: Int, entry: ForecastEntry, scrollAction: @escaping (Int) -> Void) {
-        // Temporarily disable user scrolling detection during programmatic selection
+        // Disable user scrolling detection during manual selection
         isUserScrolling = false
         
         withAnimation(.easeInOut(duration: 0.2)) {
@@ -349,7 +361,7 @@ struct SpotForecastView: View {
             scrollAction(index)
         }
         
-        // Re-enable user scrolling detection after a delay
+        // Re-enable after the scroll animation completes
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
             isUserScrolling = false
         }
@@ -362,22 +374,66 @@ struct SpotForecastView: View {
         }
     }
     
+    // MARK: - Layout Helpers
+    
+    private func spacingAfterCard(at index: Int) -> CGFloat {
+        guard index < viewModel.filteredEntries.count - 1 else { return 0 }
+        
+        let currentEntry = viewModel.filteredEntries[index]
+        let nextEntry = viewModel.filteredEntries[index + 1]
+        
+        let calendar = Calendar.current
+        let currentDay = calendar.dateComponents([.year, .month, .day], from: currentEntry.dateForecastedFor)
+        let nextDay = calendar.dateComponents([.year, .month, .day], from: nextEntry.dateForecastedFor)
+        
+        // If it's a different day, use larger spacing
+        if currentDay != nextDay {
+            return 24  // Larger gap between days
+        } else {
+            return 8   // Smaller gap within the same day
+        }
+    }
+    
     // MARK: - Auto-Selection Logic
     
     private func calculateMostVisibleCard(from scrollOffset: CGFloat) -> Int {
-        let cardWidth: CGFloat = 124 // 100 (card width) + 24 (padding)
+        let cardWidth: CGFloat = 80 // Updated card width
+        let cardPadding: CGFloat = 8 // Updated internal padding
+        let totalCardWidth = cardWidth + (cardPadding * 2) // Width including padding
         let screenWidth = UIScreen.main.bounds.width
         let scrollViewPadding: CGFloat = 16
         
-        // Calculate the center of the visible area
-        let visibleCenterX = (screenWidth / 2) - scrollViewPadding
+        // Calculate the center of the visible screen area
+        let screenCenter = screenWidth / 2
         
-        // Calculate which card's center is closest to the visible center
-        let adjustedOffset = abs(scrollOffset) + visibleCenterX
-        let cardIndex = Int(round(adjustedOffset / cardWidth))
+        // The scroll offset is negative when scrolling right
+        // Calculate positions of each card to find the most centered one
+        var bestIndex = 0
+        var minDistanceToCenter = CGFloat.infinity
         
-        // Ensure the index is within bounds
-        return max(0, min(cardIndex, viewModel.filteredEntries.count - 1))
+        var currentX: CGFloat = scrollViewPadding + cardPadding + (cardWidth / 2)
+        
+        for index in 0..<viewModel.filteredEntries.count {
+            // Calculate this card's center position relative to the scroll content
+            let cardCenterX = currentX
+            
+            // Calculate where this card appears on screen given the current scroll offset
+            let cardScreenX = cardCenterX + scrollOffset
+            
+            // Calculate distance from screen center - bias towards selecting earlier
+            let distanceFromCenter = abs(cardScreenX - screenCenter)
+            let biasedDistance = distanceFromCenter - 20 // Bias to select 20px earlier
+            
+            if biasedDistance < minDistanceToCenter {
+                minDistanceToCenter = biasedDistance
+                bestIndex = index
+            }
+            
+            // Move to next card position
+            currentX += totalCardWidth + spacingAfterCard(at: index)
+        }
+        
+        return bestIndex
     }
     
     private func handleScrollOffsetChange(_ offset: CGFloat) {
@@ -387,9 +443,16 @@ struct SpotForecastView: View {
         if isUserScrolling {
             let newIndex = calculateMostVisibleCard(from: offset)
             
-            // Only update if the calculated index is different
+            // Only update if the calculated index is different and enough time has passed
             if newIndex != selectedCardIndex {
-                withAnimation(.easeInOut(duration: 0.2)) {
+                let now = Date()
+                let timeSinceLastSelection = now.timeIntervalSince(lastSelectionTime)
+                
+                // Debounce rapid selections (minimum 50ms between selections)
+                if timeSinceLastSelection >= 0.05 {
+                    lastSelectionTime = now
+                    
+                    // Update without animation for smoother scrolling
                     selectedCardIndex = newIndex
                     if newIndex < viewModel.filteredEntries.count {
                         currentForecastEntry = viewModel.filteredEntries[newIndex]
@@ -472,22 +535,22 @@ struct ForecastCard: View {
                     .foregroundColor(.secondary)
             }
         }
-        .frame(width: 100, height: 140)
+        .frame(width: 80, height: 120)
         .background(
-            RoundedRectangle(cornerRadius: 12)
+            RoundedRectangle(cornerRadius: 10)
                 .fill(isSelected ? Color.blue.opacity(0.1) : Color(.systemGray6))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 12)
+                    RoundedRectangle(cornerRadius: 10)
                         .stroke(isSelected ? Color.blue : Color.clear, lineWidth: 2)
                 )
         )
-        .padding(12)
+        .padding(8)
         .onTapGesture {
             onTap()
         }
-        .scaleEffect(isSelected ? 1.05 : 1.0)
-        .animation(.easeInOut(duration: 0.2), value: isSelected)
-        .shadow(color: isSelected ? Color.blue.opacity(0.3) : Color.black.opacity(0.1), radius: isSelected ? 8 : 4, x: 0, y: 2)
+        .scaleEffect(isSelected ? 1.02 : 1.0)
+        .animation(.easeInOut(duration: 0.1), value: isSelected)
+        .shadow(color: isSelected ? Color.blue.opacity(0.2) : Color.black.opacity(0.05), radius: isSelected ? 4 : 2, x: 0, y: 1)
     }
     
     private var qualityColor: Color {
