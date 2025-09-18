@@ -70,40 +70,44 @@ struct SpotDetailView: View {
                         .padding(.bottom, 8)
                     }
                     
-                    // View mode toggle - moved here to save space
-                    HStack(spacing: 0) {
-                        ForEach(["Live", "Forecast"], id: \.self) { mode in
-                            let isSelected = selectedViewMode == mode
-                            
-                            Button(action: { 
-                                withAnimation(.easeInOut(duration: 0.2)) {
-                                    selectedViewMode = mode
-                                    selectedForecastEntry = nil // Clear forecast entry when switching
+                    // View mode toggle - centered with more spacing
+                    HStack {
+                        Spacer()
+                        HStack(spacing: 0) {
+                            ForEach(["Live", "Forecast"], id: \.self) { mode in
+                                let isSelected = selectedViewMode == mode
+                                
+                                Button(action: { 
+                                    withAnimation(.easeInOut(duration: 0.2)) {
+                                        selectedViewMode = mode
+                                        selectedForecastEntry = nil // Clear forecast entry when switching
+                                    }
+                                }) {
+                                    HStack(spacing: 4) {
+                                        Image(systemName: mode == "Live" ? "wave.3.right" : "calendar")
+                                            .font(.caption)
+                                        Text(mode)
+                                            .font(.footnote)
+                                            .fontWeight(.medium)
+                                    }
+                                    .foregroundColor(isSelected ? .white : .primary)
+                                    .padding(.vertical, 8)
+                                    .padding(.horizontal, 12)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 6)
+                                            .fill(isSelected ? Color.blue : Color.clear)
+                                    )
+                                    .scaleEffect(isSelected ? 1.02 : 1.0)
+                                    .animation(.easeInOut(duration: 0.15), value: isSelected)
                                 }
-                            }) {
-                                HStack(spacing: 4) {
-                                    Image(systemName: mode == "Live" ? "wave.3.right" : "calendar")
-                                        .font(.caption)
-                                    Text(mode)
-                                        .font(.footnote)
-                                        .fontWeight(.medium)
-                                }
-                                .foregroundColor(isSelected ? .white : .primary)
-                                .padding(.vertical, 6)
-                                .padding(.horizontal, 6)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 6)
-                                        .fill(isSelected ? Color.blue : Color.clear)
-                                )
-                                .scaleEffect(isSelected ? 1.02 : 1.0)
-                                .animation(.easeInOut(duration: 0.15), value: isSelected)
                             }
                         }
+                        .background(
+                            RoundedRectangle(cornerRadius: 8)
+                                .fill(Color.gray.opacity(0.1))
+                        )
+                        Spacer()
                     }
-                    .background(
-                        RoundedRectangle(cornerRadius: 8)
-                            .fill(Color.gray.opacity(0.1))
-                    )
                     .padding(.horizontal, 6)
                     
                     // Content based on selected view mode
