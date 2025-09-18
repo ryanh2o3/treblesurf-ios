@@ -3,6 +3,8 @@ import SwiftUI
 import PhotosUI
 import CoreGraphics
 import UIKit
+import Photos
+import ImageIO
 
 
 
@@ -122,7 +124,7 @@ class SurfReportSubmissionViewModel: ObservableObject {
         ),
         SurfReportStep(
             title: "Date & Time",
-            description: "When did you surf? (Use photo timestamp or pick manually)",
+            description: "When did you surf? (Uses photo timestamp, file date, or manual selection)",
             options: []
         )
     ]
@@ -247,7 +249,23 @@ class SurfReportSubmissionViewModel: ObservableObject {
     
     @MainActor
     func handleError(_ error: Error) {
+        print("🚨 [ERROR_HANDLER] Handling error in SurfReportSubmissionViewModel")
+        print("🚨 [ERROR_HANDLER] Error: \(error)")
+        
         let errorDisplay = APIErrorHandler.shared.handleAPIError(error)
+        
+        if let errorDisplay = errorDisplay {
+            print("🚨 [ERROR_HANDLER] Error display created:")
+            print("   - Title: \(errorDisplay.title)")
+            print("   - Message: \(errorDisplay.message)")
+            print("   - Help: \(errorDisplay.help)")
+            print("   - Field Name: \(errorDisplay.fieldName ?? "nil")")
+            print("   - Is Retryable: \(errorDisplay.isRetryable)")
+            print("   - Requires Auth: \(errorDisplay.requiresAuthentication)")
+            print("   - Requires Image Retry: \(errorDisplay.requiresImageRetry)")
+        } else {
+            print("⚠️ [ERROR_HANDLER] No error display created - using generic error handling")
+        }
         
         self.currentError = errorDisplay
         self.errorMessage = errorDisplay?.message
@@ -257,10 +275,12 @@ class SurfReportSubmissionViewModel: ObservableObject {
         
         // Set field-specific errors if applicable
         if let errorDisplay = errorDisplay, let fieldName = errorDisplay.fieldName {
+            print("🏷️ [ERROR_HANDLER] Setting field error for: \(fieldName)")
             self.fieldErrors[fieldName] = errorDisplay.help
         }
         
         // Show error alert
+        print("🚨 [ERROR_HANDLER] Showing error alert to user")
         self.showErrorAlert = true
     }
     
@@ -323,9 +343,18 @@ class SurfReportSubmissionViewModel: ObservableObject {
     /// Handles image-specific errors and provides user guidance
     @MainActor
     func handleImageError(_ error: Error) {
+        print("📷 [IMAGE_ERROR] Handling image-specific error")
+        print("📷 [IMAGE_ERROR] Error: \(error)")
+        
         let errorDisplay = APIErrorHandler.shared.handleAPIError(error)
         
         if let errorDisplay = errorDisplay, errorDisplay.requiresImageRetry {
+            print("📷 [IMAGE_ERROR] Image retry required - clearing image and showing guidance")
+            print("📷 [IMAGE_ERROR] Error display:")
+            print("   - Title: \(errorDisplay.title)")
+            print("   - Message: \(errorDisplay.message)")
+            print("   - Help: \(errorDisplay.help)")
+            
             // For image validation errors, clear the image and show guidance
             clearImage()
             
@@ -339,6 +368,7 @@ class SurfReportSubmissionViewModel: ObservableObject {
             // Show error alert
             self.showErrorAlert = true
         } else {
+            print("📷 [IMAGE_ERROR] Not an image retry error - using standard error handling")
             // Handle other types of errors normally
             handleError(error)
         }
@@ -368,6 +398,7 @@ class SurfReportSubmissionViewModel: ObservableObject {
                         if let extractedDate = parseImageDate(dateTimeOriginal) {
                             selectedDateTime = extractedDate
                             timestampFound = true
+                            print("📸 [IMAGE_TIMESTAMP] Found EXIF timestamp: \(extractedDate)")
                         }
                     }
                     // Check for TIFF date
@@ -376,12 +407,27 @@ class SurfReportSubmissionViewModel: ObservableObject {
                         if let extractedDate = parseImageDate(dateTime) {
                             selectedDateTime = extractedDate
                             timestampFound = true
+                            print("📸 [IMAGE_TIMESTAMP] Found TIFF timestamp: \(extractedDate)")
                         }
+                    }
+                }
+                
+                // If no timestamp found in metadata, try to use file creation date as fallback
+                if !timestampFound {
+                    if let fileCreationDate = await getFileCreationDate(from: imageSelection) {
+                        selectedDateTime = fileCreationDate
+                        timestampFound = true
+                        print("📸 [IMAGE_TIMESTAMP] Using file creation date as fallback: \(fileCreationDate)")
                     }
                 }
                 
                 // Update the flag
                 photoTimestampExtracted = timestampFound
+                
+                // Log final timestamp status
+                if !timestampFound {
+                    print("📸 [IMAGE_TIMESTAMP] No timestamp found - using current time")
+                }
                 
                 // If we already have a presigned URL, start upload immediately
                 if let uploadUrl = self.uploadUrl, let imageKey = self.imageKey {
@@ -447,6 +493,79 @@ class SurfReportSubmissionViewModel: ObservableObject {
             }
         }
         
+        return nil
+    }
+    
+    // Attempt to get file creation date as fallback when EXIF/TIFF data is not available
+    private func getFileCreationDate(from imageSelection: PhotosPickerItem) async -> Date? {
+        do {
+            // Try to load the asset identifier to access PHAsset
+            if let assetIdentifier = imageSelection.itemIdentifier {
+                print("📸 [IMAGE_TIMESTAMP] Asset identifier: \(assetIdentifier)")
+                
+                let fetchResult = PHAsset.fetchAssets(withLocalIdentifiers: [assetIdentifier], options: nil)
+                print("📸 [IMAGE_TIMESTAMP] Fetch result count: \(fetchResult.count)")
+                
+                if let asset = fetchResult.firstObject {
+                    print("📸 [IMAGE_TIMESTAMP] PHAsset found:")
+                    print("   - Creation date: \(asset.creationDate?.description ?? "nil")")
+                    print("   - Modification date: \(asset.modificationDate?.description ?? "nil")")
+                    print("   - Media type: \(asset.mediaType.rawValue)")
+                    print("   - Media subtypes: \(asset.mediaSubtypes.rawValue)")
+                    
+                    // Try creation date first
+                    if let creationDate = asset.creationDate {
+                        print("📸 [IMAGE_TIMESTAMP] Using PHAsset creation date: \(creationDate)")
+                        return creationDate
+                    }
+                    
+                    // Fallback to modification date if creation date is nil
+                    if let modificationDate = asset.modificationDate {
+                        print("📸 [IMAGE_TIMESTAMP] Using PHAsset modification date as fallback: \(modificationDate)")
+                        return modificationDate
+                    }
+                    
+                    print("📸 [IMAGE_TIMESTAMP] Both creation and modification dates are nil")
+                } else {
+                    print("📸 [IMAGE_TIMESTAMP] No PHAsset found for identifier")
+                }
+            } else {
+                print("📸 [IMAGE_TIMESTAMP] No asset identifier available")
+            }
+            
+            // Alternative approach: try to get the image data and check file attributes
+            print("📸 [IMAGE_TIMESTAMP] Trying alternative method with image data...")
+            if let data = try await imageSelection.loadTransferable(type: Data.self) {
+                // Try to get file creation date from the data itself
+                if let imageSource = CGImageSourceCreateWithData(data as CFData, nil) {
+                    if let properties = CGImageSourceCopyPropertiesAtIndex(imageSource, 0, nil) as? [String: Any] {
+                        print("📸 [IMAGE_TIMESTAMP] Image source properties available")
+                        
+                        // Check for file creation date in properties
+                        if let fileCreationDate = properties["{File}"] as? [String: Any],
+                           let creationDate = fileCreationDate["FileCreationDate"] as? Date {
+                            print("📸 [IMAGE_TIMESTAMP] Found file creation date in properties: \(creationDate)")
+                            return creationDate
+                        }
+                        
+                        // Check for file modification date
+                        if let fileModificationDate = properties["{File}"] as? [String: Any],
+                           let modificationDate = fileModificationDate["FileModificationDate"] as? Date {
+                            print("📸 [IMAGE_TIMESTAMP] Found file modification date in properties: \(modificationDate)")
+                            return modificationDate
+                        }
+                        
+                        print("📸 [IMAGE_TIMESTAMP] No file dates found in image properties")
+                        print("📸 [IMAGE_TIMESTAMP] Available properties: \(properties.keys)")
+                    }
+                }
+            }
+            
+        } catch {
+            print("📸 [IMAGE_TIMESTAMP] Error accessing file creation date: \(error)")
+        }
+        
+        print("📸 [IMAGE_TIMESTAMP] All methods failed to find file creation date")
         return nil
     }
     
@@ -571,6 +690,8 @@ class SurfReportSubmissionViewModel: ObservableObject {
     
     /// Generates presigned URL and uploads image to S3
     private func generateUploadURLAndUploadImage(spotId: String, image: UIImage) async {
+        print("📷 [IMAGE_UPLOAD] Starting image upload process for spotId: \(spotId)")
+        
         await MainActor.run {
             isUploadingImage = true
             uploadProgress = 0.0
@@ -580,6 +701,7 @@ class SurfReportSubmissionViewModel: ObservableObject {
         
         do {
             // Step 1: Generate presigned upload URL
+            print("🔗 [IMAGE_UPLOAD] Step 1: Generating presigned upload URL...")
             let uploadResponse = try await generateUploadURL(spotId: spotId)
             
             await MainActor.run {
@@ -588,11 +710,16 @@ class SurfReportSubmissionViewModel: ObservableObject {
             }
             
             let urlGenerationTime = Date().timeIntervalSince(startTime)
+            print("✅ [IMAGE_UPLOAD] Presigned URL generated in \(String(format: "%.2f", urlGenerationTime))s")
+            print("🔑 [IMAGE_UPLOAD] Image key: \(uploadResponse.imageKey)")
+            print("🌐 [IMAGE_UPLOAD] Upload URL: \(uploadResponse.uploadUrl.prefix(50))...")
             
             // Step 2: Upload image to S3
+            print("☁️ [IMAGE_UPLOAD] Step 2: Uploading image to S3...")
             try await uploadImageToS3(uploadURL: uploadResponse.uploadUrl, image: image)
             
             let totalTime = Date().timeIntervalSince(startTime)
+            print("✅ [IMAGE_UPLOAD] Image upload completed successfully in \(String(format: "%.2f", totalTime))s")
             
             await MainActor.run {
                 self.isUploadingImage = false
@@ -601,6 +728,16 @@ class SurfReportSubmissionViewModel: ObservableObject {
             
         } catch {
             let totalTime = Date().timeIntervalSince(startTime)
+            print("❌ [IMAGE_UPLOAD] Image upload failed after \(String(format: "%.2f", totalTime))s")
+            print("❌ [IMAGE_UPLOAD] Error details:")
+            if let nsError = error as NSError? {
+                print("   - Domain: \(nsError.domain)")
+                print("   - Code: \(nsError.code)")
+                print("   - Description: \(nsError.localizedDescription)")
+                if let userInfo = nsError.userInfo as? [String: Any] {
+                    print("   - User Info: \(userInfo)")
+                }
+            }
             
             await MainActor.run {
                 self.isUploadingImage = false
@@ -613,8 +750,11 @@ class SurfReportSubmissionViewModel: ObservableObject {
     
     /// Generates presigned upload URL from backend
     private func generateUploadURL(spotId: String) async throws -> PresignedUploadResponse {
+        print("🔗 [IMAGE_UPLOAD] Generating presigned upload URL for spotId: \(spotId)")
+        
         let components = spotId.split(separator: "#")
         guard components.count >= 3 else {
+            print("❌ [IMAGE_UPLOAD] Invalid spot format: \(spotId)")
             throw NSError(domain: "SurfReport", code: 400, userInfo: [NSLocalizedDescriptionKey: "Invalid spot format"])
         }
         
@@ -623,13 +763,27 @@ class SurfReportSubmissionViewModel: ObservableObject {
         let spot = String(components[2])
         
         let endpoint = "/api/generateImageUploadURL?country=\(country)&region=\(region)&spot=\(spot)"
+        print("🌐 [IMAGE_UPLOAD] Requesting presigned URL from: \(endpoint)")
         
         return try await withCheckedThrowingContinuation { continuation in
             APIClient.shared.request(endpoint) { (result: Result<PresignedUploadResponse, Error>) in
                 switch result {
                 case .success(let response):
+                    print("✅ [IMAGE_UPLOAD] Presigned URL response received")
+                    print("🔑 [IMAGE_UPLOAD] Image key: \(response.imageKey)")
+                    print("🌐 [IMAGE_UPLOAD] Upload URL: \(response.uploadUrl.prefix(50))...")
                     continuation.resume(returning: response)
                 case .failure(let error):
+                    print("❌ [IMAGE_UPLOAD] Failed to generate presigned URL: \(error)")
+                    print("❌ [IMAGE_UPLOAD] Error details:")
+                    if let nsError = error as NSError? {
+                        print("   - Domain: \(nsError.domain)")
+                        print("   - Code: \(nsError.code)")
+                        print("   - Description: \(nsError.localizedDescription)")
+                        if let userInfo = nsError.userInfo as? [String: Any] {
+                            print("   - User Info: \(userInfo)")
+                        }
+                    }
                     continuation.resume(throwing: error)
                 }
             }
@@ -638,48 +792,73 @@ class SurfReportSubmissionViewModel: ObservableObject {
     
     /// Uploads image to S3 using presigned URL
     private func uploadImageToS3(uploadURL: String, image: UIImage) async throws {
+        print("☁️ [IMAGE_UPLOAD] Starting S3 upload process")
+        print("🌐 [IMAGE_UPLOAD] Upload URL: \(uploadURL.prefix(50))...")
+        
         guard let url = URL(string: uploadURL) else {
+            print("❌ [IMAGE_UPLOAD] Invalid upload URL: \(uploadURL)")
             throw NSError(domain: "SurfReport", code: 400, userInfo: [NSLocalizedDescriptionKey: "Invalid upload URL"])
         }
         
         // Compress image for upload - get raw JPEG data, not base64 string
+        print("🗜️ [IMAGE_UPLOAD] Compressing image for upload...")
         guard let imageData = compressImageForUploadRaw(image) else {
+            print("❌ [IMAGE_UPLOAD] Failed to compress image")
             throw NSError(domain: "SurfReport", code: 400, userInfo: [NSLocalizedDescriptionKey: "Failed to compress image"])
         }
+        
+        print("📦 [IMAGE_UPLOAD] Image compressed to \(imageData.count) bytes")
         
         var request = URLRequest(url: url)
         request.httpMethod = "PUT"
         request.setValue("image/jpeg", forHTTPHeaderField: "Content-Type")
         request.httpBody = imageData
         
+        print("🚀 [IMAGE_UPLOAD] Sending PUT request to S3...")
         let (_, response) = try await URLSession.shared.data(for: request)
         
         guard let httpResponse = response as? HTTPURLResponse else {
+            print("❌ [IMAGE_UPLOAD] Invalid response from S3 - not HTTPURLResponse")
             throw NSError(domain: "SurfReport", code: 500, userInfo: [NSLocalizedDescriptionKey: "Invalid response from S3"])
         }
         
+        print("📊 [IMAGE_UPLOAD] S3 response status code: \(httpResponse.statusCode)")
+        
         guard httpResponse.statusCode == 200 else {
+            print("❌ [IMAGE_UPLOAD] S3 upload failed with status: \(httpResponse.statusCode)")
+            if let responseHeaders = httpResponse.allHeaderFields as? [String: String] {
+                print("📋 [IMAGE_UPLOAD] Response headers: \(responseHeaders)")
+            }
             throw NSError(domain: "SurfReport", code: 500, userInfo: [NSLocalizedDescriptionKey: "Failed to upload image to S3 - Status: \(httpResponse.statusCode)"])
         }
+        
+        print("✅ [IMAGE_UPLOAD] Image successfully uploaded to S3")
     }
     
 
     
     @MainActor
     func submitReport(spotId: String) async {
-        guard canSubmit else { return }
+        print("🏄‍♂️ [SURF_REPORT] Starting surf report submission for spotId: \(spotId)")
+        
+        guard canSubmit else { 
+            print("❌ [SURF_REPORT] Cannot submit - missing required fields")
+            return 
+        }
         
         isSubmitting = true
         errorMessage = nil
         
         // Set the spotId for image uploads if not already set
         if self.spotId == nil {
+            print("📝 [SURF_REPORT] Setting spotId for image uploads")
             setSpotId(spotId)
         }
         
         // Convert spotId back to country/region/spot format
         let components = spotId.split(separator: "#")
         guard components.count >= 3 else {
+            print("❌ [SURF_REPORT] Invalid spot format: \(spotId)")
             errorMessage = "Invalid spot format"
             showErrorAlert = true
             isSubmitting = false
@@ -689,11 +868,18 @@ class SurfReportSubmissionViewModel: ObservableObject {
         let country = String(components[0])
         let region = String(components[1])
         let spot = String(components[2])
+        print("📍 [SURF_REPORT] Parsed location - Country: \(country), Region: \(region), Spot: \(spot)")
         
-        // Format the selected date for the API
+        // Convert local time to UTC before sending to backend
         let dateFormatter = DateFormatter()
         dateFormatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
+        dateFormatter.timeZone = TimeZone(abbreviation: "UTC") // Format as UTC
         let formattedDate = dateFormatter.string(from: selectedDateTime)
+        
+        // Debug timezone information
+        print("📅 [SURF_REPORT] Selected date (local): \(selectedDateTime)")
+        print("📅 [SURF_REPORT] Current timezone: \(TimeZone.current.identifier)")
+        print("📅 [SURF_REPORT] Formatted date (UTC): \(formattedDate)")
         
         // Prepare report data - use S3 image key if available, fallback to base64
         let reportData: [String: Any] = [
@@ -710,9 +896,21 @@ class SurfReportSubmissionViewModel: ObservableObject {
             "date": formattedDate
         ]
         
+        print("📊 [SURF_REPORT] Report data prepared:")
+        print("   - Surf Size: \(selectedOptions[0] ?? "nil")")
+        print("   - Messiness: \(selectedOptions[1] ?? "nil")")
+        print("   - Wind Direction: \(selectedOptions[2] ?? "nil")")
+        print("   - Wind Amount: \(selectedOptions[3] ?? "nil")")
+        print("   - Consistency: \(selectedOptions[4] ?? "nil")")
+        print("   - Quality: \(selectedOptions[5] ?? "nil")")
+        print("   - Image Key: \(imageKey ?? "nil")")
+        print("   - Date: \(formattedDate)")
+        
         do {
+            print("🚀 [SURF_REPORT] Attempting to submit surf report...")
             try await submitSurfReport(reportData)
             
+            print("✅ [SURF_REPORT] Surf report submitted successfully!")
             // If we get here, submission was successful
             showSuccessAlert = true
             // Clear any previous errors
@@ -722,64 +920,115 @@ class SurfReportSubmissionViewModel: ObservableObject {
                 self.shouldDismiss = true
             }
         } catch {
+            print("❌ [SURF_REPORT] Error during submission: \(error)")
+            print("❌ [SURF_REPORT] Error details:")
+            if let nsError = error as NSError? {
+                print("   - Domain: \(nsError.domain)")
+                print("   - Code: \(nsError.code)")
+                print("   - Description: \(nsError.localizedDescription)")
+                if let userInfo = nsError.userInfo as? [String: Any] {
+                    print("   - User Info: \(userInfo)")
+                }
+            }
             // Use the new error handling system
             handleError(error)
         }
         
         isSubmitting = false
+        print("🏁 [SURF_REPORT] Submission process completed")
     }
     
     private func submitSurfReport(_ reportData: [String: Any]) async throws {
         // Use new S3 endpoint if we have an image key, fallback to legacy endpoint
         let endpoint = imageKey != nil ? "/api/submitSurfReportWithS3Image" : "/api/submitSurfReport"
+        print("🌐 [SURF_REPORT] Using endpoint: \(endpoint)")
         
         // If using legacy endpoint, add base64 image data
         var finalReportData = reportData
         if imageKey == nil, let image = selectedImage {
-            finalReportData["imageData"] = compressImageForUpload(image) ?? ""
+            print("📷 [SURF_REPORT] Adding base64 image data for legacy endpoint")
+            let base64Image = compressImageForUpload(image) ?? ""
+            finalReportData["imageData"] = base64Image
+            print("📷 [SURF_REPORT] Base64 image data length: \(base64Image.count) characters")
+        } else if imageKey != nil {
+            print("📷 [SURF_REPORT] Using S3 image key: \(imageKey!)")
+        } else {
+            print("📷 [SURF_REPORT] No image data to include")
         }
-        
-
         
         // Convert to Data for APIClient
         let jsonData: Data
         do {
             jsonData = try JSONSerialization.data(withJSONObject: finalReportData)
+            print("📦 [SURF_REPORT] JSON data prepared, size: \(jsonData.count) bytes")
         } catch {
+            print("❌ [SURF_REPORT] Failed to serialize JSON data: \(error)")
             throw error
         }
         
         // Check if we have a CSRF token, refresh if needed
         if AuthManager.shared.csrfToken == nil {
+            print("🔄 [SURF_REPORT] No CSRF token found, refreshing...")
             await withCheckedContinuation { continuation in
                 APIClient.shared.refreshCSRFToken { success in
+                    print("🔄 [SURF_REPORT] CSRF token refresh result: \(success)")
                     continuation.resume()
                 }
             }
+        } else {
+            print("✅ [SURF_REPORT] CSRF token available: \(AuthManager.shared.csrfToken?.prefix(10) ?? "nil")...")
         }
+        
+        print("🚀 [SURF_REPORT] Making POST request to: \(endpoint)")
         
         // Use APIClient which handles CSRF tokens and session cookies automatically
         try await withCheckedThrowingContinuation { continuation in
             APIClient.shared.postRequest(to: endpoint, body: jsonData) { (result: Result<SurfReportSubmissionResponse, Error>) in
                 switch result {
                 case .success(let response):
+                    print("✅ [SURF_REPORT] POST request successful")
                     continuation.resume()
                 case .failure(let error):
+                    print("❌ [SURF_REPORT] POST request failed: \(error)")
+                    print("❌ [SURF_REPORT] Error details:")
+                    if let nsError = error as NSError? {
+                        print("   - Domain: \(nsError.domain)")
+                        print("   - Code: \(nsError.code)")
+                        print("   - Description: \(nsError.localizedDescription)")
+                        if let userInfo = nsError.userInfo as? [String: Any] {
+                            print("   - User Info: \(userInfo)")
+                        }
+                    }
+                    
                     // If it's a 403 error, try refreshing the CSRF token and retry once
                     if let nsError = error as NSError? {
                         if nsError.code == 403 {
+                            print("🔄 [SURF_REPORT] 403 error detected, refreshing CSRF token and retrying...")
                             APIClient.shared.refreshCSRFToken { success in
                                 if success {
+                                    print("✅ [SURF_REPORT] CSRF token refreshed, retrying request...")
                                     // Retry the request
                                     APIClient.shared.postRequest(to: endpoint, body: jsonData) { (retryResult: Result<SurfReportSubmissionResponse, Error>) in
                                         switch retryResult {
                                         case .success(let response):
+                                            print("✅ [SURF_REPORT] Retry request successful")
                                             continuation.resume()
                                         case .failure(let retryError):
+                                            print("❌ [SURF_REPORT] Retry request failed: \(retryError)")
+                                            print("❌ [SURF_REPORT] Retry error details:")
+                                            if let retryNsError = retryError as NSError? {
+                                                print("   - Domain: \(retryNsError.domain)")
+                                                print("   - Code: \(retryNsError.code)")
+                                                print("   - Description: \(retryNsError.localizedDescription)")
+                                                if let retryUserInfo = retryNsError.userInfo as? [String: Any] {
+                                                    print("   - User Info: \(retryUserInfo)")
+                                                }
+                                            }
                                             continuation.resume(throwing: retryError)
                                         }
                                     }
                                 } else {
+                                    print("❌ [SURF_REPORT] CSRF token refresh failed, using original error")
                                     continuation.resume(throwing: error)
                                 }
                             }

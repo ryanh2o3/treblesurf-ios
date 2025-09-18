@@ -56,6 +56,14 @@ struct QuickPhotoReportView: View {
                                     }
                                 }
                             
+                            // Timestamp status
+                            if viewModel.photoTimestampExtracted {
+                                Text("📸 Photo timestamp detected: \(formatDate(viewModel.selectedDateTime))")
+                                    .font(.subheadline)
+                                    .foregroundColor(.green)
+                                    .padding(.horizontal)
+                            }
+                            
                             Button("Change Photo") {
                                 viewModel.clearImage()
                             }
@@ -128,6 +136,28 @@ struct QuickPhotoReportView: View {
                     }
                 }
                 .padding(.horizontal)
+                
+                // Timestamp selector (shown when no timestamp found)
+                if viewModel.showTimestampSelector {
+                    VStack(alignment: .leading, spacing: 16) {
+                        Text("When was this photo taken?")
+                            .font(.headline)
+                        
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("No timestamp found in photo - please select the time")
+                                .font(.subheadline)
+                                .foregroundColor(.orange)
+                            
+                            DatePicker(
+                                "Photo Date & Time",
+                                selection: $viewModel.selectedDateTime,
+                                displayedComponents: [.date, .hourAndMinute]
+                            )
+                            .datePickerStyle(WheelDatePickerStyle())
+                        }
+                    }
+                    .padding(.horizontal)
+                }
                 
                 Spacer()
                 
@@ -219,6 +249,17 @@ struct QuickPhotoReportView: View {
         }
     }
 }
+
+    // MARK: - Helper Functions
+    
+    // Helper function to format the date for display
+    private func formatDate(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .short
+        return formatter.string(from: date)
+    }
+
 
 #Preview {
     QuickPhotoReportView(spotId: "test", spotName: "Test Spot")

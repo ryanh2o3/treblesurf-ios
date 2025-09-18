@@ -3,6 +3,8 @@ import SwiftUI
 import PhotosUI
 import CoreGraphics
 import UIKit
+import Photos
+import ImageIO
 
 // MARK: - Quick Photo Report View Model
 
@@ -15,6 +17,9 @@ class QuickPhotoReportViewModel: ObservableObject {
             }
         }
     }
+    @Published var selectedDateTime: Date = Date()
+    @Published var photoTimestampExtracted: Bool = false
+    @Published var showTimestampSelector: Bool = false
     @Published var quality: Quality = .average
     @Published var waveSize: WaveSize = .kneeWaist
     @Published var isSubmitting = false
@@ -47,6 +52,51 @@ class QuickPhotoReportViewModel: ObservableObject {
             if let data = try await imageSelection.loadTransferable(type: Data.self),
                let image = UIImage(data: data) {
                 selectedImage = image
+                
+                // Try to extract timestamp from image metadata
+                var timestampFound = false
+                if let imageSource = CGImageSourceCreateWithData(data as CFData, nil),
+                   let properties = CGImageSourceCopyPropertiesAtIndex(imageSource, 0, nil) as? [String: Any] {
+                    
+                    // Check for EXIF date
+                    if let exif = properties["{Exif}"] as? [String: Any],
+                       let dateTimeOriginal = exif["DateTimeOriginal"] as? String {
+                        if let extractedDate = parseImageDate(dateTimeOriginal) {
+                            selectedDateTime = extractedDate
+                            timestampFound = true
+                            print("📸 [QUICK_REPORT] Found EXIF timestamp: \(extractedDate)")
+                        }
+                    }
+                    // Check for TIFF date
+                    else if let tiff = properties["{TIFF}"] as? [String: Any],
+                            let dateTime = tiff["DateTime"] as? String {
+                        if let extractedDate = parseImageDate(dateTime) {
+                            selectedDateTime = extractedDate
+                            timestampFound = true
+                            print("📸 [QUICK_REPORT] Found TIFF timestamp: \(extractedDate)")
+                        }
+                    }
+                }
+                
+                // If no timestamp found in metadata, try to use file creation date as fallback
+                if !timestampFound {
+                    if let fileCreationDate = await getFileCreationDate(from: imageSelection) {
+                        selectedDateTime = fileCreationDate
+                        timestampFound = true
+                        print("📸 [QUICK_REPORT] Using file creation date as fallback: \(fileCreationDate)")
+                    }
+                }
+                
+                // Update the flag
+                photoTimestampExtracted = timestampFound
+                
+                // Log final timestamp status and show timestamp selector if needed
+                if !timestampFound {
+                    print("📸 [QUICK_REPORT] No timestamp found - will show timestamp selector")
+                    showTimestampSelector = true
+                } else {
+                    showTimestampSelector = false
+                }
                 
                 // If we already have a presigned URL, start upload immediately
                 if let uploadUrl = self.uploadUrl, let imageKey = self.imageKey {
@@ -95,12 +145,110 @@ class QuickPhotoReportViewModel: ObservableObject {
     func clearImage() {
         selectedImage = nil
         imageSelection = nil
+        photoTimestampExtracted = false
+        showTimestampSelector = false
+        // Reset to current time when photo is cleared
+        selectedDateTime = Date()
         
         // Clear S3 upload state
         imageKey = nil
         uploadUrl = nil
         isUploadingImage = false
         uploadProgress = 0.0
+    }
+    
+    // Parse image date from various formats
+    private func parseImageDate(_ dateString: String) -> Date? {
+        let formatters = [
+            "yyyy:MM:dd HH:mm:ss",
+            "yyyy-MM-dd HH:mm:ss",
+            "yyyy/MM/dd HH:mm:ss"
+        ]
+        
+        for format in formatters {
+            let formatter = DateFormatter()
+            formatter.dateFormat = format
+            formatter.locale = Locale(identifier: "en_US_POSIX")
+            
+            if let date = formatter.date(from: dateString) {
+                return date
+            }
+        }
+        
+        return nil
+    }
+    
+    // Attempt to get file creation date as fallback when EXIF/TIFF data is not available
+    private func getFileCreationDate(from imageSelection: PhotosPickerItem) async -> Date? {
+        do {
+            // Try to load the asset identifier to access PHAsset
+            if let assetIdentifier = imageSelection.itemIdentifier {
+                print("📸 [QUICK_REPORT] Asset identifier: \(assetIdentifier)")
+                
+                let fetchResult = PHAsset.fetchAssets(withLocalIdentifiers: [assetIdentifier], options: nil)
+                print("📸 [QUICK_REPORT] Fetch result count: \(fetchResult.count)")
+                
+                if let asset = fetchResult.firstObject {
+                    print("📸 [QUICK_REPORT] PHAsset found:")
+                    print("   - Creation date: \(asset.creationDate?.description ?? "nil")")
+                    print("   - Modification date: \(asset.modificationDate?.description ?? "nil")")
+                    print("   - Media type: \(asset.mediaType.rawValue)")
+                    print("   - Media subtypes: \(asset.mediaSubtypes.rawValue)")
+                    
+                    // Try creation date first
+                    if let creationDate = asset.creationDate {
+                        print("📸 [QUICK_REPORT] Using PHAsset creation date: \(creationDate)")
+                        return creationDate
+                    }
+                    
+                    // Fallback to modification date if creation date is nil
+                    if let modificationDate = asset.modificationDate {
+                        print("📸 [QUICK_REPORT] Using PHAsset modification date as fallback: \(modificationDate)")
+                        return modificationDate
+                    }
+                    
+                    print("📸 [QUICK_REPORT] Both creation and modification dates are nil")
+                } else {
+                    print("📸 [QUICK_REPORT] No PHAsset found for identifier")
+                }
+            } else {
+                print("📸 [QUICK_REPORT] No asset identifier available")
+            }
+            
+            // Alternative approach: try to get the image data and check file attributes
+            print("📸 [QUICK_REPORT] Trying alternative method with image data...")
+            if let data = try await imageSelection.loadTransferable(type: Data.self) {
+                // Try to get file creation date from the data itself
+                if let imageSource = CGImageSourceCreateWithData(data as CFData, nil) {
+                    if let properties = CGImageSourceCopyPropertiesAtIndex(imageSource, 0, nil) as? [String: Any] {
+                        print("📸 [QUICK_REPORT] Image source properties available")
+                        
+                        // Check for file creation date in properties
+                        if let fileCreationDate = properties["{File}"] as? [String: Any],
+                           let creationDate = fileCreationDate["FileCreationDate"] as? Date {
+                            print("📸 [QUICK_REPORT] Found file creation date in properties: \(creationDate)")
+                            return creationDate
+                        }
+                        
+                        // Check for file modification date
+                        if let fileModificationDate = properties["{File}"] as? [String: Any],
+                           let modificationDate = fileModificationDate["FileModificationDate"] as? Date {
+                            print("📸 [QUICK_REPORT] Found file modification date in properties: \(modificationDate)")
+                            return modificationDate
+                        }
+                        
+                        print("📸 [QUICK_REPORT] No file dates found in image properties")
+                        print("📸 [QUICK_REPORT] Available properties: \(properties.keys)")
+                    }
+                }
+            }
+            
+        } catch {
+            print("📸 [QUICK_REPORT] Error accessing file creation date: \(error)")
+        }
+        
+        print("📸 [QUICK_REPORT] All methods failed to find file creation date")
+        return nil
     }
     
     /// Starts the S3 upload process: generate URL, then upload image
@@ -330,6 +478,17 @@ class QuickPhotoReportViewModel: ObservableObject {
         let region = String(components[1])
         let spot = String(components[2])
         
+        // Convert local time to UTC before sending to backend
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
+        dateFormatter.timeZone = TimeZone(abbreviation: "UTC") // Format as UTC
+        let formattedDate = dateFormatter.string(from: selectedDateTime)
+        
+        // Debug timezone information
+        print("📅 [QUICK_REPORT] Selected date (local): \(selectedDateTime)")
+        print("📅 [QUICK_REPORT] Current timezone: \(TimeZone.current.identifier)")
+        print("📅 [QUICK_REPORT] Formatted date (UTC): \(formattedDate)")
+        
         // Prepare report data with default values for quick report
         let reportData: [String: Any] = [
             "country": country,
@@ -341,7 +500,8 @@ class QuickPhotoReportViewModel: ObservableObject {
             "windAmount": "light", // Default value
             "consistency": "consistent", // Default value
             "quality": quality.rawValue,
-            "imageKey": imageKey ?? ""
+            "imageKey": imageKey ?? "",
+            "date": formattedDate
         ]
         
         do {

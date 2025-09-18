@@ -180,53 +180,94 @@ class APIErrorHandler: ObservableObject {
     // MARK: - Error Handling Methods
     
     func handleAPIError(_ error: Error) -> ErrorDisplay? {
+        print("🔍 [ERROR_HANDLER] Processing error in APIErrorHandler")
+        print("🔍 [ERROR_HANDLER] Error: \(error)")
+        
         // Check if it's an API error response
         if let apiError = extractAPIError(from: error) {
-            return ErrorDisplay(from: apiError)
+            print("✅ [ERROR_HANDLER] Extracted API error response:")
+            print("   - Error: \(apiError.error)")
+            print("   - Message: \(apiError.message)")
+            print("   - Help: \(apiError.help)")
+            
+            let errorDisplay = ErrorDisplay(from: apiError)
+            print("🎯 [ERROR_HANDLER] Created error display:")
+            print("   - Title: \(errorDisplay.title)")
+            print("   - Message: \(errorDisplay.message)")
+            print("   - Help: \(errorDisplay.help)")
+            print("   - Field Name: \(errorDisplay.fieldName ?? "nil")")
+            print("   - Is Retryable: \(errorDisplay.isRetryable)")
+            print("   - Requires Auth: \(errorDisplay.requiresAuthentication)")
+            print("   - Requires Image Retry: \(errorDisplay.requiresImageRetry)")
+            
+            return errorDisplay
         }
         
+        print("⚠️ [ERROR_HANDLER] No API error found, using generic error handling")
         // Handle network and other errors
         return handleGenericError(error)
     }
     
     private func extractAPIError(from error: Error) -> APIErrorResponse? {
+        print("🔍 [ERROR_HANDLER] Attempting to extract API error from: \(error)")
+        
         // Try to extract API error from various error types
         if let nsError = error as NSError? {
+            print("🔍 [ERROR_HANDLER] Error is NSError - domain: \(nsError.domain), code: \(nsError.code)")
             
             // Check if the error has API error data in userInfo
             if let errorData = nsError.userInfo["errorData"] as? Data {
+                print("🔍 [ERROR_HANDLER] Found errorData in userInfo, size: \(errorData.count) bytes")
                 do {
                     let apiError = try JSONDecoder().decode(APIErrorResponse.self, from: errorData)
+                    print("✅ [ERROR_HANDLER] Successfully decoded API error from errorData")
                     return apiError
                 } catch {
+                    print("❌ [ERROR_HANDLER] Failed to decode API error from errorData: \(error)")
                     return nil
                 }
             }
             
             // Check if the error message contains API error information
             if let errorMessage = nsError.userInfo[NSLocalizedDescriptionKey] as? String {
+                print("🔍 [ERROR_HANDLER] Found localized description: \(errorMessage.prefix(100))...")
                 
                 // Try to parse as JSON if it looks like an API error
                 if errorMessage.contains("\"error\"") && errorMessage.contains("\"message\"") {
+                    print("🔍 [ERROR_HANDLER] Error message looks like JSON API error, attempting to parse...")
                     if let data = errorMessage.data(using: .utf8) {
                         do {
                             let apiError = try JSONDecoder().decode(APIErrorResponse.self, from: data)
+                            print("✅ [ERROR_HANDLER] Successfully decoded API error from error message")
                             return apiError
                         } catch {
+                            print("❌ [ERROR_HANDLER] Failed to decode API error from error message: \(error)")
                             return nil
                         }
                     }
+                } else {
+                    print("🔍 [ERROR_HANDLER] Error message does not contain JSON API error format")
                 }
+            } else {
+                print("🔍 [ERROR_HANDLER] No localized description found in userInfo")
             }
+            
+            print("🔍 [ERROR_HANDLER] UserInfo contents: \(nsError.userInfo)")
+        } else {
+            print("🔍 [ERROR_HANDLER] Error is not NSError: \(type(of: error))")
         }
+        
+        print("❌ [ERROR_HANDLER] Could not extract API error")
         return nil
     }
     
     private func handleGenericError(_ error: Error) -> ErrorDisplay {
         let nsError = error as NSError
+        print("🔍 [ERROR_HANDLER] Handling generic error - domain: \(nsError.domain), code: \(nsError.code)")
         
         switch nsError.code {
         case NSURLErrorCannotConnectToHost, NSURLErrorTimedOut:
+            print("🌐 [ERROR_HANDLER] Connection error detected")
             return ErrorDisplay(
                 title: "Connection Error",
                 message: "Unable to connect to the server. Please check your internet connection and try again.",
@@ -239,6 +280,7 @@ class APIErrorHandler: ObservableObject {
             )
             
         case NSURLErrorNotConnectedToInternet:
+            print("📡 [ERROR_HANDLER] No internet connection detected")
             return ErrorDisplay(
                 title: "No Internet Connection",
                 message: "You appear to be offline. Please check your internet connection.",
@@ -251,6 +293,7 @@ class APIErrorHandler: ObservableObject {
             )
             
         case 401, 403:
+            print("🔐 [ERROR_HANDLER] Authentication error detected")
             return ErrorDisplay(
                 title: "Authentication Required",
                 message: "Your session has expired or you need to log in.",
@@ -263,6 +306,7 @@ class APIErrorHandler: ObservableObject {
             )
             
         case 500, 502, 503, 504:
+            print("🚨 [ERROR_HANDLER] Server error detected: \(nsError.code)")
             return ErrorDisplay(
                 title: "Server Error",
                 message: "The server is experiencing issues. Please try again later.",
@@ -275,6 +319,7 @@ class APIErrorHandler: ObservableObject {
             )
             
         default:
+            print("❓ [ERROR_HANDLER] Unknown error code: \(nsError.code), using default error")
             return ErrorDisplay(
                 title: "Unexpected Error",
                 message: "An unexpected error occurred. Please try again.",

@@ -335,7 +335,11 @@ class APIClient {
     
     // MARK: - POST Request with CSRF Protection
     func postRequest<T: Decodable>(to endpoint: String, body: Data, completion: @escaping (Result<T, Error>) -> Void) {
+        print("🌐 [API_CLIENT] Starting POST request to: \(endpoint)")
+        print("📦 [API_CLIENT] Request body size: \(body.count) bytes")
+        
         guard let url = URL(string: "\(baseURL)\(endpoint)") else {
+            print("❌ [API_CLIENT] Invalid URL for POST request: \(baseURL)\(endpoint)")
             let error = NSError(domain: "APIClient", code: APIClientError.invalidURLForPost.rawValue, userInfo: [NSLocalizedDescriptionKey: APIClientError.invalidURLForPost.localizedDescription])
             completion(.failure(error))
             return
@@ -348,31 +352,58 @@ class APIClient {
         
         // Add session cookie
         if let sessionCookie = AuthManager.shared.getSessionCookie() {
+            print("🍪 [API_CLIENT] Adding session cookies")
             for (key, value) in sessionCookie {
                 request.addValue(value, forHTTPHeaderField: key)
+                print("🍪 [API_CLIENT] Cookie: \(key) = \(value.prefix(20))...")
             }
+        } else {
+            print("⚠️ [API_CLIENT] No session cookies available")
         }
         
         // Add CSRF token for POST requests
         if let csrfHeader = AuthManager.shared.getCsrfHeader() {
+            print("🔐 [API_CLIENT] Adding CSRF token")
             for (key, value) in csrfHeader {
                 request.addValue(value, forHTTPHeaderField: key)
+                print("🔐 [API_CLIENT] CSRF: \(key) = \(value.prefix(10))...")
             }
+        } else {
+            print("⚠️ [API_CLIENT] No CSRF token available")
         }
         
+        print("🚀 [API_CLIENT] Sending POST request...")
         URLSession.shared.dataTask(with: request) { data, response, error in
             if let error = error {
+                print("❌ [API_CLIENT] Network error: \(error)")
+                if let nsError = error as NSError? {
+                    print("❌ [API_CLIENT] Error details:")
+                    print("   - Domain: \(nsError.domain)")
+                    print("   - Code: \(nsError.code)")
+                    print("   - Description: \(nsError.localizedDescription)")
+                }
                 completion(.failure(error))
                 return
             }
             
             // Check HTTP status code for errors
             if let httpResponse = response as? HTTPURLResponse {
+                print("📊 [API_CLIENT] HTTP response status: \(httpResponse.statusCode)")
+                
                 // Handle non-success status codes
                 if httpResponse.statusCode >= 400 {
+                    print("❌ [API_CLIENT] HTTP error status: \(httpResponse.statusCode)")
+                    
                     if let data = data {
+                        print("📄 [API_CLIENT] Error response data size: \(data.count) bytes")
+                        
                         // Try to parse as API error response
                         if let apiError = try? JSONDecoder().decode(APIErrorResponse.self, from: data) {
+                            print("🚨 [API_CLIENT] Parsed API error response:")
+                            print("   - Error: \(apiError.error)")
+                            print("   - Message: \(apiError.message)")
+                            print("   - Help: \(apiError.help)")
+                            
                             let errorWithData = NSError(
                                 domain: "APIClient",
                                 code: httpResponse.statusCode,
@@ -384,10 +415,16 @@ class APIClient {
                             )
                             completion(.failure(errorWithData))
                             return
+                        } else {
+                            print("⚠️ [API_CLIENT] Could not parse as API error response")
+                            if let responseString = String(data: data, encoding: .utf8) {
+                                print("📄 [API_CLIENT] Raw response: \(responseString.prefix(200))...")
+                            }
                         }
                     }
                     
                     // If we can't parse the error, create a generic error
+                    print("❌ [API_CLIENT] Creating generic error for status: \(httpResponse.statusCode)")
                     let genericError = NSError(
                         domain: "APIClient",
                         code: httpResponse.statusCode,
@@ -401,17 +438,28 @@ class APIClient {
             }
             
             guard let data = data else {
+                print("❌ [API_CLIENT] No data received in response")
                 let noDataError = NSError(domain: "APIClient", code: APIClientError.noDataReceivedForPost.rawValue, userInfo: [NSLocalizedDescriptionKey: APIClientError.noDataReceivedForPost.localizedDescription])
                 completion(.failure(noDataError))
                 return
             }
             
+            print("📦 [API_CLIENT] Response data size: \(data.count) bytes")
+            
             do {
                 let decoded = try JSONDecoder().decode(T.self, from: data)
+                print("✅ [API_CLIENT] Successfully decoded response")
                 completion(.success(decoded))
             } catch {
+                print("❌ [API_CLIENT] Failed to decode response: \(error)")
+                
                 // Try to parse as API error response if decoding fails
                 if let apiError = try? JSONDecoder().decode(APIErrorResponse.self, from: data) {
+                    print("🚨 [API_CLIENT] Decoded as API error response:")
+                    print("   - Error: \(apiError.error)")
+                    print("   - Message: \(apiError.message)")
+                    print("   - Help: \(apiError.help)")
+                    
                     let errorWithData = NSError(
                         domain: "APIClient",
                         code: 400,
@@ -423,6 +471,10 @@ class APIClient {
                     )
                     completion(.failure(errorWithData))
                 } else {
+                    print("❌ [API_CLIENT] Could not decode as API error either")
+                    if let responseString = String(data: data, encoding: .utf8) {
+                        print("📄 [API_CLIENT] Raw response: \(responseString.prefix(200))...")
+                    }
                     completion(.failure(error))
                 }
             }

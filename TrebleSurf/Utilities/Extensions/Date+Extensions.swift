@@ -1,5 +1,11 @@
 import Foundation
 
+extension String {
+    func matches(_ regex: String) -> Bool {
+        return self.range(of: regex, options: .regularExpression) != nil
+    }
+}
+
 extension Date {
     /// Parses a dateReported string that contains ISO date + timezone + additional data
     /// Format 1: "2025-08-16 10:31:39 +0000 UTC_27ebc05e-625a-4c05-add5-5e6ef33f8b8e"
@@ -16,15 +22,32 @@ extension Date {
         else if let components = dateString.components(separatedBy: " UTC_").first {
             dateTimeString = components
         }
+        // Check for the new simple format: "2025-09-08 09:27:28" (no timezone info)
+        else if dateString.matches("^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$") {
+            dateTimeString = dateString
+        }
         
         guard let dateTimeString = dateTimeString else { 
             return nil 
         }
         
-        // The extracted string ends with +0000, we need to handle this properly
-        // Try to parse it as a proper ISO8601 string by appending 'Z' or converting +0000 to Z
+        // Handle different date formats
         var normalizedString = dateTimeString
         
+        // Check if this is the simple format without timezone (new format)
+        if dateTimeString.matches("^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$") {
+            // This is our new format - parse as UTC since backend always stores UTC
+            let formatter = DateFormatter()
+            formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
+            formatter.locale = Locale(identifier: "en_US_POSIX")
+            formatter.timeZone = TimeZone(abbreviation: "UTC") // Backend always stores as UTC
+            
+            if let date = formatter.date(from: dateTimeString) {
+                return date
+            }
+        }
+        
+        // Handle legacy formats with timezone info
         // If it ends with +0000, try replacing it with Z (UTC)
         if normalizedString.hasSuffix("+0000") {
             normalizedString = String(normalizedString.dropLast(5)) + "Z"
