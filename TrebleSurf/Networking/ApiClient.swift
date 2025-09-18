@@ -140,6 +140,7 @@ class APIClient {
                 SurfReportResponse(
                     consistency: "Good",
                     imageKey: "",
+                    videoKey: nil,
                     messiness: "Clean",
                     quality: "Good",
                     reporter: "Development User",
@@ -149,7 +150,9 @@ class APIClient {
                     windAmount: "Light",
                     windDirection: "Offshore",
                     countryRegionSpot: "Ireland/Donegal/Ballymastocker",
-                    dateReported: "2025-01-19"
+                    dateReported: "2025-01-19",
+                    mediaType: "image",
+                    iosValidated: false
                 )
             ]
             
@@ -683,6 +686,21 @@ extension APIClient {
                 completion(.success(reportImage))
             case .failure(let error):
                 print("Failed to fetch report image: \(error.localizedDescription)")
+                completion(.failure(error))
+            }
+        }
+    }
+    
+    func getReportVideo(key: String, completion: @escaping (Result<SurfReportVideoResponse, Error>) -> Void) {
+        let endpoint = "/api/getReportVideo?key=\(key)"
+        
+        // Use flexible request method that can handle authentication gracefully
+        makeFlexibleRequest(to: endpoint, requiresAuth: true) { (result: Result<SurfReportVideoResponse, Error>) in
+            switch result {
+            case .success(let reportVideo):
+                completion(.success(reportVideo))
+            case .failure(let error):
+                print("Failed to fetch report video: \(error.localizedDescription)")
                 completion(.failure(error))
             }
         }

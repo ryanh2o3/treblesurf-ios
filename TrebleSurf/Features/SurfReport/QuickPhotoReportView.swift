@@ -1,5 +1,6 @@
 import SwiftUI
 import PhotosUI
+import AVKit
 
 struct QuickPhotoReportView: View {
     let spotId: String
@@ -7,6 +8,9 @@ struct QuickPhotoReportView: View {
     @Environment(\.dismiss) private var dismiss
     @StateObject private var viewModel = QuickPhotoReportViewModel()
     @State private var showingPhotoPicker = false
+    @State private var showingVideoPicker = false
+    @State private var showingVideoPlayer = false
+    @State private var videoURL: URL?
     
     var body: some View {
         NavigationView {
@@ -24,7 +28,7 @@ struct QuickPhotoReportView: View {
                 }
                 .padding(.top)
                 
-                // Photo section
+                // Media section
                 VStack(spacing: 16) {
                     if let imageData = viewModel.selectedImage {
                         VStack(spacing: 12) {
@@ -56,6 +60,35 @@ struct QuickPhotoReportView: View {
                                     }
                                 }
                             
+                            // Image validation status
+                            if viewModel.isValidatingImage {
+                                HStack {
+                                    ProgressView()
+                                        .scaleEffect(0.8)
+                                    Text("Validating image...")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+                            } else if let validationError = viewModel.imageValidationError {
+                                HStack {
+                                    Image(systemName: "exclamationmark.triangle.fill")
+                                        .foregroundColor(.red)
+                                    Text(validationError)
+                                        .font(.caption)
+                                        .foregroundColor(.red)
+                                        .multilineTextAlignment(.center)
+                                }
+                                .padding(.horizontal)
+                            } else if viewModel.imageValidationPassed {
+                                HStack {
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .foregroundColor(.green)
+                                    Text("Image validated successfully")
+                                        .font(.caption)
+                                        .foregroundColor(.green)
+                                }
+                            }
+                            
                             // Timestamp status
                             if viewModel.photoTimestampExtracted {
                                 Text("📸 Photo timestamp detected: \(formatDate(viewModel.selectedDateTime))")
@@ -70,34 +103,198 @@ struct QuickPhotoReportView: View {
                             .foregroundColor(.blue)
                             .font(.subheadline)
                         }
-                    } else {
-                        // Custom button that handles both presigned URL generation and photo picker
-                        Button(action: {
-                            // Start presigned URL generation immediately
-                            Task {
-                                await viewModel.preGenerateUploadURL()
+                    } else if let videoThumbnail = viewModel.selectedVideoThumbnail {
+                        VStack(spacing: 12) {
+                            ZStack {
+                                Image(uiImage: videoThumbnail)
+                                    .resizable()
+                                    .aspectRatio(contentMode: .fit)
+                                    .frame(maxHeight: 300)
+                                    .cornerRadius(16)
+                                
+                                // Play button overlay
+                                Image(systemName: "play.circle.fill")
+                                    .font(.system(size: 48))
+                                    .foregroundColor(.white)
+                                    .background(Color.black.opacity(0.3))
+                                    .clipShape(Circle())
                             }
-                            // Show photo picker
-                            showingPhotoPicker = true
-                        }) {
-                            VStack(spacing: 16) {
-                                Image(systemName: "camera.fill")
-                                    .font(.system(size: 50))
-                                    .foregroundColor(.blue)
+                            .onTapGesture {
+                                if let videoURL = viewModel.selectedVideoURL {
+                                    self.videoURL = videoURL
+                                    showingVideoPlayer = true
+                                }
+                            }
+                            
+                            // Video upload progress indicator
+                            if viewModel.isUploadingVideoThumbnail {
+                                VStack(spacing: 12) {
+                                    ProgressView()
+                                        .progressViewStyle(LinearProgressViewStyle())
+                                        .frame(height: 8)
+                                    
+                                    Text("Uploading video thumbnail...")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+                                .padding(.horizontal)
+                            } else if viewModel.isUploadingVideo {
+                                VStack(spacing: 12) {
+                                    ProgressView(value: viewModel.videoUploadProgress)
+                                        .progressViewStyle(LinearProgressViewStyle())
+                                        .frame(height: 8)
+                                    
+                                    Text("Uploading video...")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+                                .padding(.horizontal)
+                            } else if viewModel.videoUploadProgress >= 1.0 && viewModel.videoThumbnailKey != nil {
+                                HStack {
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .foregroundColor(.green)
+                                    Text("Video and thumbnail uploaded successfully")
+                                        .font(.caption)
+                                        .foregroundColor(.green)
+                                    }
+                                }
+                            
+                            // Video validation status
+                            if viewModel.isValidatingVideo {
+                                HStack {
+                                    ProgressView()
+                                        .scaleEffect(0.8)
+                                    Text("Validating video...")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+                            } else if let validationError = viewModel.videoValidationError {
+                                HStack {
+                                    Image(systemName: "exclamationmark.triangle.fill")
+                                        .foregroundColor(.red)
+                                    Text(validationError)
+                                        .font(.caption)
+                                        .foregroundColor(.red)
+                                        .multilineTextAlignment(.center)
+                                }
+                                .padding(.horizontal)
+                            } else if viewModel.videoValidationPassed {
+                                HStack {
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .foregroundColor(.green)
+                                    Text("Video validated successfully")
+                                        .font(.caption)
+                                        .foregroundColor(.green)
+                                }
+                            }
+                            
+                            Button("Change Video") {
+                                viewModel.clearVideo()
+                            }
+                            .foregroundColor(.blue)
+                            .font(.subheadline)
+                        }
+                    } else {
+                        // Media selection buttons
+                        VStack(spacing: 16) {
+                            HStack(spacing: 16) {
+                                // Photo button
+                                Button(action: {
+                                    // Start presigned URL generation immediately
+                                    Task {
+                                        await viewModel.preGenerateUploadURL()
+                                    }
+                                    // Show photo picker
+                                    showingPhotoPicker = true
+                                }) {
+                                    VStack(spacing: 12) {
+                                        Image(systemName: "camera.fill")
+                                            .font(.system(size: 30))
+                                            .foregroundColor(.blue)
+                                        
+                                        Text("Add Photo")
+                                            .font(.headline)
+                                            .foregroundColor(.blue)
+                                        
+                                        Text("Select a photo")
+                                            .font(.caption)
+                                            .foregroundColor(.secondary)
+                                    }
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 40)
+                                    .background(Color.blue.opacity(0.1))
+                                    .cornerRadius(12)
+                                }
                                 
-                                Text("Add Photo")
-                                    .font(.headline)
-                                    .foregroundColor(.blue)
-                                
-                                Text("Tap to select a photo of current conditions")
+                                // Video button
+                                Button(action: {
+                                    showingVideoPicker = true
+                                }) {
+                                    VStack(spacing: 12) {
+                                        Image(systemName: "video.fill")
+                                            .font(.system(size: 30))
+                                            .foregroundColor(.green)
+                                        
+                                        Text("Add Video")
+                                            .font(.headline)
+                                            .foregroundColor(.green)
+                                        
+                                        Text("Select a video")
+                                            .font(.caption)
+                                            .foregroundColor(.secondary)
+                                    }
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 40)
+                                    .background(Color.green.opacity(0.1))
+                                    .cornerRadius(12)
+                                }
+                            }
+                            
+                            Text("Choose a photo or video of current conditions")
                                 .font(.subheadline)
                                 .foregroundColor(.secondary)
                                 .multilineTextAlignment(.center)
+                            
+                            // Show loading state when video is being processed
+                            if viewModel.isValidatingVideo || viewModel.isUploadingVideo {
+                                VStack(spacing: 8) {
+                                    ProgressView()
+                                        .scaleEffect(0.8)
+                                    Text("Processing video...")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+                                .padding(.top, 8)
                             }
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 60)
-                            .background(Color.blue.opacity(0.1))
-                            .cornerRadius(16)
+                            
+                            // Debug info (remove in production)
+                            #if DEBUG
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Debug Info:")
+                                    .font(.caption)
+                                    .fontWeight(.bold)
+                                Text("Video Selected: \(viewModel.selectedVideo != nil ? "Yes" : "No")")
+                                    .font(.caption)
+                                Text("Video URL: \(viewModel.selectedVideoURL?.absoluteString ?? "None")")
+                                    .font(.caption)
+                                Text("Video Thumbnail: \(viewModel.selectedVideoThumbnail != nil ? "Yes" : "No")")
+                                    .font(.caption)
+                                Text("Thumbnail Key: \(viewModel.videoThumbnailKey ?? "None")")
+                                    .font(.caption)
+                                Text("Validating: \(viewModel.isValidatingVideo ? "Yes" : "No")")
+                                    .font(.caption)
+                                Text("Uploading: \(viewModel.isUploadingVideo ? "Yes" : "No")")
+                                    .font(.caption)
+                                Text("Uploading Thumbnail: \(viewModel.isUploadingVideoThumbnail ? "Yes" : "No")")
+                                    .font(.caption)
+                                Text("Validation Passed: \(viewModel.videoValidationPassed ? "Yes" : "No")")
+                                    .font(.caption)
+                            }
+                            .padding(8)
+                            .background(Color.gray.opacity(0.1))
+                            .cornerRadius(8)
+                            .padding(.top, 8)
+                            #endif
                         }
                     }
                 }
@@ -207,6 +404,7 @@ struct QuickPhotoReportView: View {
                 }
             }
             .photosPicker(isPresented: $showingPhotoPicker, selection: $viewModel.imageSelection, matching: .images)
+            .photosPicker(isPresented: $showingVideoPicker, selection: $viewModel.selectedVideo, matching: .videos)
             .alert("Success", isPresented: $viewModel.showSuccessAlert) {
                 Button("OK") { }
             } message: {
@@ -244,6 +442,15 @@ struct QuickPhotoReportView: View {
                         }
                     )
                     .presentationDetents([.medium, .large])
+                }
+            }
+            .sheet(isPresented: $showingVideoPlayer) {
+                if let videoURL = videoURL {
+                    VideoPlayer(player: AVPlayer(url: videoURL))
+                        .onDisappear {
+                            // Clean up video URL when sheet is dismissed
+                            self.videoURL = nil
+                        }
                 }
             }
         }

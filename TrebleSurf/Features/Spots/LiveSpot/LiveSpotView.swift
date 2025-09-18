@@ -1,5 +1,6 @@
 // LiveSpotView.swift
 import SwiftUI
+import AVKit
 
 struct LiveSpotView: View {
     @EnvironmentObject var dataStore: DataStore
@@ -8,6 +9,8 @@ struct LiveSpotView: View {
     var spotImage: Image? = nil // This will be nil since parent handles the image
     @StateObject private var viewModel = LiveSpotViewModel()
     @State private var selectedReport: SurfReport?
+    @State private var showingVideoPlayer = false
+    @State private var videoURL: URL?
 
     var body: some View {
         ScrollView {
@@ -84,6 +87,19 @@ struct LiveSpotView: View {
                         recentReportCard(latestReport)
                             .onTapGesture {
                                 selectedReport = latestReport
+                                // If the report has video data, prepare for video playback
+                                if let videoData = latestReport.videoData,
+                                   let data = Data(base64Encoded: videoData) {
+                                    // Create temporary file for video playback
+                                    let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent("temp_video_\(UUID().uuidString).mp4")
+                                    do {
+                                        try data.write(to: tempURL)
+                                        videoURL = tempURL
+                                        showingVideoPlayer = true
+                                    } catch {
+                                        print("Failed to create temporary video file: \(error)")
+                                    }
+                                }
                             }
                     } else if let errorMessage = viewModel.errorMessage {
                         HStack {
@@ -288,26 +304,66 @@ struct LiveSpotView: View {
         .sheet(isPresented: $viewModel.showQuickForm) {
             QuickPhotoReportView(spotId: spotId, spotName: viewModel.getSpotName(from: spotId))
         }
+        .sheet(isPresented: $showingVideoPlayer) {
+            if let videoURL = videoURL {
+                VideoPlayer(player: AVPlayer(url: videoURL))
+                    .ignoresSafeArea()
+                    .onDisappear {
+                        // Clean up temporary file when video player is dismissed
+                        try? FileManager.default.removeItem(at: videoURL)
+                    }
+            }
+        }
     }
     
     private func recentReportCard(_ report: SurfReport) -> some View {
         HStack {
-            if let imageData = report.imageData,
-               let data = Data(base64Encoded: imageData),
-               let uiImage = UIImage(data: data) {
-                Image(uiImage: uiImage)
-                    .resizable()
-                    .frame(width: 60, height: 60)
-                    .cornerRadius(8)
-            } else {
-                Rectangle()
-                    .fill(Color.gray.opacity(0.3))
-                    .frame(width: 60, height: 60)
-                    .cornerRadius(8)
-                    .overlay(
-                        Text("Photo")
-                            .foregroundColor(.secondary)
-                    )
+            // Media preview - show image, video thumbnail, or placeholder
+            Group {
+                if let imageData = report.imageData,
+                   let data = Data(base64Encoded: imageData),
+                   let uiImage = UIImage(data: data) {
+                    // Show image
+                    Image(uiImage: uiImage)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .frame(width: 60, height: 60)
+                        .clipped()
+                        .cornerRadius(8)
+                } else if let videoThumbnail = report.videoThumbnail {
+                    // Show video thumbnail with play button
+                    ZStack {
+                        Image(uiImage: videoThumbnail)
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                            .frame(width: 60, height: 60)
+                            .clipped()
+                            .cornerRadius(8)
+                        
+                        // Play button overlay
+                        Image(systemName: "play.circle.fill")
+                            .font(.system(size: 20))
+                            .foregroundColor(.white)
+                            .background(Color.black.opacity(0.3))
+                            .clipShape(Circle())
+                    }
+                } else {
+                    // Show placeholder based on media type
+                    Rectangle()
+                        .fill(Color.gray.opacity(0.3))
+                        .frame(width: 60, height: 60)
+                        .cornerRadius(8)
+                        .overlay(
+                            VStack(spacing: 2) {
+                                Image(systemName: mediaTypeIcon(for: report.mediaType))
+                                    .font(.system(size: 16))
+                                    .foregroundColor(.secondary)
+                                Text(mediaTypeText(for: report.mediaType))
+                                    .font(.caption2)
+                                    .foregroundColor(.secondary)
+                            }
+                        )
+                }
             }
             
             VStack(alignment: .leading, spacing: 4) {
@@ -335,6 +391,34 @@ struct LiveSpotView: View {
         .padding()
         .background(Color.gray.opacity(0.1))
         .cornerRadius(12)
+    }
+    
+    // MARK: - Helper Functions
+    
+    private func mediaTypeIcon(for mediaType: String?) -> String {
+        switch mediaType?.lowercased() {
+        case "image":
+            return "photo"
+        case "video":
+            return "video"
+        case "both":
+            return "photo.on.rectangle"
+        default:
+            return "photo"
+        }
+    }
+    
+    private func mediaTypeText(for mediaType: String?) -> String {
+        switch mediaType?.lowercased() {
+        case "image":
+            return "Photo"
+        case "video":
+            return "Video"
+        case "both":
+            return "Media"
+        default:
+            return "Photo"
+        }
     }
 }
 

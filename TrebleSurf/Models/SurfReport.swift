@@ -1,7 +1,9 @@
 import Foundation
+import UIKit
 struct SurfReportResponse: Decodable {
     let consistency: String
     let imageKey: String?
+    let videoKey: String?
     let messiness: String
     let quality: String
     let reporter: String
@@ -12,10 +14,13 @@ struct SurfReportResponse: Decodable {
     let windDirection: String
     let countryRegionSpot: String
     let dateReported: String
+    let mediaType: String?
+    let iosValidated: Bool?
 
     enum CodingKeys: String, CodingKey {
         case consistency = "Consistency"
         case imageKey = "ImageKey"
+        case videoKey = "VideoKey"
         case messiness = "Messiness"
         case quality = "Quality"
         case reporter = "Reporter"
@@ -26,6 +31,8 @@ struct SurfReportResponse: Decodable {
         case windDirection = "WindDirection"
         case countryRegionSpot = "country_region_spot"
         case dateReported = "dateReported"
+        case mediaType = "MediaType"
+        case iosValidated = "IOSValidated"
     }
 }
 
@@ -34,6 +41,7 @@ class SurfReport: ObservableObject, Identifiable {
     let id = UUID()
     let consistency: String
     let imageKey: String?
+    let videoKey: String?
     let messiness: String
     let quality: String
     let reporter: String
@@ -44,8 +52,12 @@ class SurfReport: ObservableObject, Identifiable {
     let windDirection: String
     let countryRegionSpot: String
     let dateReported: String
+    let mediaType: String?
+    let iosValidated: Bool?
     
     @Published var imageData: String? // Make this observable
+    @Published var videoData: String? // Make this observable
+    @Published var videoThumbnail: UIImage? // Video thumbnail for preview
     
     /// Computed property that returns a user-friendly formatted date
     var formattedDateReported: String {
@@ -55,9 +67,10 @@ class SurfReport: ObservableObject, Identifiable {
         return dateReported // Fallback to original string if parsing fails
     }
     
-    init(consistency: String, imageKey: String?, messiness: String, quality: String, reporter: String, surfSize: String, time: String, userEmail: String?, windAmount: String, windDirection: String, countryRegionSpot: String, dateReported: String, imageData: String? = nil) {
+    init(consistency: String, imageKey: String?, videoKey: String?, messiness: String, quality: String, reporter: String, surfSize: String, time: String, userEmail: String?, windAmount: String, windDirection: String, countryRegionSpot: String, dateReported: String, mediaType: String? = nil, iosValidated: Bool? = nil, imageData: String? = nil, videoData: String? = nil) {
         self.consistency = consistency
         self.imageKey = imageKey
+        self.videoKey = videoKey
         self.messiness = messiness
         self.quality = quality
         self.reporter = reporter
@@ -68,7 +81,10 @@ class SurfReport: ObservableObject, Identifiable {
         self.windDirection = windDirection
         self.countryRegionSpot = countryRegionSpot
         self.dateReported = dateReported
+        self.mediaType = mediaType
+        self.iosValidated = iosValidated
         self.imageData = imageData
+        self.videoData = videoData
     }
 }
 
@@ -77,6 +93,7 @@ extension SurfReport {
         self.init(
             consistency: response.consistency,
             imageKey: response.imageKey,
+            videoKey: response.videoKey,
             messiness: response.messiness,
             quality: response.quality,
             reporter: response.reporter,
@@ -86,16 +103,21 @@ extension SurfReport {
             windAmount: response.windAmount,
             windDirection: response.windDirection,
             countryRegionSpot: response.countryRegionSpot,
-            dateReported: response.dateReported
+            dateReported: response.dateReported,
+            mediaType: response.mediaType,
+            iosValidated: response.iosValidated
         )
     }
 }
 
 struct SurfReportImageResponse: Decodable {
-    
     let imageData: String
     let contentType: String
-    
+}
+
+struct SurfReportVideoResponse: Decodable {
+    let videoData: String
+    let contentType: String
 }
 
 struct SurfReportSubmissionResponse: Decodable {
@@ -121,5 +143,17 @@ struct SurfReportSubmissionResponse: Decodable {
         // success and reportId are optional
         success = try container.decodeIfPresent(Bool.self, forKey: .success)
         reportId = try container.decodeIfPresent(String.self, forKey: .reportId)
+    }
+}
+
+struct PresignedVideoUploadResponse: Decodable {
+    let uploadUrl: String
+    let videoKey: String
+    let expiresAt: String
+    
+    enum CodingKeys: String, CodingKey {
+        case uploadUrl
+        case videoKey
+        case expiresAt
     }
 }

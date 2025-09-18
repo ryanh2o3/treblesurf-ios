@@ -5,6 +5,7 @@ import CoreGraphics
 import UIKit
 import Photos
 import ImageIO
+import AVFoundation
 
 
 
@@ -32,7 +33,16 @@ class SurfReportSubmissionViewModel: ObservableObject {
             }
         }
     }
+    @Published var videoSelection: PhotosPickerItem? = nil {
+        didSet {
+            Task {
+                await loadVideo()
+            }
+        }
+    }
     @Published var selectedImage: UIImage? = nil
+    @Published var selectedVideoURL: URL? = nil
+    @Published var selectedVideoThumbnail: UIImage? = nil
     @Published var selectedDateTime: Date = Date()
     @Published var photoTimestampExtracted: Bool = false
     @Published var isSubmitting = false
@@ -46,9 +56,13 @@ class SurfReportSubmissionViewModel: ObservableObject {
     
     // New properties for S3 upload workflow
     @Published var isUploadingImage = false
+    @Published var isUploadingVideo = false
     @Published var uploadProgress: Double = 0.0
+    @Published var videoUploadProgress: Double = 0.0
     @Published var imageKey: String?
+    @Published var videoKey: String?
     @Published var uploadUrl: String?
+    @Published var videoUploadUrl: String?
     
     // Store the spotId for image uploads
     private var spotId: String?
@@ -118,8 +132,8 @@ class SurfReportSubmissionViewModel: ObservableObject {
             ]
         ),
         SurfReportStep(
-            title: "Photo Upload",
-            description: "Upload a photo of current conditions (optional)",
+            title: "Media Upload",
+            description: "Upload a photo or video of current conditions (optional)",
             options: []
         ),
         SurfReportStep(
@@ -223,6 +237,29 @@ class SurfReportSubmissionViewModel: ObservableObject {
         
         // Reset photo picker flag
         shouldShowPhotoPicker = false
+    }
+    
+    func clearVideo() {
+        selectedVideoURL = nil
+        selectedVideoThumbnail = nil
+        videoSelection = nil
+        photoTimestampExtracted = false
+        // Reset to current time when video is cleared
+        selectedDateTime = Date()
+        
+        // Clear S3 upload state
+        videoKey = nil
+        videoUploadUrl = nil
+        isUploadingVideo = false
+        videoUploadProgress = 0.0
+        
+        // Clear any video-related errors
+        clearFieldError(for: "video")
+    }
+    
+    func clearMedia() {
+        clearImage()
+        clearVideo()
     }
     
     func clearImageForRetry() {
@@ -385,40 +422,68 @@ class SurfReportSubmissionViewModel: ObservableObject {
         do {
             if let data = try await imageSelection.loadTransferable(type: Data.self),
                let image = UIImage(data: data) {
-                selectedImage = image
                 
-                // Try to extract timestamp from image metadata
-                var timestampFound = false
-                if let imageSource = CGImageSourceCreateWithData(data as CFData, nil),
-                   let properties = CGImageSourceCopyPropertiesAtIndex(imageSource, 0, nil) as? [String: Any] {
-                    
-                    // Check for EXIF date
-                    if let exif = properties["{Exif}"] as? [String: Any],
-                       let dateTimeOriginal = exif["DateTimeOriginal"] as? String {
-                        if let extractedDate = parseImageDate(dateTimeOriginal) {
-                            selectedDateTime = extractedDate
-                            timestampFound = true
-                            print("📸 [IMAGE_TIMESTAMP] Found EXIF timestamp: \(extractedDate)")
-                        }
-                    }
-                    // Check for TIFF date
-                    else if let tiff = properties["{TIFF}"] as? [String: Any],
-                            let dateTime = tiff["DateTime"] as? String {
-                        if let extractedDate = parseImageDate(dateTime) {
-                            selectedDateTime = extractedDate
-                            timestampFound = true
-                            print("📸 [IMAGE_TIMESTAMP] Found TIFF timestamp: \(extractedDate)")
+                // Validate image using iOS ML before proceeding
+                print("🔍 [IMAGE_VALIDATION] Starting iOS ML validation...")
+                ImageValidationService.shared.validateSurfImage(image) { result in
+                    Task { @MainActor in
+                        switch result {
+                        case .success(let isValid):
+                            if isValid {
+                                print("✅ [IMAGE_VALIDATION] Image validated as surf-related")
+                                self.processValidatedImage(image, imageSelection: imageSelection, data: data)
+                            } else {
+                                print("❌ [IMAGE_VALIDATION] Image not recognized as surf-related")
+                                self.handleImageValidationFailure()
+                            }
+                        case .failure(let error):
+                            print("❌ [IMAGE_VALIDATION] Validation failed: \(error)")
+                            self.handleImageValidationError(error)
                         }
                     }
                 }
-                
-                // If no timestamp found in metadata, try to use file creation date as fallback
-                if !timestampFound {
-                    if let fileCreationDate = await getFileCreationDate(from: imageSelection) {
-                        selectedDateTime = fileCreationDate
-                        timestampFound = true
-                        print("📸 [IMAGE_TIMESTAMP] Using file creation date as fallback: \(fileCreationDate)")
-                    }
+            }
+        } catch {
+            print("❌ [IMAGE_LOAD] Failed to load image: \(error)")
+        }
+    }
+    
+    @MainActor
+    private func processValidatedImage(_ image: UIImage, imageSelection: PhotosPickerItem, data: Data) {
+        selectedImage = image
+        
+        // Try to extract timestamp from image metadata
+        var timestampFound = false
+        if let imageSource = CGImageSourceCreateWithData(data as CFData, nil),
+           let properties = CGImageSourceCopyPropertiesAtIndex(imageSource, 0, nil) as? [String: Any] {
+            
+            // Check for EXIF date
+            if let exif = properties["{Exif}"] as? [String: Any],
+               let dateTimeOriginal = exif["DateTimeOriginal"] as? String {
+                if let extractedDate = parseImageDate(dateTimeOriginal) {
+                    selectedDateTime = extractedDate
+                    timestampFound = true
+                    print("📸 [IMAGE_TIMESTAMP] Found EXIF timestamp: \(extractedDate)")
+                }
+            }
+            // Check for TIFF date
+            else if let tiff = properties["{TIFF}"] as? [String: Any],
+                    let dateTime = tiff["DateTime"] as? String {
+                if let extractedDate = parseImageDate(dateTime) {
+                    selectedDateTime = extractedDate
+                    timestampFound = true
+                    print("📸 [IMAGE_TIMESTAMP] Found TIFF timestamp: \(extractedDate)")
+                }
+            }
+        }
+        
+        // If no timestamp found in metadata, try to use file creation date as fallback
+        if !timestampFound {
+            Task {
+                if let fileCreationDate = await getFileCreationDate(from: imageSelection) {
+                    selectedDateTime = fileCreationDate
+                    timestampFound = true
+                    print("📸 [IMAGE_TIMESTAMP] Using file creation date as fallback: \(fileCreationDate)")
                 }
                 
                 // Update the flag
@@ -452,7 +517,110 @@ class SurfReportSubmissionViewModel: ObservableObject {
                     self.nextStep()
                 }
             }
+        }
+    }
+    
+    @MainActor
+    private func handleImageValidationFailure() {
+        clearImage()
+        fieldErrors["image"] = "Please upload a photo that clearly shows surf conditions, waves, beach, or coastline."
+        showErrorAlert = true
+    }
+    
+    @MainActor
+    private func handleImageValidationError(_ error: Error) {
+        clearImage()
+        fieldErrors["image"] = "Image validation failed. Please try a different photo."
+        showErrorAlert = true
+    }
+    
+    @MainActor
+    private func loadVideo() async {
+        guard let videoSelection = videoSelection else {
+            return
+        }
+        
+        do {
+            if let videoURL = try await videoSelection.loadTransferable(type: URL.self) {
+                selectedVideoURL = videoURL
+                
+                // Generate thumbnail for video preview
+                if let thumbnail = await generateVideoThumbnail(from: videoURL) {
+                    selectedVideoThumbnail = thumbnail
+                }
+                
+                // Validate video using iOS ML
+                print("🔍 [VIDEO_VALIDATION] Starting iOS ML validation...")
+                ImageValidationService.shared.validateSurfVideo(videoURL) { result in
+                    Task { @MainActor in
+                        switch result {
+                        case .success(let isValid):
+                            if isValid {
+                                print("✅ [VIDEO_VALIDATION] Video validated as surf-related")
+                                self.processValidatedVideo(videoURL, videoSelection: videoSelection)
+                            } else {
+                                print("❌ [VIDEO_VALIDATION] Video not recognized as surf-related")
+                                self.handleVideoValidationFailure()
+                            }
+                        case .failure(let error):
+                            print("❌ [VIDEO_VALIDATION] Validation failed: \(error)")
+                            self.handleVideoValidationError(error)
+                        }
+                    }
+                }
+            }
         } catch {
+            print("❌ [VIDEO_LOAD] Failed to load video: \(error)")
+        }
+    }
+    
+    @MainActor
+    private func processValidatedVideo(_ videoURL: URL, videoSelection: PhotosPickerItem) {
+        // Try to extract timestamp from video metadata
+        Task {
+            if let fileCreationDate = await getFileCreationDate(from: videoSelection) {
+                selectedDateTime = fileCreationDate
+                photoTimestampExtracted = true
+                print("🎥 [VIDEO_TIMESTAMP] Using video creation date: \(fileCreationDate)")
+            }
+            
+            // Start video upload process
+            if let spotId = self.spotId {
+                await startVideoUploadProcess(spotId: spotId, videoURL: videoURL)
+            }
+            
+            // Auto-advance to next step after video is loaded
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                self.nextStep()
+            }
+        }
+    }
+    
+    @MainActor
+    private func handleVideoValidationFailure() {
+        clearVideo()
+        fieldErrors["video"] = "Please upload a video that clearly shows surf conditions, waves, beach, or coastline."
+        showErrorAlert = true
+    }
+    
+    @MainActor
+    private func handleVideoValidationError(_ error: Error) {
+        clearVideo()
+        fieldErrors["video"] = "Video validation failed. Please try a different video."
+        showErrorAlert = true
+    }
+    
+    private func generateVideoThumbnail(from videoURL: URL) async -> UIImage? {
+        let asset = AVAsset(url: videoURL)
+        let imageGenerator = AVAssetImageGenerator(asset: asset)
+        imageGenerator.appliesPreferredTrackTransform = true
+        
+        do {
+            let cgImage = try await imageGenerator.image(at: CMTime.zero).image
+            return UIImage(cgImage: cgImage)
+        } catch {
+            print("❌ [VIDEO_THUMBNAIL] Failed to generate thumbnail: \(error)")
+            return nil
         }
     }
     
@@ -688,6 +856,64 @@ class SurfReportSubmissionViewModel: ObservableObject {
         await generateUploadURLAndUploadImage(spotId: spotId, image: image)
     }
     
+    /// Starts the S3 video upload process with a specific spotId
+    func startVideoUploadProcess(spotId: String, videoURL: URL) async {
+        print("🎥 [VIDEO_UPLOAD] Starting video upload process for spotId: \(spotId)")
+        
+        await MainActor.run {
+            isUploadingVideo = true
+            videoUploadProgress = 0.0
+        }
+        
+        let startTime = Date()
+        
+        do {
+            // Step 1: Generate presigned upload URL for video
+            print("🔗 [VIDEO_UPLOAD] Step 1: Generating presigned upload URL...")
+            let uploadResponse = try await generateVideoUploadURL(spotId: spotId)
+            
+            await MainActor.run {
+                self.videoUploadUrl = uploadResponse.uploadUrl
+                self.videoKey = uploadResponse.videoKey
+            }
+            
+            let urlGenerationTime = Date().timeIntervalSince(startTime)
+            print("✅ [VIDEO_UPLOAD] Presigned URL generated in \(String(format: "%.2f", urlGenerationTime))s")
+            print("🔑 [VIDEO_UPLOAD] Video key: \(uploadResponse.videoKey)")
+            print("🌐 [VIDEO_UPLOAD] Upload URL: \(uploadResponse.uploadUrl.prefix(50))...")
+            
+            // Step 2: Upload video to S3
+            print("☁️ [VIDEO_UPLOAD] Step 2: Uploading video to S3...")
+            try await uploadVideoToS3(uploadURL: uploadResponse.uploadUrl, videoURL: videoURL)
+            
+            let totalTime = Date().timeIntervalSince(startTime)
+            print("✅ [VIDEO_UPLOAD] Video upload completed successfully in \(String(format: "%.2f", totalTime))s")
+            
+            await MainActor.run {
+                self.isUploadingVideo = false
+                self.videoUploadProgress = 1.0
+            }
+            
+        } catch {
+            let totalTime = Date().timeIntervalSince(startTime)
+            print("❌ [VIDEO_UPLOAD] Video upload failed after \(String(format: "%.2f", totalTime))s")
+            print("❌ [VIDEO_UPLOAD] Error details:")
+            if let nsError = error as NSError? {
+                print("   - Domain: \(nsError.domain)")
+                print("   - Code: \(nsError.code)")
+                print("   - Description: \(nsError.localizedDescription)")
+                if let userInfo = nsError.userInfo as? [String: Any] {
+                    print("   - User Info: \(userInfo)")
+                }
+            }
+            
+            await MainActor.run {
+                self.isUploadingVideo = false
+                self.handleImageError(error)
+            }
+        }
+    }
+    
     /// Generates presigned URL and uploads image to S3
     private func generateUploadURLAndUploadImage(spotId: String, image: UIImage) async {
         print("📷 [IMAGE_UPLOAD] Starting image upload process for spotId: \(spotId)")
@@ -835,6 +1061,96 @@ class SurfReportSubmissionViewModel: ObservableObject {
         print("✅ [IMAGE_UPLOAD] Image successfully uploaded to S3")
     }
     
+    /// Generates presigned upload URL for video from backend
+    private func generateVideoUploadURL(spotId: String) async throws -> PresignedVideoUploadResponse {
+        print("🔗 [VIDEO_UPLOAD] Generating presigned upload URL for spotId: \(spotId)")
+        
+        let components = spotId.split(separator: "#")
+        guard components.count >= 3 else {
+            print("❌ [VIDEO_UPLOAD] Invalid spot format: \(spotId)")
+            throw NSError(domain: "SurfReport", code: 400, userInfo: [NSLocalizedDescriptionKey: "Invalid spot format"])
+        }
+        
+        let country = String(components[0])
+        let region = String(components[1])
+        let spot = String(components[2])
+        
+        let endpoint = "/api/generateVideoUploadURL?country=\(country)&region=\(region)&spot=\(spot)"
+        print("🌐 [VIDEO_UPLOAD] Requesting presigned URL from: \(endpoint)")
+        
+        return try await withCheckedThrowingContinuation { continuation in
+            APIClient.shared.request(endpoint) { (result: Result<PresignedVideoUploadResponse, Error>) in
+                switch result {
+                case .success(let response):
+                    print("✅ [VIDEO_UPLOAD] Presigned URL response received")
+                    print("🔑 [VIDEO_UPLOAD] Video key: \(response.videoKey)")
+                    print("🌐 [VIDEO_UPLOAD] Upload URL: \(response.uploadUrl.prefix(50))...")
+                    continuation.resume(returning: response)
+                case .failure(let error):
+                    print("❌ [VIDEO_UPLOAD] Failed to generate presigned URL: \(error)")
+                    print("❌ [VIDEO_UPLOAD] Error details:")
+                    if let nsError = error as NSError? {
+                        print("   - Domain: \(nsError.domain)")
+                        print("   - Code: \(nsError.code)")
+                        print("   - Description: \(nsError.localizedDescription)")
+                        if let userInfo = nsError.userInfo as? [String: Any] {
+                            print("   - User Info: \(userInfo)")
+                        }
+                    }
+                    continuation.resume(throwing: error)
+                }
+            }
+        }
+    }
+    
+    /// Uploads video to S3 using presigned URL
+    private func uploadVideoToS3(uploadURL: String, videoURL: URL) async throws {
+        print("☁️ [VIDEO_UPLOAD] Starting S3 upload process")
+        print("🌐 [VIDEO_UPLOAD] Upload URL: \(uploadURL.prefix(50))...")
+        
+        guard let url = URL(string: uploadURL) else {
+            print("❌ [VIDEO_UPLOAD] Invalid upload URL: \(uploadURL)")
+            throw NSError(domain: "SurfReport", code: 400, userInfo: [NSLocalizedDescriptionKey: "Invalid upload URL"])
+        }
+        
+        // Read video data
+        print("📦 [VIDEO_UPLOAD] Reading video data...")
+        let videoData: Data
+        do {
+            videoData = try Data(contentsOf: videoURL)
+        } catch {
+            print("❌ [VIDEO_UPLOAD] Failed to read video data: \(error)")
+            throw NSError(domain: "SurfReport", code: 400, userInfo: [NSLocalizedDescriptionKey: "Failed to read video data"])
+        }
+        
+        print("📦 [VIDEO_UPLOAD] Video data size: \(videoData.count) bytes")
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "PUT"
+        request.setValue("video/mp4", forHTTPHeaderField: "Content-Type")
+        request.httpBody = videoData
+        
+        print("🚀 [VIDEO_UPLOAD] Sending PUT request to S3...")
+        let (_, response) = try await URLSession.shared.data(for: request)
+        
+        guard let httpResponse = response as? HTTPURLResponse else {
+            print("❌ [VIDEO_UPLOAD] Invalid response from S3 - not HTTPURLResponse")
+            throw NSError(domain: "SurfReport", code: 500, userInfo: [NSLocalizedDescriptionKey: "Invalid response from S3"])
+        }
+        
+        print("📊 [VIDEO_UPLOAD] S3 response status code: \(httpResponse.statusCode)")
+        
+        guard httpResponse.statusCode == 200 else {
+            print("❌ [VIDEO_UPLOAD] S3 upload failed with status: \(httpResponse.statusCode)")
+            if let responseHeaders = httpResponse.allHeaderFields as? [String: String] {
+                print("📋 [VIDEO_UPLOAD] Response headers: \(responseHeaders)")
+            }
+            throw NSError(domain: "SurfReport", code: 500, userInfo: [NSLocalizedDescriptionKey: "Failed to upload video to S3 - Status: \(httpResponse.statusCode)"])
+        }
+        
+        print("✅ [VIDEO_UPLOAD] Video successfully uploaded to S3")
+    }
+    
 
     
     @MainActor
@@ -881,7 +1197,7 @@ class SurfReportSubmissionViewModel: ObservableObject {
         print("📅 [SURF_REPORT] Current timezone: \(TimeZone.current.identifier)")
         print("📅 [SURF_REPORT] Formatted date (UTC): \(formattedDate)")
         
-        // Prepare report data - use S3 image key if available, fallback to base64
+        // Prepare report data - use S3 keys if available
         let reportData: [String: Any] = [
             "country": country,
             "region": region,
@@ -893,6 +1209,7 @@ class SurfReportSubmissionViewModel: ObservableObject {
             "consistency": selectedOptions[4] ?? "",
             "quality": selectedOptions[5] ?? "",
             "imageKey": imageKey ?? "",
+            "videoKey": videoKey ?? "",
             "date": formattedDate
         ]
         
@@ -939,21 +1256,22 @@ class SurfReportSubmissionViewModel: ObservableObject {
     }
     
     private func submitSurfReport(_ reportData: [String: Any]) async throws {
-        // Use new S3 endpoint if we have an image key, fallback to legacy endpoint
-        let endpoint = imageKey != nil ? "/api/submitSurfReportWithS3Image" : "/api/submitSurfReport"
+        // Use new iOS-validated endpoint for all submissions
+        let endpoint = "/api/submitSurfReportWithIOSValidation"
         print("🌐 [SURF_REPORT] Using endpoint: \(endpoint)")
         
-        // If using legacy endpoint, add base64 image data
+        // Add iOS validation flag to indicate this was validated client-side
         var finalReportData = reportData
-        if imageKey == nil, let image = selectedImage {
-            print("📷 [SURF_REPORT] Adding base64 image data for legacy endpoint")
-            let base64Image = compressImageForUpload(image) ?? ""
-            finalReportData["imageData"] = base64Image
-            print("📷 [SURF_REPORT] Base64 image data length: \(base64Image.count) characters")
-        } else if imageKey != nil {
+        finalReportData["iosValidated"] = true
+        
+        if imageKey != nil {
             print("📷 [SURF_REPORT] Using S3 image key: \(imageKey!)")
-        } else {
-            print("📷 [SURF_REPORT] No image data to include")
+        }
+        if videoKey != nil {
+            print("🎥 [SURF_REPORT] Using S3 video key: \(videoKey!)")
+        }
+        if imageKey == nil && videoKey == nil {
+            print("📷 [SURF_REPORT] No media data to include")
         }
         
         // Convert to Data for APIClient

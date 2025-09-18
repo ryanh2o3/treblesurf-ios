@@ -5,6 +5,7 @@ import CoreGraphics
 import UIKit
 import Photos
 import ImageIO
+import AVFoundation
 
 // MARK: - Quick Photo Report View Model
 
@@ -17,6 +18,16 @@ class QuickPhotoReportViewModel: ObservableObject {
             }
         }
     }
+    @Published var selectedVideo: PhotosPickerItem? = nil {
+        didSet {
+            print("🎬 [QUICK_VIDEO] Video selection changed: \(selectedVideo != nil ? "Selected" : "Nil")")
+            Task {
+                await loadVideo()
+            }
+        }
+    }
+    @Published var selectedVideoURL: URL? = nil
+    @Published var selectedVideoThumbnail: UIImage? = nil
     @Published var selectedDateTime: Date = Date()
     @Published var photoTimestampExtracted: Bool = false
     @Published var showTimestampSelector: Bool = false
@@ -30,16 +41,39 @@ class QuickPhotoReportViewModel: ObservableObject {
     @Published var currentError: APIErrorHandler.ErrorDisplay?
     @Published var fieldErrors: [String: String] = [:]
     
+    // Media validation properties
+    @Published var isValidatingImage = false
+    @Published var imageValidationError: String?
+    @Published var imageValidationPassed = false
+    @Published var isValidatingVideo = false
+    @Published var videoValidationError: String?
+    @Published var videoValidationPassed = false
+    
     // S3 upload properties
     @Published var isUploadingImage = false
     @Published var uploadProgress: Double = 0.0
     @Published var imageKey: String?
     @Published var uploadUrl: String?
+    @Published var isUploadingVideo = false
+    @Published var videoUploadProgress: Double = 0.0
+    @Published var videoKey: String?
+    @Published var videoUploadUrl: String?
+    @Published var isUploadingVideoThumbnail = false
+    @Published var videoThumbnailKey: String?
     
     private var spotId: String?
     
+    deinit {
+        // Clean up temporary video file when view model is deallocated
+        if let videoURL = selectedVideoURL {
+            cleanupTemporaryVideoFile(videoURL)
+        }
+    }
+    
     var canSubmit: Bool {
-        selectedImage != nil
+        let hasImage = selectedImage != nil && imageValidationPassed && !isValidatingImage
+        let hasVideo = selectedVideoURL != nil && videoValidationPassed && !isValidatingVideo
+        return hasImage || hasVideo
     }
     
     @MainActor
@@ -52,6 +86,9 @@ class QuickPhotoReportViewModel: ObservableObject {
             if let data = try await imageSelection.loadTransferable(type: Data.self),
                let image = UIImage(data: data) {
                 selectedImage = image
+                
+                // Validate image using iOS ML
+                await validateImage(image)
                 
                 // Try to extract timestamp from image metadata
                 var timestampFound = false
@@ -118,6 +155,338 @@ class QuickPhotoReportViewModel: ObservableObject {
         }
     }
     
+    @MainActor
+    private func validateImage(_ image: UIImage) async {
+        isValidatingImage = true
+        imageValidationError = nil
+        imageValidationPassed = false
+        
+        ImageValidationService.shared.validateSurfImage(image) { [weak self] result in
+            Task { @MainActor in
+                self?.isValidatingImage = false
+                
+                switch result {
+                case .success(let isValid):
+                    self?.imageValidationPassed = isValid
+                    if !isValid {
+                        self?.imageValidationError = "This image doesn't appear to contain surf-related content. Please select a photo that shows waves, surfers, or the ocean."
+                    }
+                case .failure(let error):
+                    self?.imageValidationPassed = false
+                    self?.imageValidationError = "Failed to validate image: \(error.localizedDescription)"
+                }
+            }
+        }
+    }
+    
+    @MainActor
+    private func loadVideo() async {
+        print("🎬 [QUICK_VIDEO] Starting video load process")
+        guard let videoSelection = selectedVideo else {
+            print("❌ [QUICK_VIDEO] No video selection found")
+            return
+        }
+        
+        print("🎬 [QUICK_VIDEO] Video selection found, loading transferable...")
+        do {
+            // Try loading as Data first, then convert to URL
+            print("🎬 [QUICK_VIDEO] Attempting to load video as Data...")
+            if let videoData = try await videoSelection.loadTransferable(type: Data.self) {
+                print("✅ [QUICK_VIDEO] Video data loaded successfully, size: \(videoData.count) bytes")
+                
+                // Create a temporary file URL
+                let tempDirectory = FileManager.default.temporaryDirectory
+                let tempFileName = "temp_video_\(UUID().uuidString).mov"
+                let tempURL = tempDirectory.appendingPathComponent(tempFileName)
+                
+                do {
+                    try videoData.write(to: tempURL)
+                    print("✅ [QUICK_VIDEO] Video data written to temporary file: \(tempURL)")
+                    selectedVideoURL = tempURL
+                    
+                    // Generate thumbnail
+                    print("🎬 [QUICK_VIDEO] Generating video thumbnail...")
+                    if let thumbnail = generateVideoThumbnail(from: tempURL) {
+                        print("✅ [QUICK_VIDEO] Video thumbnail generated successfully")
+                        selectedVideoThumbnail = thumbnail
+                    } else {
+                        print("❌ [QUICK_VIDEO] Failed to generate video thumbnail")
+                    }
+                    
+                    // Validate video using iOS ML
+                    print("🎬 [QUICK_VIDEO] Starting video validation...")
+                    await validateVideo(tempURL)
+                    
+                    // Start video upload process
+                    if let spotId = self.spotId {
+                        print("🎬 [QUICK_VIDEO] Starting video upload process for spotId: \(spotId)")
+                        await startVideoUploadProcess(spotId: spotId, videoURL: tempURL)
+                    } else {
+                        print("❌ [QUICK_VIDEO] No spotId available for video upload")
+                    }
+                } catch {
+                    print("❌ [QUICK_VIDEO] Failed to write video data to temporary file: \(error)")
+                }
+            } else {
+                print("❌ [QUICK_VIDEO] Failed to load video data from selection, trying URL approach...")
+                // Fallback: try loading as URL directly
+                if let videoURL = try await videoSelection.loadTransferable(type: URL.self) {
+                    print("✅ [QUICK_VIDEO] Video URL loaded successfully via fallback: \(videoURL)")
+                    selectedVideoURL = videoURL
+                    
+                    // Generate thumbnail
+                    print("🎬 [QUICK_VIDEO] Generating video thumbnail...")
+                    if let thumbnail = generateVideoThumbnail(from: videoURL) {
+                        print("✅ [QUICK_VIDEO] Video thumbnail generated successfully")
+                        selectedVideoThumbnail = thumbnail
+                    } else {
+                        print("❌ [QUICK_VIDEO] Failed to generate video thumbnail")
+                    }
+                    
+                    // Validate video using iOS ML
+                    print("🎬 [QUICK_VIDEO] Starting video validation...")
+                    await validateVideo(videoURL)
+                    
+                    // Start video upload process
+                    if let spotId = self.spotId {
+                        print("🎬 [QUICK_VIDEO] Starting video upload process for spotId: \(spotId)")
+                        await startVideoUploadProcess(spotId: spotId, videoURL: videoURL)
+                    } else {
+                        print("❌ [QUICK_VIDEO] No spotId available for video upload")
+                    }
+                } else {
+                    print("❌ [QUICK_VIDEO] Failed to load video URL from selection via fallback")
+                }
+            }
+        } catch {
+            print("❌ [QUICK_VIDEO] Failed to load video: \(error)")
+        }
+    }
+    
+    @MainActor
+    private func validateVideo(_ videoURL: URL) async {
+        print("🎬 [QUICK_VIDEO] Starting video validation for: \(videoURL)")
+        isValidatingVideo = true
+        videoValidationError = nil
+        videoValidationPassed = false
+        
+        ImageValidationService.shared.validateSurfVideo(videoURL) { [weak self] result in
+            Task { @MainActor in
+                self?.isValidatingVideo = false
+                
+                switch result {
+                case .success(let isValid):
+                    print("🎬 [QUICK_VIDEO] Video validation completed. Valid: \(isValid)")
+                    self?.videoValidationPassed = isValid
+                    if !isValid {
+                        print("❌ [QUICK_VIDEO] Video validation failed - not surf-related content")
+                        self?.videoValidationError = "This video doesn't appear to contain surf-related content. Please select a video that shows waves, surfers, or the ocean."
+                    } else {
+                        print("✅ [QUICK_VIDEO] Video validation passed")
+                    }
+                case .failure(let error):
+                    print("❌ [QUICK_VIDEO] Video validation error: \(error)")
+                    self?.videoValidationPassed = false
+                    self?.videoValidationError = "Failed to validate video: \(error.localizedDescription)"
+                }
+            }
+        }
+    }
+    
+    private func generateVideoThumbnail(from videoURL: URL) -> UIImage? {
+        let asset = AVAsset(url: videoURL)
+        let imageGenerator = AVAssetImageGenerator(asset: asset)
+        imageGenerator.appliesPreferredTrackTransform = true
+        imageGenerator.maximumSize = CGSize(width: 300, height: 300)
+        
+        let time = CMTime(seconds: 1, preferredTimescale: 60)
+        
+        do {
+            let cgImage = try imageGenerator.copyCGImage(at: time, actualTime: nil)
+            return UIImage(cgImage: cgImage)
+        } catch {
+            print("Failed to generate video thumbnail: \(error)")
+            return nil
+        }
+    }
+    
+    private func startVideoUploadProcess(spotId: String, videoURL: URL) async {
+        print("🎬 [QUICK_VIDEO] Starting video upload process for spotId: \(spotId)")
+        do {
+            // First, upload the video thumbnail as an image
+            if let thumbnail = selectedVideoThumbnail {
+                print("🎬 [QUICK_VIDEO] Uploading video thumbnail as image...")
+                await uploadVideoThumbnail(spotId: spotId, thumbnail: thumbnail)
+            }
+            
+            // Then upload the video
+            print("🎬 [QUICK_VIDEO] Generating presigned upload URL for video...")
+            let videoUploadResponse = try await generateVideoUploadURL(spotId: spotId)
+            videoUploadUrl = videoUploadResponse.uploadUrl
+            videoKey = videoUploadResponse.videoKey
+            print("✅ [QUICK_VIDEO] Presigned URL generated. Key: \(videoUploadResponse.videoKey)")
+            
+            // Start video upload
+            print("🎬 [QUICK_VIDEO] Starting S3 video upload...")
+            try await uploadVideoToS3(uploadURL: videoUploadResponse.uploadUrl, videoURL: videoURL)
+            print("✅ [QUICK_VIDEO] Video upload completed successfully")
+        } catch {
+            print("❌ [QUICK_VIDEO] Failed to start video upload process: \(error)")
+        }
+    }
+    
+    private func generateVideoUploadURL(spotId: String) async throws -> PresignedVideoUploadResponse {
+        print("🔗 [VIDEO_UPLOAD] Generating presigned upload URL for spotId: \(spotId)")
+        
+        let components = spotId.split(separator: "#")
+        guard components.count >= 3 else {
+            print("❌ [VIDEO_UPLOAD] Invalid spot format: \(spotId)")
+            throw NSError(domain: "SurfReport", code: 400, userInfo: [NSLocalizedDescriptionKey: "Invalid spot format"])
+        }
+        
+        let country = String(components[0])
+        let region = String(components[1])
+        let spot = String(components[2])
+        
+        let endpoint = "/api/generateVideoUploadURL?country=\(country)&region=\(region)&spot=\(spot)"
+        print("🌐 [VIDEO_UPLOAD] Requesting presigned URL from: \(endpoint)")
+        
+        return try await withCheckedThrowingContinuation { continuation in
+            APIClient.shared.request(endpoint) { (result: Result<PresignedVideoUploadResponse, Error>) in
+                switch result {
+                case .success(let response):
+                    print("✅ [VIDEO_UPLOAD] Presigned URL generated successfully")
+                    continuation.resume(returning: response)
+                case .failure(let error):
+                    print("❌ [VIDEO_UPLOAD] Failed to generate presigned URL: \(error)")
+                    continuation.resume(throwing: error)
+                }
+            }
+        }
+    }
+    
+    private func uploadVideoToS3(uploadURL: String, videoURL: URL) async throws {
+        print("🎬 [QUICK_VIDEO] Starting S3 upload to: \(uploadURL)")
+        isUploadingVideo = true
+        videoUploadProgress = 0.0
+        
+        do {
+            print("🎬 [QUICK_VIDEO] Reading video data from: \(videoURL)")
+            let videoData = try Data(contentsOf: videoURL)
+            print("🎬 [QUICK_VIDEO] Video data size: \(videoData.count) bytes")
+            
+            guard let url = URL(string: uploadURL) else {
+                print("❌ [QUICK_VIDEO] Invalid upload URL: \(uploadURL)")
+                throw NSError(domain: "VideoUpload", code: 0, userInfo: [NSLocalizedDescriptionKey: "Invalid upload URL"])
+            }
+            
+            var request = URLRequest(url: url)
+            request.httpMethod = "PUT"
+            request.setValue("video/mp4", forHTTPHeaderField: "Content-Type")
+            request.httpBody = videoData
+            
+            print("🎬 [QUICK_VIDEO] Sending PUT request to S3...")
+            let (_, response) = try await URLSession.shared.data(for: request)
+            
+            if let httpResponse = response as? HTTPURLResponse {
+                print("🎬 [QUICK_VIDEO] S3 response status: \(httpResponse.statusCode)")
+                if httpResponse.statusCode == 200 {
+                    videoUploadProgress = 1.0
+                    print("✅ [QUICK_VIDEO] Video uploaded successfully to S3")
+                } else {
+                    print("❌ [QUICK_VIDEO] S3 upload failed with status: \(httpResponse.statusCode)")
+                    throw NSError(domain: "VideoUpload", code: 0, userInfo: [NSLocalizedDescriptionKey: "Upload failed with status: \(httpResponse.statusCode)"])
+                }
+            } else {
+                print("❌ [QUICK_VIDEO] Invalid HTTP response")
+                throw NSError(domain: "VideoUpload", code: 0, userInfo: [NSLocalizedDescriptionKey: "Invalid response"])
+            }
+        } catch {
+            print("❌ [QUICK_VIDEO] S3 upload error: \(error)")
+            throw error
+        }
+        
+        isUploadingVideo = false
+        print("🎬 [QUICK_VIDEO] Upload process completed")
+    }
+    
+    private func uploadVideoThumbnail(spotId: String, thumbnail: UIImage) async {
+        print("🎬 [QUICK_VIDEO] Starting video thumbnail upload...")
+        isUploadingVideoThumbnail = true
+        
+        do {
+            // Generate presigned URL for image upload
+            let imageUploadResponse = try await generateImageUploadURL(spotId: spotId)
+            videoThumbnailKey = imageUploadResponse.imageKey
+            print("✅ [QUICK_VIDEO] Video thumbnail upload URL generated: \(imageUploadResponse.imageKey)")
+            
+            // Compress and upload the thumbnail
+            if let thumbnailData = compressImageForUploadRaw(thumbnail) {
+                try await uploadImageToS3(uploadURL: imageUploadResponse.uploadUrl, imageData: thumbnailData)
+                print("✅ [QUICK_VIDEO] Video thumbnail uploaded successfully")
+            } else {
+                print("❌ [QUICK_VIDEO] Failed to compress video thumbnail")
+            }
+        } catch {
+            print("❌ [QUICK_VIDEO] Failed to upload video thumbnail: \(error)")
+        }
+        
+        isUploadingVideoThumbnail = false
+    }
+    
+    private func generateImageUploadURL(spotId: String) async throws -> PresignedUploadResponse {
+        print("🔗 [VIDEO_THUMBNAIL] Generating presigned upload URL for spotId: \(spotId)")
+        
+        let components = spotId.split(separator: "#")
+        guard components.count >= 3 else {
+            print("❌ [VIDEO_THUMBNAIL] Invalid spot format: \(spotId)")
+            throw NSError(domain: "SurfReport", code: 400, userInfo: [NSLocalizedDescriptionKey: "Invalid spot format"])
+        }
+        
+        let country = String(components[0])
+        let region = String(components[1])
+        let spot = String(components[2])
+        
+        let endpoint = "/api/generateImageUploadURL?country=\(country)&region=\(region)&spot=\(spot)"
+        print("🌐 [VIDEO_THUMBNAIL] Requesting presigned URL from: \(endpoint)")
+        
+        return try await withCheckedThrowingContinuation { continuation in
+            APIClient.shared.request(endpoint) { (result: Result<PresignedUploadResponse, Error>) in
+                switch result {
+                case .success(let response):
+                    print("✅ [VIDEO_THUMBNAIL] Presigned URL generated successfully")
+                    continuation.resume(returning: response)
+                case .failure(let error):
+                    print("❌ [VIDEO_THUMBNAIL] Failed to generate presigned URL: \(error)")
+                    continuation.resume(throwing: error)
+                }
+            }
+        }
+    }
+    
+    private func uploadImageToS3(uploadURL: String, imageData: Data) async throws {
+        print("🎬 [QUICK_VIDEO] Uploading image data to S3...")
+        
+        guard let url = URL(string: uploadURL) else {
+            print("❌ [QUICK_VIDEO] Invalid upload URL: \(uploadURL)")
+            throw NSError(domain: "VideoUpload", code: 0, userInfo: [NSLocalizedDescriptionKey: "Invalid upload URL"])
+        }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "PUT"
+        request.setValue("image/jpeg", forHTTPHeaderField: "Content-Type")
+        request.httpBody = imageData
+        
+        let (_, response) = try await URLSession.shared.data(for: request)
+        
+        if let httpResponse = response as? HTTPURLResponse {
+            print("🎬 [QUICK_VIDEO] S3 image upload response status: \(httpResponse.statusCode)")
+            if httpResponse.statusCode != 200 {
+                throw NSError(domain: "VideoUpload", code: 0, userInfo: [NSLocalizedDescriptionKey: "Image upload failed with status: \(httpResponse.statusCode)"])
+            }
+        }
+    }
+    
     /// Pre-generates presigned URL when user clicks "Add Photo" for better performance
     func preGenerateUploadURL() async {
         guard let spotId = self.spotId else {
@@ -155,6 +524,49 @@ class QuickPhotoReportViewModel: ObservableObject {
         uploadUrl = nil
         isUploadingImage = false
         uploadProgress = 0.0
+        
+        // Clear validation state
+        imageValidationPassed = false
+        imageValidationError = nil
+        isValidatingImage = false
+    }
+    
+    func clearVideo() {
+        // Clean up temporary video file
+        if let videoURL = selectedVideoURL {
+            cleanupTemporaryVideoFile(videoURL)
+        }
+        
+        selectedVideo = nil
+        selectedVideoURL = nil
+        selectedVideoThumbnail = nil
+        
+        // Clear S3 upload state
+        videoKey = nil
+        videoUploadUrl = nil
+        isUploadingVideo = false
+        videoUploadProgress = 0.0
+        videoThumbnailKey = nil
+        isUploadingVideoThumbnail = false
+        
+        // Clear validation state
+        videoValidationPassed = false
+        videoValidationError = nil
+        isValidatingVideo = false
+    }
+    
+    private func cleanupTemporaryVideoFile(_ videoURL: URL) {
+        do {
+            try FileManager.default.removeItem(at: videoURL)
+            print("✅ [QUICK_VIDEO] Cleaned up temporary video file: \(videoURL)")
+        } catch {
+            print("❌ [QUICK_VIDEO] Failed to clean up temporary video file: \(error)")
+        }
+    }
+    
+    func clearMedia() {
+        clearImage()
+        clearVideo()
     }
     
     // Parse image date from various formats
@@ -262,17 +674,25 @@ class QuickPhotoReportViewModel: ObservableObject {
         await generateUploadURLAndUploadImage(spotId: spotId, image: image)
     }
     
-    /// Sets the spotId and starts image upload if an image is already selected
+    /// Sets the spotId and starts image/video upload if media is already selected
     func setSpotId(_ spotId: String) {
+        print("🎬 [QUICK_VIDEO] Setting spotId: \(spotId)")
         self.spotId = spotId
         
         // If we already have an image selected but haven't started upload, start it now
         if selectedImage != nil && imageKey == nil && !isUploadingImage {
+            print("🎬 [QUICK_VIDEO] Starting image upload for existing selection")
             Task {
                 await startImageUploadProcess(spotId: spotId)
             }
-        } else {
-            // Not starting upload - conditions not met
+        }
+        
+        // If we already have a video selected but haven't started upload, start it now
+        if selectedVideoURL != nil && videoKey == nil && !isUploadingVideo {
+            print("🎬 [QUICK_VIDEO] Starting video upload for existing selection")
+            Task {
+                await startVideoUploadProcess(spotId: spotId, videoURL: selectedVideoURL!)
+            }
         }
     }
     
@@ -466,8 +886,11 @@ class QuickPhotoReportViewModel: ObservableObject {
         }
         
         // Convert spotId back to country/region/spot format
+        print("🎬 [QUICK_VIDEO] Parsing spotId: \(spotId)")
         let components = spotId.split(separator: "#")
+        print("🎬 [QUICK_VIDEO] SpotId components: \(components)")
         guard components.count >= 3 else {
+            print("❌ [QUICK_VIDEO] Invalid spot format - not enough components")
             errorMessage = "Invalid spot format"
             showErrorAlert = true
             isSubmitting = false
@@ -477,6 +900,7 @@ class QuickPhotoReportViewModel: ObservableObject {
         let country = String(components[0])
         let region = String(components[1])
         let spot = String(components[2])
+        print("🎬 [QUICK_VIDEO] Parsed - Country: \(country), Region: \(region), Spot: \(spot)")
         
         // Convert local time to UTC before sending to backend
         let dateFormatter = DateFormatter()
@@ -489,6 +913,16 @@ class QuickPhotoReportViewModel: ObservableObject {
         print("📅 [QUICK_REPORT] Current timezone: \(TimeZone.current.identifier)")
         print("📅 [QUICK_REPORT] Formatted date (UTC): \(formattedDate)")
         
+        // Determine which image key to use (regular image or video thumbnail)
+        let finalImageKey: String
+        if let videoThumbnailKey = videoThumbnailKey {
+            // If we have a video thumbnail, use that as the image
+            finalImageKey = videoThumbnailKey
+        } else {
+            // Otherwise use the regular image key
+            finalImageKey = imageKey ?? ""
+        }
+        
         // Prepare report data with default values for quick report
         let reportData: [String: Any] = [
             "country": country,
@@ -500,7 +934,8 @@ class QuickPhotoReportViewModel: ObservableObject {
             "windAmount": "light", // Default value
             "consistency": "consistent", // Default value
             "quality": quality.rawValue,
-            "imageKey": imageKey ?? "",
+            "imageKey": finalImageKey,
+            "videoKey": videoKey ?? "",
             "date": formattedDate
         ]
         
@@ -526,14 +961,30 @@ class QuickPhotoReportViewModel: ObservableObject {
     }
     
     private func submitSurfReport(_ reportData: [String: Any]) async throws -> Bool {
-        // Use new S3 endpoint if we have an image key, fallback to legacy endpoint
-        let endpoint = imageKey != nil ? "/api/submitSurfReportWithS3Image" : "/api/submitSurfReport"
+        // Use iOS validation endpoint for all submissions
+        let endpoint = Endpoints.createSurfReportWithIOSValidation
         
-        // If using legacy endpoint, add base64 image data
+        // Add iOS validation flag and media type
         var finalReportData = reportData
-        if imageKey == nil, let image = selectedImage {
-            finalReportData["imageData"] = compressImageForUpload(image) ?? ""
+        finalReportData["iosValidated"] = true
+        
+        // Set media type
+        if imageKey != nil && videoKey != nil {
+            finalReportData["mediaType"] = "both"
+        } else if imageKey != nil {
+            finalReportData["mediaType"] = "image"
+        } else if videoKey != nil {
+            finalReportData["mediaType"] = "video"
         }
+        
+        // Log the final request data for debugging
+        print("🎬 [QUICK_VIDEO] Final report data being sent:")
+        for (key, value) in finalReportData {
+            print("🎬 [QUICK_VIDEO]   \(key): \(value)")
+        }
+        
+        // Check if we have any media keys
+        print("🎬 [QUICK_VIDEO] Media keys - Image: \(imageKey ?? "nil"), Video: \(videoKey ?? "nil")")
         
         // Convert to Data for APIClient
         let jsonData: Data

@@ -30,7 +30,10 @@ enum Endpoints {
     // MARK: - Surf Reports
     static let surfReports = "/api/getTodaySpotReports"
     static let createSurfReport = "/api/submitSurfReport"
+    static let createSurfReportWithIOSValidation = "/api/submitSurfReportWithIOSValidation"
     static let reportImage = "/api/getReportImage"
+    static let generateImageUploadURL = "/api/generateImageUploadURL"
+    static let generateVideoUploadURL = "/api/generateVideoUploadURL"
     
     // MARK: - User Preferences
     static let userPreferences = "/api/user/preferences"

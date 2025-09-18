@@ -1,9 +1,12 @@
 import SwiftUI
+import AVKit
 import Foundation
 
 struct HomeView: View {
     @ObservedObject var viewModel = HomeViewModel()
     @State private var selectedReport: SurfReport?
+    @State private var showingVideoPlayer = false
+    @State private var videoURL: URL?
     
     var body: some View {
         NavigationView {
@@ -41,6 +44,19 @@ struct HomeView: View {
                                     reportCard(report)
                                         .onTapGesture {
                                             selectedReport = report
+                                            // If the report has video data, prepare for video playback
+                                            if let videoData = report.videoData,
+                                               let data = Data(base64Encoded: videoData) {
+                                                // Create temporary file for video playback
+                                                let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent("temp_video_\(UUID().uuidString).mp4")
+                                                do {
+                                                    try data.write(to: tempURL)
+                                                    videoURL = tempURL
+                                                    showingVideoPlayer = true
+                                                } catch {
+                                                    print("Failed to create temporary video file: \(error)")
+                                                }
+                                            }
                                         }
                                 }
                             }
@@ -74,6 +90,16 @@ struct HomeView: View {
                 }
                 .sheet(item: $selectedReport) { report in
                     SurfReportDetailView(report: report)
+                }
+                .sheet(isPresented: $showingVideoPlayer) {
+                    if let videoURL = videoURL {
+                        VideoPlayer(player: AVPlayer(url: videoURL))
+                            .ignoresSafeArea()
+                            .onDisappear {
+                                // Clean up temporary file when video player is dismissed
+                                try? FileManager.default.removeItem(at: videoURL)
+                            }
+                    }
                 }
             }
         }
@@ -183,27 +209,71 @@ struct HomeView: View {
         .padding(.horizontal)
     }
     
+    private func mediaTypeIcon(for mediaType: String?) -> String {
+        switch mediaType?.lowercased() {
+        case "image":
+            return "photo"
+        case "video":
+            return "video"
+        case "both":
+            return "photo.on.rectangle"
+        default:
+            return "photo"
+        }
+    }
+    
+    private func mediaTypeText(for mediaType: String?) -> String {
+        switch mediaType?.lowercased() {
+        case "image":
+            return "Photo"
+        case "video":
+            return "Video"
+        case "both":
+            return "Media"
+        default:
+            return "Photo"
+        }
+    }
+    
     private func reportCard(_ report: SurfReport) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            // Image section
+            // Media section - show image, video thumbnail, or placeholder
             if let imageData = report.imageData,
                let data = Data(base64Encoded: imageData),
                let uiImage = UIImage(data: data) {
+                // Show image
                 Image(uiImage: uiImage)
                     .resizable()
                     .aspectRatio(contentMode: .fill)
                     .frame(width: 160, height: 100)
                     .clipped()
+            } else if let videoThumbnail = report.videoThumbnail {
+                // Show video thumbnail with play button
+                ZStack {
+                    Image(uiImage: videoThumbnail)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .frame(width: 160, height: 100)
+                        .clipped()
+                    
+                    // Play button overlay
+                    Image(systemName: "play.circle.fill")
+                        .font(.system(size: 32))
+                        .foregroundColor(.white)
+                        .background(Color.black.opacity(0.3))
+                        .clipShape(Circle())
+                }
             } else {
+                // Show placeholder based on media type
                 Rectangle()
                     .fill(Color.gray.opacity(0.3))
                     .frame(width: 160, height: 100)
                     .overlay(
-                        VStack {
-                            Image(systemName: "photo")
+                        VStack(spacing: 4) {
+                            Image(systemName: mediaTypeIcon(for: report.mediaType))
                                 .font(.system(size: 24))
                                 .foregroundColor(.secondary)
-                            Text("No Photo")
+                            Text(mediaTypeText(for: report.mediaType))
                                 .font(.caption)
                                 .foregroundColor(.secondary)
                         }
@@ -510,6 +580,9 @@ struct DetailRow: View {
         }
         .padding(.vertical, 4)
     }
+    
+    // MARK: - Helper Functions
+    
 }
 
 struct OptionalDetailRow: View {
