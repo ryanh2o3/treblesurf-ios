@@ -52,29 +52,55 @@ struct TrebleSurfApp: App {
         } else {
             print("Running on device - checking authentication state")
             
-            // Try to restore Google Sign-In first
-            GIDSignIn.sharedInstance.restorePreviousSignIn { user, error in
-                if let user = user {
-                    print("Restored previous Google Sign-In for user: \(user.profile?.name ?? "Unknown")")
-                    
-                    // Now authenticate with backend
-                    AuthManager.shared.authenticateWithBackend(user: user) { success, _ in
-                        DispatchQueue.main.async {
-                            if success {
-                                print("Successfully restored authentication")
-                            } else {
-                                print("Failed to restore backend authentication")
-                            }
-                            isLoading = false
+            // Debug: Print current auth state
+            AuthManager.shared.debugPrintAuthState()
+            
+            // Check if we have any stored authentication data
+            if AuthManager.shared.hasStoredAuthData() {
+                print("Found stored authentication data, attempting to validate session")
+                
+                // First, try to validate existing session with backend
+                AuthManager.shared.validateSession { success, user in
+                    DispatchQueue.main.async {
+                        if success {
+                            print("Successfully validated existing session for user: \(user?.email ?? "Unknown")")
+                            self.isLoading = false
+                        } else {
+                            print("Session validation failed, checking for Google Sign-In")
+                            self.checkGoogleSignIn()
                         }
                     }
-                } else if let error = error {
-                    print("Failed to restore previous sign-in: \(error.localizedDescription)")
-                    isLoading = false
-                } else {
-                    print("No previous sign-in found")
-                    isLoading = false
                 }
+            } else {
+                print("No stored authentication data found, checking for Google Sign-In")
+                checkGoogleSignIn()
+            }
+        }
+    }
+    
+    private func checkGoogleSignIn() {
+        // Try to restore Google Sign-In
+        GIDSignIn.sharedInstance.restorePreviousSignIn { user, error in
+            if let user = user {
+                print("Restored previous Google Sign-In for user: \(user.profile?.name ?? "Unknown")")
+                
+                // Now authenticate with backend
+                AuthManager.shared.authenticateWithBackend(user: user) { success, _ in
+                    DispatchQueue.main.async {
+                        if success {
+                            print("Successfully restored authentication")
+                        } else {
+                            print("Failed to restore backend authentication")
+                        }
+                        self.isLoading = false
+                    }
+                }
+            } else if let error = error {
+                print("Failed to restore previous sign-in: \(error.localizedDescription)")
+                self.isLoading = false
+            } else {
+                print("No previous sign-in found")
+                self.isLoading = false
             }
         }
     }

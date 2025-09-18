@@ -1,7 +1,7 @@
 // SpotData.swift
 import Foundation
 
-struct SpotData: Codable, Identifiable {
+struct SpotData: Codable, Identifiable, Equatable {
     let beachDirection: Int
     let idealSwellDirection: String
     let latitude: Double
@@ -26,5 +26,10 @@ struct SpotData: Codable, Identifiable {
         case countryRegionSpot = "country_region_spot"
         case image = "Image"
         case imageString = "ImageString"
+    }
+    
+    // Equatable conformance
+    static func == (lhs: SpotData, rhs: SpotData) -> Bool {
+        return lhs.id == rhs.id
     }
 }

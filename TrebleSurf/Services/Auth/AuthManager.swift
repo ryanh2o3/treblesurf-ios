@@ -55,11 +55,35 @@ class AuthManager: ObservableObject {
     
     // MARK: - Authentication Methods
     
+    /// Check if we have any stored authentication data
+    func hasStoredAuthData() -> Bool {
+        return (sessionId != nil && !sessionId!.isEmpty) || 
+               (csrfToken != nil && !csrfToken!.isEmpty) ||
+               currentUser != nil
+    }
+    
+    /// Debug method to print current authentication state
+    func debugPrintAuthState() {
+        print("🔐 === Authentication State ===")
+        print("📱 Device: \(UIDevice.current.isSimulator ? "Simulator" : "Physical Device")")
+        print("🔑 Session ID: \(sessionId ?? "None")")
+        print("🎫 CSRF Token: \(csrfToken != nil ? "Present (\(csrfToken!.prefix(10)))..." : "None")")
+        print("👤 Current User: \(currentUser?.email ?? "None")")
+        print("✅ Is Authenticated: \(isAuthenticated)")
+        print("================================")
+    }
+    
     func authenticateWithBackend(user: GIDGoogleUser, completion: @escaping (Bool, User?) -> Void) {
+        print("🔐 Starting Google authentication with backend...")
+        print("👤 Google user: \(user.profile?.email ?? "Unknown email")")
+        
         guard let idToken = user.idToken?.tokenString else {
+            print("❌ No ID token available from Google user")
             completion(false, nil)
             return
         }
+        
+        print("✅ ID token received, length: \(idToken.count) characters")
         
         // Create request to your backend
         var request = URLRequest(url: URL(string: "https://treblesurf.com/api/auth/google")!)
@@ -68,7 +92,7 @@ class AuthManager: ObservableObject {
         
         let body: [String: Any] = ["id_token": idToken]
         request.httpBody = try? JSONSerialization.data(withJSONObject: body)
-        print("Sending request to backend: \(request)")
+        print("📤 Sending request to backend: \(request.url?.absoluteString ?? "Invalid URL")")
 
         URLSession.shared.dataTask(with: request) { data, response, error in
             if let error = error {
@@ -154,12 +178,20 @@ class AuthManager: ObservableObject {
     }
     
     func validateSession(completion: @escaping (Bool, User?) -> Void) {
+        print("🔐 Starting session validation...")
+        print("📱 Device: \(UIDevice.current.isSimulator ? "Simulator" : "Physical Device")")
+        print("🔑 Stored session ID: \(sessionId ?? "None")")
+        print("🎫 Stored CSRF token: \(csrfToken != nil ? "Present" : "None")")
+        print("👤 Stored user: \(currentUser?.email ?? "None")")
+        
         #if DEBUG
         // Check if running on simulator vs device
         let baseURL = UIDevice.current.isSimulator ? "http://localhost:8080" : "https://treblesurf.com"
         #else
         let baseURL = "https://treblesurf.com"
         #endif
+        
+        print("🌐 Using base URL: \(baseURL)")
         
         // In development environment, check if we have local session data
         #if DEBUG
@@ -189,10 +221,11 @@ class AuthManager: ObservableObject {
         request.addValue("application/json", forHTTPHeaderField: "Accept")
         
         // Add session cookie if available
-        if let sessionId = sessionId {
+        if let sessionId = sessionId, !sessionId.isEmpty {
             request.addValue("session_id=\(sessionId)", forHTTPHeaderField: "Cookie")
+            print("Adding session cookie for validation: session_id=\(sessionId)")
         } else {
-            print("No session ID available for validation")
+            print("No local session ID available, attempting validation without cookie")
         }
         
         URLSession.shared.dataTask(with: request) { data, response, error in
@@ -202,16 +235,16 @@ class AuthManager: ObservableObject {
                 // In development, if server is not available, use local validation
                 #if DEBUG
                 if UIDevice.current.isSimulator {
-                                    if let nsError = error as NSError? {
-                    if nsError.code == NSURLErrorCannotConnectToHost || 
-                       nsError.code == NSURLErrorTimedOut {
-                        print("Development server not available, using local session validation")
-                        if let sessionId = self.sessionId, !sessionId.isEmpty {
-                            completion(true, self.currentUser)
-                            return
+                    if let nsError = error as NSError? {
+                        if nsError.code == NSURLErrorCannotConnectToHost || 
+                           nsError.code == NSURLErrorTimedOut {
+                            print("Development server not available, using local session validation")
+                            if let sessionId = self.sessionId, !sessionId.isEmpty {
+                                completion(true, self.currentUser)
+                                return
+                            }
                         }
                     }
-                }
                 }
                 #endif
                 
@@ -233,6 +266,12 @@ class AuthManager: ObservableObject {
                 if let csrfToken = httpResponse.value(forHTTPHeaderField: "X-CSRF-Token") {
                     self.csrfToken = csrfToken
                     print("CSRF token extracted: \(csrfToken)")
+                }
+                
+                // Extract session ID from cookies if we don't have one locally
+                if let cookies = httpResponse.allHeaderFields["Set-Cookie"] as? String,
+                   (self.sessionId == nil || self.sessionId?.isEmpty == true) {
+                    self.extractSessionId(from: cookies)
                 }
                 
                 if httpResponse.statusCode != 200 {
@@ -342,7 +381,7 @@ class AuthManager: ObservableObject {
     }
     
     /// Comprehensive method to clear all app data, caches, and user preferences
-    private func clearAllAppData() {
+    func clearAllAppData() {
         DispatchQueue.main.async {
             // Clear authentication data
             self.currentUser = nil

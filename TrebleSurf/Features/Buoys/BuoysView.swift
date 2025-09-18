@@ -23,7 +23,16 @@ struct BuoysView: View {
                     
                     // Buoy list or details
                     if let selectedBuoy = selectedBuoy {
-                        buoyDetailView(selectedBuoy)
+                        BuoyDetailView(
+                            buoy: BuoyLocation(
+                                region_buoy: selectedBuoy.organization,
+                                latitude: Double(selectedBuoy.latitude) ?? 0.0,
+                                longitude: Double(selectedBuoy.longitude) ?? 0.0,
+                                name: selectedBuoy.name
+                            ),
+                            onBack: { self.selectedBuoy = nil },
+                            showBackButton: true
+                        )
                     } else {
                         buoyListView
                     }
@@ -81,112 +90,45 @@ struct BuoysView: View {
     private var buoyListView: some View {
         ScrollView {
             LazyVStack(spacing: 16) {
-                ForEach(viewModel.filteredBuoys) { buoy in
-                    BuoyCard(buoy: buoy)
-                        .onTapGesture {
-                            selectedBuoy = buoy
-                        }
+                if viewModel.isRefreshing {
+                    ProgressView()
+                        .frame(maxWidth: .infinity, minHeight: 100)
+                } else if viewModel.filteredBuoys.isEmpty {
+                    Text("No buoys available")
+                        .foregroundColor(.secondary)
+                        .frame(maxWidth: .infinity, minHeight: 100)
+                } else {
+                    ForEach(viewModel.filteredBuoys) { buoy in
+                        BuoyCard(buoy: buoy)
+                            .onTapGesture {
+                                selectedBuoy = buoy
+                            }
+                    }
                 }
             }
+        }
+        .refreshable {
+            await viewModel.refreshBuoys()
         }
     }
     
-    private func buoyDetailView(_ buoy: Buoy) -> some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                // Back button
-                Button {
-                    selectedBuoy = nil
-                } label: {
-                    HStack(spacing: 8) {
-                        Image(systemName: "chevron.left")
-                        Text("Back to Buoys")
-                    }
-                    .foregroundColor(.blue)
-                }
-                
-                // Buoy info
-                VStack(alignment: .leading, spacing: 12) {
-                    Text(buoy.name)
-                        .font(.title2)
-                        .fontWeight(.bold)
-                    
-                    Text("Station \(buoy.stationId) • \(buoy.organization)")
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
-                    
-                    Text("Last updated: \(buoy.lastUpdated)")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
-                
-                // Current readings
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("Current Readings")
-                        .font(.headline)
-                    
-                    LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 16) {
-                        ReadingCard(title: "Wave Height", value: buoy.waveHeight, unit: "m", icon: "water.waves")
-                        ReadingCard(title: "Period", value: buoy.maxPeriod, unit: "sec", icon: "timer")
-                        ReadingCard(title: "Wind Speed", value: buoy.windSpeed, unit: "km/h", icon: "wind")
-                        ReadingCard(title: "Direction", value: buoy.waveDirection, unit: "°", icon: "arrow.up.right")
-                        ReadingCard(title: "Water Temp", value: buoy.waterTemp, unit: "°C", icon: "thermometer")
-                        ReadingCard(title: "Air Temp", value: buoy.airTemp, unit: "°C", icon: "thermometer.sun")
-                    }
-                }
-                
-                // Wave height chart
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("Wave Height (24h)")
-                        .font(.headline)
-                    
-                    if #available(iOS 16.0, *) {
-                        Chart(buoy.historicalData) { dataPoint in
-                            LineMark(
-                                x: .value("Time", dataPoint.time),
-                                y: .value("Wave Height", dataPoint.waveHeight)
-                            )
-                            .foregroundStyle(Color.blue)
-                            
-                            AreaMark(
-                                x: .value("Time", dataPoint.time),
-                                y: .value("Wave Height", dataPoint.waveHeight)
-                            )
-                            .foregroundStyle(
-                                LinearGradient(
-                                    colors: [Color.blue.opacity(0.3), Color.blue.opacity(0.0)],
-                                    startPoint: .top,
-                                    endPoint: .bottom
-                                )
-                            )
-                        }
-                        .frame(height: 200)
-                        .chartYScale(domain: 0...(buoy.maxWaveHeight + 1))
-                    } else {
-                        // Fallback for iOS < 16
-                        Text("Chart requires iOS 16 or later")
-                            .foregroundColor(.secondary)
-                    }
-                }
-                
-                // Additional information
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("Buoy Information")
-                        .font(.headline)
-                    
-                    Text("Location: \(buoy.latitude), \(buoy.longitude)")
-                    Text("Distance to shore: \(buoy.distanceToShore) nautical miles")
-                    Text("Depth: \(buoy.depth)")
-                }
-            }
-            .onAppear {
-                Task {
-                    await viewModel.loadHistoricalDataForBuoy(id: buoy.id) { updatedBuoy in
-                        selectedBuoy = updatedBuoy
-                    }
-                }
-            }
+    /// Calculates the appropriate maximum Y value for the chart based on historical data
+    private func calculateChartMaxY(for buoy: Buoy) -> Double {
+        // If no historical data, use the buoy's current max wave height
+        guard !buoy.historicalData.isEmpty else {
+            return max(buoy.maxWaveHeight + 1, 3.0) // Minimum scale of 3 meters
         }
+        
+        // Find the actual maximum from historical data
+        let historicalMax = buoy.historicalData.map { $0.waveHeight }.max() ?? 0.0
+        
+        // Use the larger of current max or historical max, with some padding
+        let dataMax = max(buoy.maxWaveHeight, historicalMax)
+        
+        // Add 20% padding to the top, with a minimum scale of 3 meters
+        let paddedMax = dataMax * 1.2
+        
+        return max(paddedMax, 3.0)
     }
 }
 

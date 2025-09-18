@@ -53,6 +53,9 @@ class HomeViewModel: ObservableObject {
     private let cacheQueue = DispatchQueue(label: "com.treblesurf.cache", qos: .utility)
     private var cancellables = Set<AnyCancellable>()
     
+    // MARK: - Shared Buoy Cache
+    private let buoyCacheService = BuoyCacheService.shared
+    
     var formattedCurrentDate: String {
         let formatter = DateFormatter()
         formatter.dateFormat = "EEEE, MMMM d"
@@ -63,6 +66,13 @@ class HomeViewModel: ObservableObject {
         // Initial setup
         setupCacheCleanup()
         setupWeatherBuoys()
+        
+        // Subscribe to buoy cache updates
+        buoyCacheService.$cachedBuoyData
+            .sink { [weak self] _ in
+                self?.updateWeatherBuoysFromCache()
+            }
+            .store(in: &cancellables)
     }
     
     // MARK: - Weather Buoys Setup
@@ -143,6 +153,7 @@ class HomeViewModel: ObservableObject {
     func refreshData() async {
         // Clear cache and reload all data
         surfReportsCache.removeAll()
+        buoyCacheService.clearCache()
         fetchSpots()
         fetchSurfReports()
         fetchWeatherBuoys()
@@ -250,10 +261,19 @@ class HomeViewModel: ObservableObject {
     private func fetchWeatherBuoys() {
         let buoyNames = ["M4", "M6"]
         
+        // Check cache first
+        if let cachedData = buoyCacheService.getCachedBuoyData(for: buoyNames) {
+            updateWeatherBuoys(with: cachedData)
+            return
+        }
+        
+        // Fetch from API if not cached
         APIClient.shared.fetchBuoyData(buoyNames: buoyNames) { [weak self] result in
             switch result {
             case .success(let buoyResponses):
                 DispatchQueue.main.async {
+                    // Cache the data for future use
+                    self?.buoyCacheService.cacheBuoyData(buoyResponses)
                     self?.updateWeatherBuoys(with: buoyResponses)
                 }
             case .failure(let error):
@@ -263,6 +283,13 @@ class HomeViewModel: ObservableObject {
                     self?.updateWeatherBuoysWithError()
                 }
             }
+        }
+    }
+    
+    private func updateWeatherBuoysFromCache() {
+        let buoyNames = ["M4", "M6"]
+        if let cachedData = buoyCacheService.getCachedBuoyData(for: buoyNames) {
+            updateWeatherBuoys(with: cachedData)
         }
     }
     
@@ -289,21 +316,38 @@ class HomeViewModel: ObservableObject {
     }
     
     private func createWeatherBuoy(from response: BuoyResponse) -> WeatherBuoy {
-        let waveHeight = response.WaveHeight != nil ? String(format: "%.1fm", response.WaveHeight!) : "N/A"
-        let wavePeriod = response.WavePeriod != nil ? String(format: "%.1fs", response.WavePeriod!) : "N/A"
-        let windDirection = response.WindDirection != nil ? String(format: "%d°", response.WindDirection!) : "N/A"
-        let waveDirection = response.MeanWaveDirection != nil ? String(format: "%d°", response.MeanWaveDirection!) : "N/A"
-        let temperature = response.AirTemperature != nil ? String(format: "%.1f°C", response.AirTemperature!) : "N/A"
-        let waterTemperature = response.SeaTemperature != nil ? String(format: "%.1f°C", response.SeaTemperature!) : "N/A"
+        // Use the same robust validation logic as BuoysViewModel
+        let waveHeight = response.WaveHeight ?? 0.0
+        let wavePeriod = response.MaxPeriod ?? 0.0  // Use MaxPeriod instead of WavePeriod
+        let windDirection = response.WindDirection ?? 0
+        let waveDirection = response.MeanWaveDirection ?? 0
+        let temperature = response.AirTemperature ?? 0.0
+        let waterTemperature = response.SeaTemperature ?? 0.0
+        
+        // Validate numeric values and provide fallbacks for invalid data
+        let validWaveHeight = waveHeight.isFinite && waveHeight >= 0 ? waveHeight : 0.0
+        let validWavePeriod = wavePeriod.isFinite && wavePeriod >= 0 ? wavePeriod : 0.0
+        let validWindDirection = (0...360).contains(windDirection) ? windDirection : 0
+        let validWaveDirection = (0...360).contains(waveDirection) ? waveDirection : 0
+        let validTemperature = temperature.isFinite ? temperature : 0.0
+        let validWaterTemperature = waterTemperature.isFinite ? waterTemperature : 0.0
+        
+        // Format strings with validation
+        let waveHeightString = validWaveHeight > 0 ? String(format: "%.1fm", validWaveHeight) : "N/A"
+        let wavePeriodString = validWavePeriod > 0 ? String(format: "%.1fs", validWavePeriod) : "N/A"
+        let windDirectionString = validWindDirection > 0 ? String(format: "%d°", validWindDirection) : "N/A"
+        let waveDirectionString = validWaveDirection > 0 ? String(format: "%d°", validWaveDirection) : "N/A"
+        let temperatureString = validTemperature != 0 ? String(format: "%.1f°C", validTemperature) : "N/A"
+        let waterTemperatureString = validWaterTemperature != 0 ? String(format: "%.1f°C", validWaterTemperature) : "N/A"
         
         return WeatherBuoy(
             name: response.name,
-            waveHeight: waveHeight,
-            windDirection: windDirection,
-            waveDirection: waveDirection,
-            wavePeriod: wavePeriod,
-            temperature: temperature,
-            waterTemperature: waterTemperature,
+            waveHeight: waveHeightString,
+            windDirection: windDirectionString,
+            waveDirection: waveDirectionString,
+            wavePeriod: wavePeriodString,
+            temperature: temperatureString,
+            waterTemperature: waterTemperatureString,
             isLoading: false
         )
     }

@@ -21,6 +21,7 @@ enum APIClientError: Int {
     case noMockDataAvailable = 9
     case endpointNotAvailableOffline = 10
     case genericDevelopmentError = 11
+    case httpError = 12
     
     var localizedDescription: String {
         switch self {
@@ -46,7 +47,20 @@ enum APIClientError: Int {
             return "This endpoint is not available offline"
         case .genericDevelopmentError:
             return "Development server not available"
+        case .httpError:
+            return "HTTP error"
         }
+    }
+}
+
+// MARK: - HTTP Error
+struct HTTPError: Error {
+    let statusCode: Int
+    let message: String
+    
+    init(statusCode: Int, message: String = "HTTP Error") {
+        self.statusCode = statusCode
+        self.message = message
     }
 }
 
@@ -285,16 +299,37 @@ class APIClient {
             return
         }
         
-        // In production, validate session before making request
-        AuthManager.shared.validateSession { success, user in
-            if !success {
-                let error = NSError(domain: "APIClient", code: APIClientError.sessionValidationFailed.rawValue, userInfo: [NSLocalizedDescriptionKey: APIClientError.sessionValidationFailed.localizedDescription])
-                completion(.failure(error))
-                return
+        // Make the authenticated request directly - let the backend return 401 if session is invalid
+        self.request(endpoint, method: method, body: body) { (result: Result<T, Error>) in
+            switch result {
+            case .success(let data):
+                completion(.success(data))
+            case .failure(let error):
+                // Check if this is an authentication error (401)
+                if let nsError = error as NSError?,
+                   nsError.code == 401 {
+                    print("🔐 Received 401, attempting session refresh...")
+                    
+                    // Try to refresh the session
+                    AuthManager.shared.validateSession { success, user in
+                        if success {
+                            print("✅ Session refreshed, retrying original request...")
+                            // Retry the original request
+                            self.request(endpoint, method: method, body: body, completion: completion)
+                        } else {
+                            print("❌ Session refresh failed, clearing auth state")
+                            // Clear auth state and return the original error
+                            DispatchQueue.main.async {
+                                AuthManager.shared.clearAllAppData()
+                            }
+                            completion(.failure(error))
+                        }
+                    }
+                } else {
+                    // Not an auth error, return the original error
+                    completion(.failure(error))
+                }
             }
-            
-            // Make the authenticated request
-            self.request(endpoint, method: method, body: body, completion: completion)
         }
     }
     
@@ -516,11 +551,24 @@ extension APIClient {
         request(endpoint, method: "GET") { (result: Result<[BuoyLocation], Error>) in
             completion(result)
         }
+
     }
     
     func fetchBuoyData(buoyNames: [String], completion: @escaping (Result<[BuoyResponse], Error>) -> Void) {
         let buoysParam = buoyNames.joined(separator: ",")
-        let endpoint = "/api/getMultipleBuoyData?buoys=\(buoysParam)"
+        
+        // URL encode the buoys parameter to handle spaces and special characters
+        guard let encodedBuoysParam = buoysParam.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) else {
+            let error = NSError(domain: "APIClient", code: APIClientError.invalidURL.rawValue, userInfo: [NSLocalizedDescriptionKey: "Failed to URL encode buoy names: \(buoysParam)"])
+            completion(.failure(error))
+            return
+        }
+        
+        let endpoint = "/api/getMultipleBuoyData?buoys=\(encodedBuoysParam)"
+        
+        print("Debug: Fetching buoy data with endpoint: \(endpoint)")
+        print("Debug: Original buoy names: \(buoyNames)")
+        print("Debug: Encoded buoys param: \(encodedBuoysParam)")
         
         request(endpoint, method: "GET") { (result: Result<[BuoyResponse], Error>) in
             completion(result)
@@ -528,7 +576,16 @@ extension APIClient {
     }
     
     func fetchLast24HoursBuoyData(buoyName: String, completion: @escaping (Result<[BuoyResponse], Error>) -> Void) {
-        let endpoint = "/api/getLast24BuoyData?buoyName=\(buoyName)"
+        // URL encode the buoy name to handle spaces and special characters
+        guard let encodedBuoyName = buoyName.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) else {
+            let error = NSError(domain: "APIClient", code: APIClientError.invalidURL.rawValue, userInfo: [NSLocalizedDescriptionKey: "Failed to URL encode buoy name: \(buoyName)"])
+            completion(.failure(error))
+            return
+        }
+        
+        let endpoint = "/api/getLast24BuoyData?buoyName=\(encodedBuoyName)"
+        
+        print("Debug: Fetching historical data for buoy: \(buoyName) -> encoded: \(encodedBuoyName)")
         
         request(endpoint, method: "GET") { (result: Result<[BuoyResponse], Error>) in
             completion(result)

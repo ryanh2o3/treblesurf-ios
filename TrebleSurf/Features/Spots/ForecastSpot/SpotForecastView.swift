@@ -42,7 +42,7 @@ struct SpotForecastView: View {
     @State private var selectedCardIndex: Int = 0
     @State private var scrollOffset: CGFloat = 0
     @State private var isUserScrolling: Bool = false
-    @State private var lastSelectionTime: Date = Date()
+    @State private var lastScrollOffset: CGFloat = 0
 
         
     init(spotId: String, spotImage: Image? = nil, onForecastSelectionChanged: ((ForecastEntry) -> Void)? = nil) {
@@ -57,9 +57,16 @@ struct SpotForecastView: View {
     
     var body: some View {
         VStack(spacing: 0) {
-            modeToggleButtons
-            selectedTimeIndicator
+            // Modern segmented control for mode selection
+            modernModeSelector
+            
+            // Compact date/time header
+            compactDateTimeHeader
+            
+            // Forecast cards
             forecastScrollView
+            
+            // Detailed forecast section
             detailedForecastSection
         }
         .onAppear {
@@ -70,87 +77,97 @@ struct SpotForecastView: View {
         }
     }
     
-    // MARK: - View Components
+    // MARK: - Modern UI Components
     
     @ViewBuilder
-    private var modeToggleButtons: some View {
-        HStack {
+    private var modernModeSelector: some View {
+        HStack(spacing: 0) {
             ForEach(ForecastViewMode.allCases) { mode in
                 let isSelected = viewModel.selectedMode == mode
-                let backgroundColor = isSelected ? Color.blue : Color(.systemGray5)
-                let textColor = isSelected ? Color.white : Color.primary
                 
                 Button(action: {
-                    viewModel.setViewMode(mode)
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        viewModel.setViewMode(mode)
+                    }
                 }) {
                     Text(mode.rawValue)
-                        .font(.subheadline)
+                        .font(.footnote)
                         .fontWeight(.medium)
-                        .padding(.horizontal, 16)
+                        .foregroundColor(isSelected ? .white : .primary)
+                        .frame(maxWidth: .infinity)
                         .padding(.vertical, 8)
                         .background(
-                            RoundedRectangle(cornerRadius: 8)
-                                .fill(backgroundColor)
+                            RoundedRectangle(cornerRadius: 6)
+                                .fill(isSelected ? Color.blue : Color.clear)
                         )
-                        .foregroundColor(textColor)
+                        .scaleEffect(isSelected ? 1.02 : 1.0)
+                        .animation(.easeInOut(duration: 0.15), value: isSelected)
                 }
+                .buttonStyle(PlainButtonStyle())
             }
         }
         .background(
             RoundedRectangle(cornerRadius: 8)
                 .fill(Color(.systemGray6))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(Color(.systemGray4), lineWidth: 0.5)
+                )
         )
-        .padding(.horizontal, 6)
-        .padding(.bottom, 16)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
     }
     
     @ViewBuilder
-    private var selectedTimeIndicator: some View {
+    private var compactDateTimeHeader: some View {
         if let selectedEntry = currentForecastEntry {
-            VStack(spacing: 8) {
-                // Dynamic day header that updates with selection
-                HStack {
-                    Text(dayHeaderFormatter.string(from: selectedEntry.dateForecastedFor))
-                        .font(.headline)
-                        .fontWeight(.semibold)
-                        .foregroundColor(.primary)
-                    
-                    if isCurrentDay(selectedEntry.dateForecastedFor) {
-                        Text("TODAY")
-                            .font(.caption)
-                            .fontWeight(.bold)
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(Color.blue)
-                            .cornerRadius(8)
+            HStack {
+                // Date with compact formatting
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 6) {
+                        Text(Self.compactDayFormatter.string(from: selectedEntry.dateForecastedFor))
+                            .font(.headline)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.primary)
+                        
+                        if isCurrentDay(selectedEntry.dateForecastedFor) {
+                            Text("TODAY")
+                                .font(.caption2)
+                                .fontWeight(.bold)
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(Color.blue)
+                                .cornerRadius(4)
+                        }
                     }
                     
-                    Spacer()
+                    Text(Self.timeFormatter.string(from: selectedEntry.dateForecastedFor))
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
                 }
                 
-                // Time indicator
-                HStack {
-                    Text("Time: \(timeFormatter.string(from: selectedEntry.dateForecastedFor))")
-                        .font(.subheadline)
+                Spacer()
+                
+                // Quick quality indicator
+                HStack(spacing: 4) {
+                    Image(systemName: "star.fill")
+                        .font(.caption)
+                        .foregroundColor(qualityColor(for: selectedEntry.directionQuality))
+                    Text("\(Int(selectedEntry.directionQuality * 100))%")
+                        .font(.caption)
                         .fontWeight(.medium)
-                        .foregroundColor(.blue)
-                    
-                    Spacer()
+                        .foregroundColor(.secondary)
                 }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(
+                    RoundedRectangle(cornerRadius: 6)
+                        .fill(Color(.systemGray6))
+                )
             }
             .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-            .background(
-                RoundedRectangle(cornerRadius: 12)
-                    .fill(Color(.systemGray6))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 12)
-                            .stroke(Color.blue.opacity(0.3), lineWidth: 1)
-                    )
-            )
-            .padding(.horizontal, 6)
-            .padding(.bottom, 16)
+            .padding(.vertical, 8)
         }
     }
     
@@ -196,9 +213,23 @@ struct SpotForecastView: View {
                         isUserScrolling = true
                     }
                     .onEnded { _ in
-                        // Delay to allow final scroll position to settle
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                            isUserScrolling = false
+                        // Process final position immediately, then disable user scrolling
+                        let finalIndex = calculateMostVisibleCard(from: scrollOffset)
+                        
+                        // Use async dispatch to avoid modifying state during view update
+                        DispatchQueue.main.async {
+                            if finalIndex != self.selectedCardIndex {
+                                self.selectedCardIndex = finalIndex
+                                if finalIndex < self.viewModel.filteredEntries.count {
+                                    self.currentForecastEntry = self.viewModel.filteredEntries[finalIndex]
+                                    self.onForecastSelectionChanged?(self.viewModel.filteredEntries[finalIndex])
+                                }
+                            }
+                            
+                            // Small delay to prevent conflicts with programmatic scrolling
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                                self.isUserScrolling = false
+                            }
                         }
                     }
             )
@@ -219,14 +250,29 @@ struct SpotForecastView: View {
     @ViewBuilder
     private var detailedForecastSection: some View {
         if let selectedEntry = currentForecastEntry {
-            VStack(spacing: 20) {
-                Text("Detailed Forecast for \(timeFormatter.string(from: selectedEntry.dateForecastedFor))")
-                    .font(.headline)
-                    .fontWeight(.semibold)
-                    .padding(.horizontal, 16)
+            VStack(spacing: 16) {
+                // Compact header with time
+                HStack {
+                    Text("Forecast Details")
+                        .font(.headline)
+                        .fontWeight(.semibold)
+                    
+                    Spacer()
+                    
+                    Text(Self.timeFormatter.string(from: selectedEntry.dateForecastedFor))
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(
+                            RoundedRectangle(cornerRadius: 6)
+                                .fill(Color(.systemGray6))
+                        )
+                }
+                .padding(.horizontal, 16)
                 
-                // Surf conditions grid
-                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 16) {
+                // Surf conditions grid - more compact
+                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
                     ReadingCard(
                         title: "Swell Height",
                         value: String(format: "%.1f", selectedEntry.swellHeight),
@@ -285,13 +331,8 @@ struct SpotForecastView: View {
                 }
                 .padding(.horizontal, 16)
             }
-            .padding(.vertical, 20)
-            .background(Color(.systemGray6).opacity(0.3))
-            .cornerRadius(16)
-            .padding(.horizontal, 6)
-            .padding(.bottom, 20)
-            .transition(.opacity.combined(with: .move(edge: .bottom)))
-            .animation(.easeInOut(duration: 0.3), value: selectedEntry)
+            .padding(.vertical, 16)
+            .padding(.bottom, 16)
         }
     }
     
@@ -307,21 +348,34 @@ struct SpotForecastView: View {
         }
     }
     
-    private var dayHeaderFormatter: DateFormatter {
+    private static let dayHeaderFormatter: DateFormatter = {
         let df = DateFormatter()
         df.dateFormat = "EEE, MMM d"
         return df
-    }
+    }()
     
-    private var timeFormatter: DateFormatter {
+    private static let compactDayFormatter: DateFormatter = {
+        let df = DateFormatter()
+        df.dateFormat = "MMM d"
+        return df
+    }()
+    
+    private static let timeFormatter: DateFormatter = {
         let df = DateFormatter()
         df.dateFormat = "HH:mm"
         return df
-    }
+    }()
     
     private func isCurrentDay(_ date: Date) -> Bool {
         let calendar = Calendar.current
         return calendar.isDateInToday(date)
+    }
+    
+    private func qualityColor(for quality: Double) -> Color {
+        if quality >= 0.8 { return .green }
+        else if quality >= 0.6 { return .yellow }
+        else if quality >= 0.4 { return .orange }
+        else { return .red }
     }
     
     private func loadForecastData() {
@@ -387,18 +441,14 @@ struct SpotForecastView: View {
         let nextDay = calendar.dateComponents([.year, .month, .day], from: nextEntry.dateForecastedFor)
         
         // If it's a different day, use larger spacing
-        if currentDay != nextDay {
-            return 24  // Larger gap between days
-        } else {
-            return 8   // Smaller gap within the same day
-        }
+        return (currentDay != nextDay) ? 24 : 8
     }
     
     // MARK: - Auto-Selection Logic
     
     private func calculateMostVisibleCard(from scrollOffset: CGFloat) -> Int {
-        let cardWidth: CGFloat = 80 // Updated card width
-        let cardPadding: CGFloat = 8 // Updated internal padding
+        let cardWidth: CGFloat = 70 // Updated card width
+        let cardPadding: CGFloat = 6 // Updated internal padding
         let totalCardWidth = cardWidth + (cardPadding * 2) // Width including padding
         let screenWidth = UIScreen.main.bounds.width
         let scrollViewPadding: CGFloat = 16
@@ -439,25 +489,26 @@ struct SpotForecastView: View {
     private func handleScrollOffsetChange(_ offset: CGFloat) {
         scrollOffset = offset
         
-        // Only auto-select if user is actively scrolling (not when programmatically scrolling)
-        if isUserScrolling {
-            let newIndex = calculateMostVisibleCard(from: offset)
-            
-            // Only update if the calculated index is different and enough time has passed
-            if newIndex != selectedCardIndex {
-                let now = Date()
-                let timeSinceLastSelection = now.timeIntervalSince(lastSelectionTime)
-                
-                // Debounce rapid selections (minimum 50ms between selections)
-                if timeSinceLastSelection >= 0.05 {
-                    lastSelectionTime = now
-                    
-                    // Update without animation for smoother scrolling
-                    selectedCardIndex = newIndex
-                    if newIndex < viewModel.filteredEntries.count {
-                        currentForecastEntry = viewModel.filteredEntries[newIndex]
-                        onForecastSelectionChanged?(viewModel.filteredEntries[newIndex])
-                    }
+        // Only process if user is scrolling and offset changed meaningfully
+        guard isUserScrolling else { return }
+        
+        // Only calculate if scroll offset changed by at least 2 pixels to reduce excessive calculations
+        let offsetDifference = abs(offset - lastScrollOffset)
+        guard offsetDifference >= 2 else { return }
+        
+        lastScrollOffset = offset
+        
+        let newIndex = calculateMostVisibleCard(from: offset)
+        
+        // Only update if the calculated index is different
+        if newIndex != selectedCardIndex {
+            // Use async dispatch to avoid modifying state during view update
+            DispatchQueue.main.async {
+                // Update without animation for smoother scrolling
+                self.selectedCardIndex = newIndex
+                if newIndex < self.viewModel.filteredEntries.count {
+                    self.currentForecastEntry = self.viewModel.filteredEntries[newIndex]
+                    self.onForecastSelectionChanged?(self.viewModel.filteredEntries[newIndex])
                 }
             }
         }
@@ -470,24 +521,24 @@ struct ForecastCard: View {
     let isSelected: Bool
     let onTap: () -> Void
     
-    private var timeFormatter: DateFormatter {
+    private static let timeFormatter: DateFormatter = {
         let df = DateFormatter()
         df.dateFormat = "HH:mm"
         return df
-    }
+    }()
     
     var body: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: 6) {
             // Time header
-            Text(timeFormatter.string(from: entry.dateForecastedFor))
+            Text(Self.timeFormatter.string(from: entry.dateForecastedFor))
                 .font(.caption2)
-                .fontWeight(.medium)
+                .fontWeight(.semibold)
                 .foregroundColor(.secondary)
             
-            // Swell height (main metric)
-            VStack(spacing: 4) {
+            // Swell height (main metric) - more prominent
+            VStack(spacing: 2) {
                 Text("\(entry.swellHeight, specifier: "%.1f")")
-                    .font(.title2)
+                    .font(.title3)
                     .fontWeight(.bold)
                     .foregroundColor(.primary)
                 Text("m")
@@ -495,62 +546,55 @@ struct ForecastCard: View {
                     .foregroundColor(.secondary)
             }
             
-            // Swell period
-            HStack(spacing: 4) {
-                Image(systemName: "clock")
-                    .font(.caption2)
-                    .foregroundColor(.secondary)
-                Text("\(Int(entry.swellPeriod))s")
-                    .font(.caption2)
-                    .foregroundColor(.secondary)
-            }
-            
-            // Wind info
-            HStack(spacing: 4) {
-                Image(systemName: "wind")
-                    .font(.caption2)
-                    .foregroundColor(.secondary)
-                Text("\(Int(entry.windSpeed * 3.6)) km/h")
-                    .font(.caption2)
-                    .foregroundColor(.secondary)
-            }
-            
-            // Temperature
-            HStack(spacing: 4) {
-                Image(systemName: "thermometer")
-                    .font(.caption2)
-                    .foregroundColor(.secondary)
-                Text("\(Int(entry.temperature))°C")
-                    .font(.caption2)
-                    .foregroundColor(.secondary)
-            }
-            
-            // Quality indicator
-            HStack(spacing: 4) {
-                Image(systemName: "star.fill")
-                    .font(.caption2)
-                    .foregroundColor(qualityColor)
-                Text("\(Int(entry.directionQuality * 100))%")
-                    .font(.caption2)
-                    .foregroundColor(.secondary)
+            // Compact metrics row
+            VStack(spacing: 3) {
+                // Swell period
+                HStack(spacing: 3) {
+                    Image(systemName: "clock")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                    Text("\(Int(entry.swellPeriod))s")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                }
+                
+                // Wind speed
+                HStack(spacing: 3) {
+                    Image(systemName: "wind")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                    Text("\(Int(entry.windSpeed * 3.6))")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                }
+                
+                // Quality indicator with color
+                HStack(spacing: 3) {
+                    Image(systemName: "star.fill")
+                        .font(.caption2)
+                        .foregroundColor(qualityColor)
+                    Text("\(Int(entry.directionQuality * 100))%")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                }
             }
         }
-        .frame(width: 80, height: 120)
+        .frame(width: 70, height: 100)
         .background(
-            RoundedRectangle(cornerRadius: 10)
-                .fill(isSelected ? Color.blue.opacity(0.1) : Color(.systemGray6))
+            RoundedRectangle(cornerRadius: 8)
+                .fill(isSelected ? Color.blue.opacity(0.15) : Color(.systemGray6))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 10)
-                        .stroke(isSelected ? Color.blue : Color.clear, lineWidth: 2)
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(isSelected ? Color.blue : Color.clear, lineWidth: 1.5)
                 )
         )
-        .padding(8)
+        .padding(6)
         .onTapGesture {
             onTap()
         }
-        .scaleEffect(isSelected ? 1.02 : 1.0)
-        .animation(.easeInOut(duration: 0.1), value: isSelected)
-        .shadow(color: isSelected ? Color.blue.opacity(0.2) : Color.black.opacity(0.05), radius: isSelected ? 4 : 2, x: 0, y: 1)
+        .scaleEffect(isSelected ? 1.05 : 1.0)
+        .animation(.easeInOut(duration: 0.15), value: isSelected)
+        .shadow(color: isSelected ? Color.blue.opacity(0.25) : Color.black.opacity(0.08), radius: isSelected ? 3 : 1, x: 0, y: 1)
     }
     
     private var qualityColor: Color {

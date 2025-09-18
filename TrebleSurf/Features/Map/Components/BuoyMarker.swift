@@ -1,8 +1,8 @@
 import SwiftUI
 import MapKit
 
-struct SpotMarker: View {
-    let spot: SpotData
+struct BuoyMarker: View {
+    let buoy: BuoyLocation
     let isSelected: Bool
     let onTap: () -> Void
     
@@ -10,20 +10,20 @@ struct SpotMarker: View {
         Button(action: onTap) {
             VStack(spacing: 0) {
                 // Main marker icon
-                Image(systemName: "figure.surfing")
+                Image(systemName: "antenna.radiowaves.left.and.right.circle.fill")
                     .font(.system(size: 24))
-                    .foregroundColor(.white)
+                    .foregroundColor(isSelected ? .blue : .green)
                     .background(
                         Circle()
-                            .fill(isSelected ? .blue : Color.blue.opacity(0.8))
-                            .frame(width: 28, height: 28)
+                            .fill(.white)
+                            .frame(width: 20, height: 20)
                     )
                     .scaleEffect(isSelected ? 1.2 : 1.0)
                     .animation(.easeInOut(duration: 0.2), value: isSelected)
                 
-                // Spot name label
+                // Buoy name label
                 if isSelected {
-                    Text(spot.name)
+                    Text(buoy.name)
                         .font(.caption)
                         .fontWeight(.medium)
                         .foregroundColor(.primary)
@@ -42,26 +42,22 @@ struct SpotMarker: View {
     }
 }
 
-struct SpotMarker_Previews: PreviewProvider {
+struct BuoyMarker_Previews: PreviewProvider {
     static var previews: some View {
-        let sampleSpot = SpotData(
-            beachDirection: 270,
-            idealSwellDirection: "W",
+        let sampleBuoy = BuoyLocation(
+            region_buoy: "NorthAtlantic",
             latitude: 55.186844,
             longitude: -7.59785,
-            type: "Beach",
-            countryRegionSpot: "Ireland/Donegal/Bundoran",
-            image: "",
-            imageString: nil
+            name: "M4"
         )
         
         VStack(spacing: 20) {
-            SpotMarker(spot: sampleSpot, isSelected: false) {
-                print("Spot tapped")
+            BuoyMarker(buoy: sampleBuoy, isSelected: false) {
+                print("Buoy tapped")
             }
             
-            SpotMarker(spot: sampleSpot, isSelected: true) {
-                print("Selected spot tapped")
+            BuoyMarker(buoy: sampleBuoy, isSelected: true) {
+                print("Selected buoy tapped")
             }
         }
         .padding()

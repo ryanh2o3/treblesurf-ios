@@ -95,10 +95,14 @@ extension KeyedDecodingContainer {
     }
 }
 
-struct BuoyLocation: Decodable {
+struct BuoyLocation: Decodable, Equatable {
     let region_buoy: String
     let latitude: Double
     let longitude: Double
     let name: String
     
+    // Equatable conformance
+    static func == (lhs: BuoyLocation, rhs: BuoyLocation) -> Bool {
+        return lhs.name == rhs.name && lhs.region_buoy == rhs.region_buoy
+    }
 }
