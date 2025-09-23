@@ -76,6 +76,29 @@ struct SettingsView: View {
                     Text("Quick Actions")
                 }
                 
+                // Swell Predictions Section
+                Section {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Swell Predictions")
+                                .font(.subheadline)
+                                .fontWeight(.medium)
+                            Text("Show AI-powered swell predictions in forecasts")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                        
+                        Spacer()
+                        
+                        Toggle("", isOn: $settingsStore.showSwellPredictions)
+                            .labelsHidden()
+                    }
+                } header: {
+                    Text("Forecast Display")
+                } footer: {
+                    Text("When enabled, swell predictions will take visual priority over traditional forecasts. Toggle off to show original forecasts.")
+                }
+                
                 // Current Status Section
                 Section {
                     HStack {

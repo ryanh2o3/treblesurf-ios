@@ -747,3 +747,59 @@ extension APIClient {
         }
     }
 }
+
+// MARK: - Swell Prediction API Extensions
+extension APIClient {
+    func fetchSwellPrediction(country: String, region: String, spot: String, completion: @escaping (Result<SwellPredictionResponse, Error>) -> Void) {
+        let endpoint = "\(Endpoints.swellPrediction)?spot=\(spot)&region=\(region)&country=\(country)"
+        print("Fetching swell prediction: \(spot)")
+        request(endpoint, method: "GET") { (result: Result<SwellPredictionResponse, Error>) in
+            completion(result)
+        }
+    }
+    
+    func fetchMultipleSpotsSwellPrediction(country: String, region: String, spots: [String], completion: @escaping (Result<[[SwellPredictionResponse]], Error>) -> Void) {
+        let spotsParam = spots.joined(separator: ",")
+        let endpoint = "\(Endpoints.listSpotsSwellPrediction)?spots=\(spotsParam)&region=\(region)&country=\(country)"
+        print("Fetching swell predictions for multiple spots: \(spots)")
+        request(endpoint, method: "GET") { (result: Result<[[SwellPredictionResponse]], Error>) in
+            completion(result)
+        }
+    }
+    
+    func fetchRegionSwellPrediction(country: String, region: String, completion: @escaping (Result<[SwellPredictionResponse], Error>) -> Void) {
+        let endpoint = "\(Endpoints.regionSwellPrediction)?region=\(region)&country=\(country)"
+        print("Fetching region swell predictions: \(region)")
+        request(endpoint, method: "GET") { (result: Result<[SwellPredictionResponse], Error>) in
+            completion(result)
+        }
+    }
+    
+    func fetchSwellPredictionRange(country: String, region: String, spot: String, startTime: Date, endTime: Date, completion: @escaping (Result<[SwellPredictionResponse], Error>) -> Void) {
+        let dateFormatter = ISO8601DateFormatter()
+        let startTimeString = dateFormatter.string(from: startTime)
+        let endTimeString = dateFormatter.string(from: endTime)
+        
+        let endpoint = "\(Endpoints.swellPredictionRange)?spot=\(spot)&region=\(region)&country=\(country)&startTime=\(startTimeString)&endTime=\(endTimeString)"
+        print("Fetching swell prediction range: \(spot) from \(startTimeString) to \(endTimeString)")
+        request(endpoint, method: "GET") { (result: Result<[SwellPredictionResponse], Error>) in
+            completion(result)
+        }
+    }
+    
+    func fetchRecentSwellPredictions(hours: Int = 24, completion: @escaping (Result<[SwellPredictionResponse], Error>) -> Void) {
+        let endpoint = "\(Endpoints.recentSwellPredictions)?hours=\(hours)"
+        print("Fetching recent swell predictions: last \(hours) hours")
+        request(endpoint, method: "GET") { (result: Result<[SwellPredictionResponse], Error>) in
+            completion(result)
+        }
+    }
+    
+    func fetchSwellPredictionStatus(completion: @escaping (Result<SwellPredictionStatusResponse, Error>) -> Void) {
+        let endpoint = Endpoints.swellPredictionStatus
+        print("Fetching swell prediction status")
+        request(endpoint, method: "GET") { (result: Result<SwellPredictionStatusResponse, Error>) in
+            completion(result)
+        }
+    }
+}

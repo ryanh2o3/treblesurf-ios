@@ -36,6 +36,14 @@ enum Endpoints {
     static let generateVideoUploadURL = "/api/generateVideoUploadURL"
     static let generateVideoViewURL = "/api/generateVideoViewURL"
     
+    // MARK: - Swell Predictions
+    static let swellPrediction = "/api/swellPrediction"
+    static let listSpotsSwellPrediction = "/api/listSpotsSwellPrediction"
+    static let regionSwellPrediction = "/api/regionSwellPrediction"
+    static let swellPredictionRange = "/api/swellPredictionRange"
+    static let recentSwellPredictions = "/api/recentSwellPredictions"
+    static let swellPredictionStatus = "/api/swellPredictionStatus"
+    
     // MARK: - User Preferences
     static let userPreferences = "/api/user/preferences"
     static let updateTheme = "/api/setTheme"

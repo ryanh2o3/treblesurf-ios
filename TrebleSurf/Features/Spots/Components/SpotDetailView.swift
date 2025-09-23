@@ -6,8 +6,10 @@ struct SpotDetailView: View {
     let showBackButton: Bool
     
     @StateObject private var viewModel = SpotsViewModel()
+    @StateObject private var swellPredictionService = SwellPredictionService.shared
     @State private var selectedViewMode: String = "Live"
     @State private var selectedForecastEntry: ForecastEntry? = nil
+    @State private var selectedSwellPrediction: SwellPredictionEntry? = nil
     
     init(spot: SpotData, onBack: @escaping () -> Void, showBackButton: Bool = true) {
         self.spot = spot
@@ -59,8 +61,13 @@ struct SpotDetailView: View {
                                 // Key data display - will be populated by child views
                                 if selectedViewMode == "Live" {
                                     LiveSpotOverlay(spotId: spot.id)
+                                        .environmentObject(DataStore.shared)
                                 } else {
-                                    ForecastSpotOverlay(spotId: spot.id, selectedForecastEntry: selectedForecastEntry)
+                                    EnhancedSpotOverlay(
+                                        spotId: spot.id, 
+                                        selectedForecastEntry: selectedForecastEntry,
+                                        selectedSwellPrediction: selectedSwellPrediction
+                                    )
                                 }
                             }
                             .padding(.bottom, 8)
@@ -116,11 +123,14 @@ struct SpotDetailView: View {
                             .id(spot.id)
                             .clipped()
                     } else {
-                        SpotForecastView(
-                            spotId: spot.id, 
+                        EnhancedForecastView(
+                            spot: spot,
                             spotImage: nil,
                             onForecastSelectionChanged: { forecastEntry in
                                 selectedForecastEntry = forecastEntry
+                            },
+                            onSwellPredictionSelectionChanged: { swellPrediction in
+                                selectedSwellPrediction = swellPrediction
                             }
                         )
                         .id(spot.id)

@@ -47,7 +47,7 @@ struct ReadingCard: View {
         )
         
         ReadingCard(
-            title: "Swell Period",
+            title: "Swell Period", 
             value: "12",
             unit: "sec",
             icon: "timer"

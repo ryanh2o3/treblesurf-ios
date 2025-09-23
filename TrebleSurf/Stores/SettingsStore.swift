@@ -42,6 +42,12 @@ class SettingsStore: ObservableObject {
         }
     }
     
+    @Published var showSwellPredictions: Bool = true {
+        didSet {
+            UserDefaults.standard.set(showSwellPredictions, forKey: "showSwellPredictions")
+        }
+    }
+    
     private var cancellables = Set<AnyCancellable>()
     
     private init() {
@@ -58,6 +64,9 @@ class SettingsStore: ObservableObject {
         
         // Load saved dark mode preference (for backward compatibility)
         isDarkMode = UserDefaults.standard.bool(forKey: "isDarkMode")
+        
+        // Load swell predictions preference (default to true)
+        showSwellPredictions = UserDefaults.standard.object(forKey: "showSwellPredictions") as? Bool ?? true
         
         updateColorScheme()
     }
@@ -122,6 +131,7 @@ class SettingsStore: ObservableObject {
             // Clear UserDefaults
             UserDefaults.standard.removeObject(forKey: "selectedTheme")
             UserDefaults.standard.removeObject(forKey: "isDarkMode")
+            UserDefaults.standard.removeObject(forKey: "showSwellPredictions")
             UserDefaults.standard.synchronize()
             
             // Update color scheme
