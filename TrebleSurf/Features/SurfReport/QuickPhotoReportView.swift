@@ -108,8 +108,9 @@ struct QuickPhotoReportView: View {
                             ZStack {
                                 Image(uiImage: videoThumbnail)
                                     .resizable()
-                                    .aspectRatio(contentMode: .fit)
+                                    .aspectRatio(contentMode: .fill)
                                     .frame(maxHeight: 300)
+                                    .clipped()
                                     .cornerRadius(16)
                                 
                                 // Play button overlay
@@ -266,35 +267,6 @@ struct QuickPhotoReportView: View {
                                 }
                                 .padding(.top, 8)
                             }
-                            
-                            // Debug info (remove in production)
-                            #if DEBUG
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text("Debug Info:")
-                                    .font(.caption)
-                                    .fontWeight(.bold)
-                                Text("Video Selected: \(viewModel.selectedVideo != nil ? "Yes" : "No")")
-                                    .font(.caption)
-                                Text("Video URL: \(viewModel.selectedVideoURL?.absoluteString ?? "None")")
-                                    .font(.caption)
-                                Text("Video Thumbnail: \(viewModel.selectedVideoThumbnail != nil ? "Yes" : "No")")
-                                    .font(.caption)
-                                Text("Thumbnail Key: \(viewModel.videoThumbnailKey ?? "None")")
-                                    .font(.caption)
-                                Text("Validating: \(viewModel.isValidatingVideo ? "Yes" : "No")")
-                                    .font(.caption)
-                                Text("Uploading: \(viewModel.isUploadingVideo ? "Yes" : "No")")
-                                    .font(.caption)
-                                Text("Uploading Thumbnail: \(viewModel.isUploadingVideoThumbnail ? "Yes" : "No")")
-                                    .font(.caption)
-                                Text("Validation Passed: \(viewModel.videoValidationPassed ? "Yes" : "No")")
-                                    .font(.caption)
-                            }
-                            .padding(8)
-                            .background(Color.gray.opacity(0.1))
-                            .cornerRadius(8)
-                            .padding(.top, 8)
-                            #endif
                         }
                     }
                 }
@@ -452,6 +424,11 @@ struct QuickPhotoReportView: View {
                             self.videoURL = nil
                         }
                 }
+            }
+            .onDisappear {
+                print("🚪 [QUICK_CANCEL] ===== QUICK PHOTO REPORT DISMISSED =====")
+                // Clean up any uploaded media when the view is dismissed
+                viewModel.cleanupUnusedUploads()
             }
         }
     }

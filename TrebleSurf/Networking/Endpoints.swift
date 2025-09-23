@@ -34,6 +34,7 @@ enum Endpoints {
     static let reportImage = "/api/getReportImage"
     static let generateImageUploadURL = "/api/generateImageUploadURL"
     static let generateVideoUploadURL = "/api/generateVideoUploadURL"
+    static let generateVideoViewURL = "/api/generateVideoViewURL"
     
     // MARK: - User Preferences
     static let userPreferences = "/api/user/preferences"

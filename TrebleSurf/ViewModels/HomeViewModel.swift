@@ -426,23 +426,8 @@ class HomeViewModel: ObservableObject {
                             }
                         }
                         
-                        if let videoKey = response.videoKey, !videoKey.isEmpty {
-                            self?.fetchVideo(for: videoKey) { videoData in
-                                DispatchQueue.main.async {
-                                    report.videoData = videoData?.videoData
-                                    // Generate thumbnail for video preview
-                                    if let videoDataString = videoData?.videoData,
-                                       let videoData = Data(base64Encoded: videoDataString) {
-                                        self?.generateVideoThumbnail(from: videoData) { thumbnail in
-                                            DispatchQueue.main.async {
-                                                report.videoThumbnail = thumbnail
-                                                self?.objectWillChange.send()
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
+                        // Video handling is now done via presigned URLs in the detail view
+                        // No need to fetch video data here
                         
                         return report
                     }
@@ -577,51 +562,8 @@ class HomeViewModel: ObservableObject {
     
     // MARK: - Video Handling
     
-    private func fetchVideo(for key: String, completion: @escaping (SurfReportVideoResponse?) -> Void) {
-        APIClient.shared.getReportVideo(key: key) { result in
-            switch result {
-            case .success(let videoResponse):
-                completion(videoResponse)
-            case .failure(let error):
-                print("❌ [HOME_VIEWMODEL] Failed to fetch video: \(error)")
-                completion(nil)
-            }
-        }
-    }
-    
-    private func generateVideoThumbnail(from videoData: Data, completion: @escaping (UIImage?) -> Void) {
-        // Create a temporary file for the video data
-        let tempDirectory = FileManager.default.temporaryDirectory
-        let tempFileName = "temp_video_\(UUID().uuidString).mov"
-        let tempURL = tempDirectory.appendingPathComponent(tempFileName)
-        
-        do {
-            try videoData.write(to: tempURL)
-            
-            let asset = AVAsset(url: tempURL)
-            let imageGenerator = AVAssetImageGenerator(asset: asset)
-            imageGenerator.appliesPreferredTrackTransform = true
-            imageGenerator.maximumSize = CGSize(width: 300, height: 300)
-            
-            let time = CMTime(seconds: 1, preferredTimescale: 60)
-            
-            do {
-                let cgImage = try imageGenerator.copyCGImage(at: time, actualTime: nil)
-                let thumbnail = UIImage(cgImage: cgImage)
-                completion(thumbnail)
-            } catch {
-                print("❌ [HOME_VIEWMODEL] Failed to generate video thumbnail: \(error)")
-                completion(nil)
-            }
-            
-            // Clean up temporary file
-            try? FileManager.default.removeItem(at: tempURL)
-            
-        } catch {
-            print("❌ [HOME_VIEWMODEL] Failed to write video data to temporary file: \(error)")
-            completion(nil)
-        }
-    }
+    // Video handling is now done via presigned URLs in the detail view
+    // No need for local video fetching or thumbnail generation
 }
 
 // Basic model structures

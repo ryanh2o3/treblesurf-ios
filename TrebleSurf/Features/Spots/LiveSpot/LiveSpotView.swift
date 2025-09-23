@@ -87,19 +87,8 @@ struct LiveSpotView: View {
                         recentReportCard(latestReport)
                             .onTapGesture {
                                 selectedReport = latestReport
-                                // If the report has video data, prepare for video playback
-                                if let videoData = latestReport.videoData,
-                                   let data = Data(base64Encoded: videoData) {
-                                    // Create temporary file for video playback
-                                    let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent("temp_video_\(UUID().uuidString).mp4")
-                                    do {
-                                        try data.write(to: tempURL)
-                                        videoURL = tempURL
-                                        showingVideoPlayer = true
-                                    } catch {
-                                        print("Failed to create temporary video file: \(error)")
-                                    }
-                                }
+                                // If the report has a video key, we'll handle video playback in the detail view
+                                // The detail view will fetch the presigned URL for video viewing
                             }
                     } else if let errorMessage = viewModel.errorMessage {
                         HStack {
@@ -323,13 +312,24 @@ struct LiveSpotView: View {
                 if let imageData = report.imageData,
                    let data = Data(base64Encoded: imageData),
                    let uiImage = UIImage(data: data) {
-                    // Show image
-                    Image(uiImage: uiImage)
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                        .frame(width: 60, height: 60)
-                        .clipped()
-                        .cornerRadius(8)
+                    // Show image or video thumbnail
+                    ZStack {
+                        Image(uiImage: uiImage)
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                            .frame(width: 60, height: 60)
+                            .clipped()
+                            .cornerRadius(8)
+                        
+                        // Show play button if this report has a meaningful video key
+                        if let videoKey = report.videoKey, !videoKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                            Image(systemName: "play.circle.fill")
+                                .font(.system(size: 20))
+                                .foregroundColor(.white)
+                                .background(Color.black.opacity(0.3))
+                                .clipShape(Circle())
+                        }
+                    }
                 } else if let videoThumbnail = report.videoThumbnail {
                     // Show video thumbnail with play button
                     ZStack {

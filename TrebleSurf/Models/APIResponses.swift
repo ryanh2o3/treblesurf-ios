@@ -18,4 +18,8 @@ struct PresignedUploadResponse: Codable {
     let expiresAt: String
 }
 
+struct EmptyResponse: Codable {
+    // Empty response for delete operations
+}
+
 

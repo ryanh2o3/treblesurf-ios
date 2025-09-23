@@ -1108,4 +1108,109 @@ class QuickPhotoReportViewModel: ObservableObject {
             await preGenerateUploadURL()
         }
     }
+    
+    // MARK: - Cleanup Functions
+    
+    /// Cleans up unused uploaded media when user dismisses the form
+    func cleanupUnusedUploads() {
+        Task {
+            await cleanupUnusedMedia()
+        }
+    }
+    
+    /// Cleans up unused media by calling backend delete endpoints
+    private func cleanupUnusedMedia() async {
+        var cleanupTasks: [Task<Void, Never>] = []
+        
+        // Clean up any uploaded image (since user is dismissing, it's unused)
+        if let imageKey = imageKey {
+            cleanupTasks.append(Task {
+                await deleteUploadedMedia(key: imageKey, type: "image")
+            })
+        }
+        
+        // Clean up any uploaded video (since user is dismissing, it's unused)
+        if let videoKey = videoKey {
+            cleanupTasks.append(Task {
+                await deleteUploadedMedia(key: videoKey, type: "video")
+            })
+        }
+        
+        // Clean up any uploaded video thumbnail (since user is dismissing, it's unused)
+        if let videoThumbnailKey = videoThumbnailKey {
+            cleanupTasks.append(Task {
+                await deleteUploadedMedia(key: videoThumbnailKey, type: "image")
+            })
+        }
+        
+        // Wait for all cleanup tasks to complete
+        await withTaskGroup(of: Void.self) { group in
+            for task in cleanupTasks {
+                group.addTask { await task.value }
+            }
+        }
+    }
+    
+    /// Deletes a specific uploaded media file from S3
+    private func deleteUploadedMedia(key: String, type: String) async {
+        do {
+            let endpoint = "/api/deleteUploadedMedia?key=\(key)&type=\(type)"
+            
+            // Check if we have a CSRF token, refresh if needed (same as submitSurfReportWithIOSValidation)
+            if AuthManager.shared.csrfToken == nil {
+                await withCheckedContinuation { continuation in
+                    APIClient.shared.refreshCSRFToken { success in
+                        continuation.resume()
+                    }
+                }
+            }
+            
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                // Use the same authentication pattern as postRequest
+                guard let url = URL(string: "\(APIClient.shared.getBaseURL)\(endpoint)") else {
+                    let error = NSError(domain: "APIClient", code: 1, userInfo: [NSLocalizedDescriptionKey: "Invalid URL"])
+                    continuation.resume(throwing: error)
+                    return
+                }
+                
+                var request = URLRequest(url: url)
+                request.httpMethod = "DELETE"
+                
+                // Add session cookie (same as postRequest)
+                if let sessionCookie = AuthManager.shared.getSessionCookie() {
+                    for (key, value) in sessionCookie {
+                        request.addValue(value, forHTTPHeaderField: key)
+                    }
+                }
+                
+                // Add CSRF token for DELETE requests (same as postRequest)
+                if let csrfHeader = AuthManager.shared.getCsrfHeader() {
+                    for (key, value) in csrfHeader {
+                        request.addValue(value, forHTTPHeaderField: key)
+                    }
+                }
+                
+                URLSession.shared.dataTask(with: request) { data, response, error in
+                    if let error = error {
+                        continuation.resume(throwing: error)
+                        return
+                    }
+                    
+                    if let httpResponse = response as? HTTPURLResponse {
+                        if httpResponse.statusCode == 200 {
+                            continuation.resume()
+                        } else {
+                            let error = NSError(domain: "APIClient", code: httpResponse.statusCode, userInfo: [NSLocalizedDescriptionKey: "HTTP \(httpResponse.statusCode)"])
+                            continuation.resume(throwing: error)
+                        }
+                    } else {
+                        let error = NSError(domain: "APIClient", code: 0, userInfo: [NSLocalizedDescriptionKey: "Invalid response"])
+                        continuation.resume(throwing: error)
+                    }
+                }.resume()
+            }
+        } catch {
+            // Silently handle cleanup errors - they're not critical for user experience
+        }
+    }
 }

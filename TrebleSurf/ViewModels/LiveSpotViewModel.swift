@@ -103,23 +103,8 @@ class LiveSpotViewModel: ObservableObject {
                             }
                         }
                         
-                        if let videoKey = response.videoKey, !videoKey.isEmpty {
-                            self?.fetchVideo(for: videoKey) { videoData in
-                                DispatchQueue.main.async {
-                                    report.videoData = videoData?.videoData
-                                    // Generate thumbnail for video preview
-                                    if let videoDataString = videoData?.videoData,
-                                       let videoData = Data(base64Encoded: videoDataString) {
-                                        self?.generateVideoThumbnail(from: videoData) { thumbnail in
-                                            DispatchQueue.main.async {
-                                                report.videoThumbnail = thumbnail
-                                                self?.objectWillChange.send()
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
+                        // Video handling is now done via presigned URLs in the detail view
+                        // No need to fetch video data here
                         
                         return report
                     }
@@ -172,51 +157,8 @@ class LiveSpotViewModel: ObservableObject {
         }
     }
     
-    private func fetchVideo(for key: String, completion: @escaping (SurfReportVideoResponse?) -> Void) {
-        // For now, we'll fetch videos directly from API
-        // In the future, we could add video caching similar to images
-        APIClient.shared.getReportVideo(key: key) { result in
-            switch result {
-            case .success(let videoData):
-                completion(videoData)
-            case .failure(let error):
-                print("Failed to fetch video for key \(key): \(error.localizedDescription)")
-                completion(nil)
-            }
-        }
-    }
-    
-    private func generateVideoThumbnail(from videoData: Data, completion: @escaping (UIImage?) -> Void) {
-        // Create a temporary file for the video data
-        let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent("temp_video.mp4")
-        
-        do {
-            try videoData.write(to: tempURL)
-            
-            // Generate thumbnail using AVAssetImageGenerator
-            let asset = AVAsset(url: tempURL)
-            let imageGenerator = AVAssetImageGenerator(asset: asset)
-            imageGenerator.appliesPreferredTrackTransform = true
-            
-            let time = CMTime(seconds: 1, preferredTimescale: 60)
-            
-            imageGenerator.generateCGImagesAsynchronously(forTimes: [NSValue(time: time)]) { _, cgImage, _, result, error in
-                // Clean up temp file
-                try? FileManager.default.removeItem(at: tempURL)
-                
-                if let cgImage = cgImage {
-                    let thumbnail = UIImage(cgImage: cgImage)
-                    completion(thumbnail)
-                } else {
-                    print("Failed to generate video thumbnail: \(error?.localizedDescription ?? "Unknown error")")
-                    completion(nil)
-                }
-            }
-        } catch {
-            print("Failed to write video data to temp file: \(error.localizedDescription)")
-            completion(nil)
-        }
-    }
+    // Video handling is now done via presigned URLs in the detail view
+    // No need for local video fetching or thumbnail generation
     
     func getSpotName(from spotId: String) -> String {
         let components = spotId.split(separator: "#")

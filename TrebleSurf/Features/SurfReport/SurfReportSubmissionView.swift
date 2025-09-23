@@ -19,6 +19,9 @@ struct SurfReportSubmissionView: View {
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
                     Button("Cancel") {
+                        print("🚪 [CANCEL] ===== CANCEL BUTTON PRESSED =====")
+                        print("🚪 [CANCEL] User canceled surf report form")
+                        viewModel.cleanupUnusedUploads()
                         dismiss()
                     }
                 }

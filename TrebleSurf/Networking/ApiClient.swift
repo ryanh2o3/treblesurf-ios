@@ -82,6 +82,11 @@ class APIClient {
         return "https://treblesurf.com"
         #endif
     }
+    
+    // Public method to get base URL
+    var getBaseURL: String {
+        return baseURL
+    }
 
     // MARK: - Environment Check
     private var isDevelopmentEnvironment: Bool {
@@ -701,6 +706,23 @@ extension APIClient {
                 completion(.success(reportVideo))
             case .failure(let error):
                 print("Failed to fetch report video: \(error.localizedDescription)")
+                completion(.failure(error))
+            }
+        }
+    }
+    
+    func getVideoViewURL(key: String, completion: @escaping (Result<PresignedVideoViewResponse, Error>) -> Void) {
+        let endpoint = "\(Endpoints.generateVideoViewURL)?key=\(key)"
+        
+        print("🎬 [API_CLIENT] Getting video view URL for key: \(key)")
+        
+        makeFlexibleRequest(to: endpoint, requiresAuth: true) { (result: Result<PresignedVideoViewResponse, Error>) in
+            switch result {
+            case .success(let viewResponse):
+                print("✅ [API_CLIENT] Video view URL generated successfully")
+                completion(.success(viewResponse))
+            case .failure(let error):
+                print("❌ [API_CLIENT] Failed to get video view URL: \(error.localizedDescription)")
                 completion(.failure(error))
             }
         }

@@ -120,6 +120,11 @@ struct SurfReportVideoResponse: Decodable {
     let contentType: String
 }
 
+struct PresignedVideoViewResponse: Decodable {
+    let viewURL: String
+    let expiresAt: String
+}
+
 struct SurfReportSubmissionResponse: Decodable {
     let message: String
     

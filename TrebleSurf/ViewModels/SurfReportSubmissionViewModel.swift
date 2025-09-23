@@ -67,6 +67,11 @@ class SurfReportSubmissionViewModel: ObservableObject {
     // Store the spotId for image uploads
     private var spotId: String?
     
+    // Track uploaded media for cleanup
+    @Published var uploadedImageKey: String?
+    @Published var uploadedVideoKey: String?
+    @Published var uploadedVideoThumbnailKey: String?
+    
     let steps: [SurfReportStep] = [
         SurfReportStep(
             title: "Wave Size",
@@ -636,6 +641,8 @@ class SurfReportSubmissionViewModel: ObservableObject {
             await MainActor.run {
                 self.uploadUrl = uploadResponse.uploadUrl
                 self.imageKey = uploadResponse.imageKey
+                self.uploadedImageKey = uploadResponse.imageKey
+                print("📷 [UPLOAD_TRACKING] Set uploadedImageKey: \(uploadResponse.imageKey)")
             }
             
         } catch {
@@ -875,6 +882,8 @@ class SurfReportSubmissionViewModel: ObservableObject {
             await MainActor.run {
                 self.videoUploadUrl = uploadResponse.uploadUrl
                 self.videoKey = uploadResponse.videoKey
+                self.uploadedVideoKey = uploadResponse.videoKey
+                print("🎥 [UPLOAD_TRACKING] Set uploadedVideoKey: \(uploadResponse.videoKey)")
             }
             
             let urlGenerationTime = Date().timeIntervalSince(startTime)
@@ -933,6 +942,8 @@ class SurfReportSubmissionViewModel: ObservableObject {
             await MainActor.run {
                 self.uploadUrl = uploadResponse.uploadUrl
                 self.imageKey = uploadResponse.imageKey
+                self.uploadedImageKey = uploadResponse.imageKey
+                print("📷 [UPLOAD_TRACKING] Set uploadedImageKey: \(uploadResponse.imageKey)")
             }
             
             let urlGenerationTime = Date().timeIntervalSince(startTime)
@@ -1305,6 +1316,10 @@ class SurfReportSubmissionViewModel: ObservableObject {
                 switch result {
                 case .success(let response):
                     print("✅ [SURF_REPORT] POST request successful")
+                    // Clear uploaded media tracking since submission was successful
+                    self.uploadedImageKey = nil
+                    self.uploadedVideoKey = nil
+                    self.uploadedVideoThumbnailKey = nil
                     continuation.resume()
                 case .failure(let error):
                     print("❌ [SURF_REPORT] POST request failed: \(error)")
@@ -1357,6 +1372,82 @@ class SurfReportSubmissionViewModel: ObservableObject {
                     continuation.resume(throwing: error)
                 }
             }
+        }
+    }
+    
+    // MARK: - Cleanup Functions
+    
+    /// Cleans up unused uploaded media when user cancels or abandons the form
+    func cleanupUnusedUploads() {
+        print("🧹 [CLEANUP] ===== CLEANUP FUNCTION CALLED =====")
+        print("🧹 [CLEANUP] Starting cleanup of unused uploads")
+        print("🧹 [CLEANUP] Uploaded image key: \(uploadedImageKey ?? "nil")")
+        print("🧹 [CLEANUP] Uploaded video key: \(uploadedVideoKey ?? "nil")")
+        print("🧹 [CLEANUP] Uploaded video thumbnail key: \(uploadedVideoThumbnailKey ?? "nil")")
+        
+        Task {
+            await cleanupUnusedMedia()
+        }
+    }
+    
+    /// Cleans up unused media by calling backend delete endpoints
+    private func cleanupUnusedMedia() async {
+        var cleanupTasks: [Task<Void, Never>] = []
+        
+        // Clean up any uploaded image (since user is canceling, it's unused)
+        if let uploadedImageKey = uploadedImageKey {
+            print("🧹 [CLEANUP] Scheduling cleanup for uploaded image: \(uploadedImageKey)")
+            cleanupTasks.append(Task {
+                await deleteUploadedMedia(key: uploadedImageKey, type: "image")
+            })
+        }
+        
+        // Clean up any uploaded video (since user is canceling, it's unused)
+        if let uploadedVideoKey = uploadedVideoKey {
+            print("🧹 [CLEANUP] Scheduling cleanup for uploaded video: \(uploadedVideoKey)")
+            cleanupTasks.append(Task {
+                await deleteUploadedMedia(key: uploadedVideoKey, type: "video")
+            })
+        }
+        
+        // Clean up any uploaded video thumbnail (since user is canceling, it's unused)
+        if let uploadedThumbnailKey = uploadedVideoThumbnailKey {
+            print("🧹 [CLEANUP] Scheduling cleanup for uploaded video thumbnail: \(uploadedThumbnailKey)")
+            cleanupTasks.append(Task {
+                await deleteUploadedMedia(key: uploadedThumbnailKey, type: "image")
+            })
+        }
+        
+        // Wait for all cleanup tasks to complete
+        await withTaskGroup(of: Void.self) { group in
+            for task in cleanupTasks {
+                group.addTask { await task.value }
+            }
+        }
+        
+        print("🧹 [CLEANUP] Unused media cleanup completed")
+    }
+    
+    /// Deletes a specific uploaded media file from S3
+    private func deleteUploadedMedia(key: String, type: String) async {
+        print("🗑️ [CLEANUP] Deleting unused \(type): \(key)")
+        
+        do {
+            let endpoint = "/api/deleteUploadedMedia?key=\(key)&type=\(type)"
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                APIClient.shared.makeFlexibleRequest(to: endpoint, method: "DELETE", requiresAuth: true) { (result: Result<EmptyResponse, Error>) in
+                    switch result {
+                    case .success:
+                        print("✅ [CLEANUP] Successfully deleted \(type): \(key)")
+                        continuation.resume()
+                    case .failure(let error):
+                        print("❌ [CLEANUP] Failed to delete \(type) \(key): \(error)")
+                        continuation.resume(throwing: error)
+                    }
+                }
+            }
+        } catch {
+            print("❌ [CLEANUP] Error deleting \(type) \(key): \(error)")
         }
     }
 }

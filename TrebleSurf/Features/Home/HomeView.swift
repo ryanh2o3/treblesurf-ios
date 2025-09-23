@@ -44,19 +44,8 @@ struct HomeView: View {
                                     reportCard(report)
                                         .onTapGesture {
                                             selectedReport = report
-                                            // If the report has video data, prepare for video playback
-                                            if let videoData = report.videoData,
-                                               let data = Data(base64Encoded: videoData) {
-                                                // Create temporary file for video playback
-                                                let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent("temp_video_\(UUID().uuidString).mp4")
-                                                do {
-                                                    try data.write(to: tempURL)
-                                                    videoURL = tempURL
-                                                    showingVideoPlayer = true
-                                                } catch {
-                                                    print("Failed to create temporary video file: \(error)")
-                                                }
-                                            }
+                                            // If the report has a video key, we'll handle video playback in the detail view
+                                            // The detail view will fetch the presigned URL for video viewing
                                         }
                                 }
                             }
@@ -93,8 +82,13 @@ struct HomeView: View {
                 }
                 .sheet(isPresented: $showingVideoPlayer) {
                     if let videoURL = videoURL {
-                        VideoPlayer(player: AVPlayer(url: videoURL))
+                        let player = AVPlayer(url: videoURL)
+                        VideoPlayer(player: player)
                             .ignoresSafeArea()
+                            .onAppear {
+                                // Auto-play the video when the player appears
+                                player.play()
+                            }
                             .onDisappear {
                                 // Clean up temporary file when video player is dismissed
                                 try? FileManager.default.removeItem(at: videoURL)
@@ -241,12 +235,23 @@ struct HomeView: View {
             if let imageData = report.imageData,
                let data = Data(base64Encoded: imageData),
                let uiImage = UIImage(data: data) {
-                // Show image
-                Image(uiImage: uiImage)
-                    .resizable()
-                    .aspectRatio(contentMode: .fill)
-                    .frame(width: 160, height: 100)
-                    .clipped()
+                // Show image or video thumbnail
+                ZStack {
+                    Image(uiImage: uiImage)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .frame(width: 160, height: 100)
+                        .clipped()
+                    
+                    // Show play button if this report has a meaningful video key
+                    if let videoKey = report.videoKey, !videoKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        Image(systemName: "play.circle.fill")
+                            .font(.system(size: 32))
+                            .foregroundColor(.white)
+                            .background(Color.black.opacity(0.3))
+                            .clipShape(Circle())
+                    }
+                }
             } else if let videoThumbnail = report.videoThumbnail {
                 // Show video thumbnail with play button
                 ZStack {
@@ -408,6 +413,11 @@ struct SurfReportDetailView: View {
     let report: SurfReport
     let backButtonText: String
     @Environment(\.dismiss) private var dismiss
+    @State private var showingVideoPlayer = false
+    @State private var videoURL: URL?
+    @State private var videoViewURL: String?
+    @State private var isLoadingVideo = false
+    @State private var cachedVideoURL: URL?
     
     init(report: SurfReport, backButtonText: String = "Back to Reports") {
         self.report = report
@@ -434,16 +444,48 @@ struct SurfReportDetailView: View {
                     }
                     .padding(.horizontal)
                     
-                    // Main image
+                    // Main media (image or video thumbnail)
                     if let imageData = report.imageData,
                        let data = Data(base64Encoded: imageData),
                        let uiImage = UIImage(data: data) {
-                        Image(uiImage: uiImage)
-                            .resizable()
-                            .aspectRatio(contentMode: .fit)
-                            .frame(maxWidth: .infinity)
-                            .cornerRadius(16)
-                            .padding(.horizontal)
+                        // Show image or video thumbnail
+                        ZStack {
+                            Image(uiImage: uiImage)
+                                .resizable()
+                                .aspectRatio(contentMode: .fit)
+                                .frame(maxWidth: .infinity)
+                                .cornerRadius(16)
+                            
+                            // Show play button or loading indicator if this is a video
+                            if report.videoKey != nil {
+                                if isLoadingVideo {
+                                    ProgressView()
+                                        .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                                        .scaleEffect(1.5)
+                                        .background(Color.black.opacity(0.3))
+                                        .clipShape(Circle())
+                                } else {
+                                    Image(systemName: "play.circle.fill")
+                                        .font(.system(size: 60))
+                                        .foregroundColor(.white)
+                                        .background(Color.black.opacity(0.3))
+                                        .clipShape(Circle())
+                                }
+                            }
+                        }
+                        .onTapGesture {
+                            // If this is a video, play it
+                            if report.videoKey != nil {
+                                if let cachedURL = cachedVideoURL {
+                                    playVideoFromCachedURL(cachedURL)
+                                } else if let viewURL = videoViewURL {
+                                    playVideoFromURL(viewURL)
+                                } else if !isLoadingVideo {
+                                    loadVideoViewURL()
+                                }
+                            }
+                        }
+                        .padding(.horizontal)
                     } else {
                         Rectangle()
                             .fill(Color.gray.opacity(0.3))
@@ -451,10 +493,10 @@ struct SurfReportDetailView: View {
                             .cornerRadius(16)
                             .overlay(
                                 VStack {
-                                    Image(systemName: "photo")
+                                    Image(systemName: mediaTypeIcon(for: report.mediaType))
                                         .font(.system(size: 40))
                                         .foregroundColor(.secondary)
-                                    Text("No Photo Available")
+                                    Text(mediaTypeText(for: report.mediaType))
                                         .font(.caption)
                                         .foregroundColor(.secondary)
                                 }
@@ -528,6 +570,204 @@ struct SurfReportDetailView: View {
             .navigationBarTitleDisplayMode(.inline)
             .navigationBarHidden(true)
         }
+        .onAppear {
+            // Clean up old cached videos
+            cleanupOldCachedVideos()
+            
+            // Check for cached video first, then load if needed
+            if report.videoKey != nil {
+                checkForCachedVideo()
+                if videoViewURL == nil && cachedVideoURL == nil {
+                    loadVideoViewURL()
+                }
+            }
+        }
+        .sheet(isPresented: $showingVideoPlayer) {
+            if let videoURL = videoURL {
+                let player = AVPlayer(url: videoURL)
+                VideoPlayer(player: player)
+                    .onAppear {
+                        // Auto-play the video when the player appears
+                        player.play()
+                    }
+                    .onDisappear {
+                        // Clean up video URL when sheet is dismissed
+                        self.videoURL = nil
+                    }
+            }
+        }
+    }
+    
+    // MARK: - Helper Functions
+    
+    private func checkForCachedVideo() {
+        guard let videoKey = report.videoKey else { return }
+        
+        let cacheDirectory = getVideoCacheDirectory()
+        let fileName = "\(videoKey.replacingOccurrences(of: "/", with: "_")).mp4"
+        let cachedURL = cacheDirectory.appendingPathComponent(fileName)
+        
+        if FileManager.default.fileExists(atPath: cachedURL.path) {
+            print("🎬 [SURF_REPORT_DETAIL] Found cached video: \(cachedURL.path)")
+            self.cachedVideoURL = cachedURL
+        }
+    }
+    
+    private func getVideoCacheDirectory() -> URL {
+        let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+        let cacheDirectory = documentsPath.appendingPathComponent("VideoCache")
+        
+        // Create directory if it doesn't exist
+        if !FileManager.default.fileExists(atPath: cacheDirectory.path) {
+            try? FileManager.default.createDirectory(at: cacheDirectory, withIntermediateDirectories: true)
+        }
+        
+        return cacheDirectory
+    }
+    
+    private func loadVideoViewURL() {
+        guard let videoKey = report.videoKey else { return }
+        
+        isLoadingVideo = true
+        print("🎬 [SURF_REPORT_DETAIL] Loading video view URL for key: \(videoKey)")
+        
+        APIClient.shared.getVideoViewURL(key: videoKey) { result in
+            DispatchQueue.main.async {
+                self.isLoadingVideo = false
+                
+                switch result {
+                case .success(let viewResponse):
+                    self.videoViewURL = viewResponse.viewURL
+                    print("✅ [SURF_REPORT_DETAIL] Video view URL loaded successfully")
+                    
+                    // Download and cache the video
+                    self.downloadAndCacheVideo(from: viewResponse.viewURL, videoKey: videoKey)
+                case .failure(let error):
+                    print("❌ [SURF_REPORT_DETAIL] Failed to load video view URL: \(error)")
+                }
+            }
+        }
+    }
+    
+    private func downloadAndCacheVideo(from urlString: String, videoKey: String) {
+        guard let url = URL(string: urlString) else {
+            print("❌ [SURF_REPORT_DETAIL] Invalid video URL: \(urlString)")
+            return
+        }
+        
+        print("📥 [SURF_REPORT_DETAIL] Starting video download and cache...")
+        
+        let cacheDirectory = getVideoCacheDirectory()
+        let fileName = "\(videoKey.replacingOccurrences(of: "/", with: "_")).mp4"
+        let cachedURL = cacheDirectory.appendingPathComponent(fileName)
+        
+        // Download video in background
+        URLSession.shared.downloadTask(with: url) { tempURL, response, error in
+            DispatchQueue.main.async {
+                if let error = error {
+                    print("❌ [SURF_REPORT_DETAIL] Video download failed: \(error)")
+                    return
+                }
+                
+                guard let tempURL = tempURL else {
+                    print("❌ [SURF_REPORT_DETAIL] No temporary URL from download")
+                    return
+                }
+                
+                do {
+                    // Move downloaded file to cache directory
+                    if FileManager.default.fileExists(atPath: cachedURL.path) {
+                        try FileManager.default.removeItem(at: cachedURL)
+                    }
+                    try FileManager.default.moveItem(at: tempURL, to: cachedURL)
+                    
+                    print("✅ [SURF_REPORT_DETAIL] Video cached successfully: \(cachedURL.path)")
+                    self.cachedVideoURL = cachedURL
+                } catch {
+                    print("❌ [SURF_REPORT_DETAIL] Failed to cache video: \(error)")
+                }
+            }
+        }.resume()
+    }
+    
+    private func playVideoFromURL(_ urlString: String) {
+        guard let url = URL(string: urlString) else {
+            print("❌ [SURF_REPORT_DETAIL] Invalid video URL: \(urlString)")
+            return
+        }
+        
+        print("🎬 [SURF_REPORT_DETAIL] Playing video from URL: \(urlString)")
+        self.videoURL = url
+        showingVideoPlayer = true
+    }
+    
+    private func playVideoFromCachedURL(_ cachedURL: URL) {
+        print("🎬 [SURF_REPORT_DETAIL] Playing cached video: \(cachedURL.path)")
+        self.videoURL = cachedURL
+        showingVideoPlayer = true
+    }
+    
+    private func cleanupOldCachedVideos() {
+        let cacheDirectory = getVideoCacheDirectory()
+        let maxCacheAge: TimeInterval = 7 * 24 * 60 * 60 // 7 days
+        
+        do {
+            let files = try FileManager.default.contentsOfDirectory(at: cacheDirectory, includingPropertiesForKeys: [.creationDateKey])
+            let now = Date()
+            
+            for file in files {
+                if let creationDate = try file.resourceValues(forKeys: [.creationDateKey]).creationDate {
+                    if now.timeIntervalSince(creationDate) > maxCacheAge {
+                        try FileManager.default.removeItem(at: file)
+                        print("🗑️ [SURF_REPORT_DETAIL] Cleaned up old cached video: \(file.lastPathComponent)")
+                    }
+                }
+            }
+        } catch {
+            print("❌ [SURF_REPORT_DETAIL] Failed to cleanup cached videos: \(error)")
+        }
+    }
+    
+    private func playVideoFromBase64(_ base64String: String) {
+        guard let videoData = Data(base64Encoded: base64String) else {
+            print("❌ [SURF_REPORT_DETAIL] Failed to decode video data")
+            return
+        }
+        
+        // Create a temporary file for the video data
+        let tempDirectory = FileManager.default.temporaryDirectory
+        let tempFileName = "temp_video_\(UUID().uuidString).mov"
+        let tempURL = tempDirectory.appendingPathComponent(tempFileName)
+        
+        do {
+            try videoData.write(to: tempURL)
+            self.videoURL = tempURL
+            showingVideoPlayer = true
+        } catch {
+            print("❌ [SURF_REPORT_DETAIL] Failed to write video data to temporary file: \(error)")
+        }
+    }
+    
+    private func mediaTypeIcon(for mediaType: String?) -> String {
+        switch mediaType?.lowercased() {
+        case "video":
+            return "video"
+        case "image":
+            return "photo"
+        default:
+            return "photo"
+        }
+    }
+    
+    private func mediaTypeText(for mediaType: String?) -> String {
+        switch mediaType?.lowercased() {
+        case "video":
+            return "Video"
+        case "image":
+            return "Photo"
+        default:
+            return "Photo"
+        }
     }
 }
 
@@ -595,3 +835,4 @@ struct OptionalDetailRow: View {
         }
     }
 }
+
