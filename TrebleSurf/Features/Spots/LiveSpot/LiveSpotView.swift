@@ -11,6 +11,7 @@ struct LiveSpotView: View {
     @State private var selectedReport: SurfReport?
     @State private var showingVideoPlayer = false
     @State private var videoURL: URL?
+    @State private var showAIPrediction = false
 
     var body: some View {
         ScrollView {
@@ -118,6 +119,10 @@ struct LiveSpotView: View {
                         .padding(.horizontal, 6)
                     }
                 }
+                
+                // AI Prediction toggle
+                AIPredictionToggle(isEnabled: $showAIPrediction, spotId: spotId)
+                    .padding(.horizontal, 6)
                 
                 // Surf conditions grid
                 VStack(alignment: .leading, spacing: 6) {

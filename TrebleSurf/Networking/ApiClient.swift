@@ -910,4 +910,12 @@ extension APIClient {
             completion(result)
         }
     }
+    
+    func fetchClosestAIPrediction(country: String, region: String, spot: String, completion: @escaping (Result<SwellPredictionResponse, Error>) -> Void) {
+        let endpoint = "/api/closestAIPrediction?spot=\(spot)&region=\(region)&country=\(country)"
+        print("Fetching closest AI prediction: \(spot)")
+        request(endpoint, method: "GET") { (result: Result<SwellPredictionResponse, Error>) in
+            completion(result)
+        }
+    }
 }
