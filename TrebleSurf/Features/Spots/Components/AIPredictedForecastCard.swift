@@ -1,5 +1,5 @@
 //
-//  SwellPredictionCard.swift
+//  AIPredictedForecastCard.swift
 //  TrebleSurf
 //
 //  Created by Ryan Patton on 01/01/2025.
@@ -7,8 +7,8 @@
 
 import SwiftUI
 
-struct SwellPredictionCard: View {
-    let prediction: SwellPredictionEntry
+struct AIPredictedForecastCard: View {
+    let prediction: AIPredictedForecastEntry
     let isSelected: Bool
     let onTap: () -> Void
     
@@ -112,8 +112,8 @@ struct SwellPredictionCard: View {
     }
 }
 
-struct SwellPredictionDetailCard: View {
-    let prediction: SwellPredictionEntry
+struct AIPredictedForecastDetailCard: View {
+    let prediction: AIPredictedForecastEntry
     
     var body: some View {
         VStack(spacing: 16) {
@@ -122,7 +122,7 @@ struct SwellPredictionDetailCard: View {
                 HStack(spacing: 8) {
                     Image(systemName: "brain.head.profile")
                         .foregroundColor(.purple)
-                    Text("AI Swell Prediction")
+                    Text("AI Predicted Forecast")
                         .font(.headline)
                         .fontWeight(.semibold)
                 }
@@ -204,17 +204,10 @@ struct SwellPredictionDetailCard: View {
                     unit: "",
                     icon: "clock.arrow.circlepath"
                 )
-                
-                ReadingCard(
-                    title: "Reports Analyzed",
-                    value: String(prediction.reportsAnalyzed),
-                    unit: "",
-                    icon: "doc.text"
-                )
             }
             
-            // Calibration info if available
-            if let calibration = prediction.calibrationFactor {
+            // Calibration info if applied
+            if prediction.calibrationApplied {
                 VStack(alignment: .leading, spacing: 8) {
                     HStack {
                         Image(systemName: "gear")
@@ -225,15 +218,7 @@ struct SwellPredictionDetailCard: View {
                     }
                     
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("Method: \(calibration.method)")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                        
-                        Text("Similar Reports: \(calibration.similar_reports_count)")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                        
-                        Text("Avg Reported Size: \(String(format: "%.1f", calibration.avg_reported_surf_size))m")
+                        Text("Calibration Confidence: \(prediction.calibrationConfidencePercentage)")
                             .font(.caption)
                             .foregroundColor(.secondary)
                     }
@@ -259,4 +244,3 @@ struct SwellPredictionDetailCard: View {
         else { return .red }
     }
 }
-

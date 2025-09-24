@@ -9,7 +9,7 @@ import Foundation
 import UIKit
 
 // MARK: - Error Codes
-enum APIClientError: Int {
+enum APIClientError: Int, Error {
     case invalidURL = 1
     case noDataReceived = 2
     case userNotAuthenticated = 3
@@ -768,6 +768,77 @@ extension APIClient {
         request(endpoint, method: "GET") { (result: Result<SwellPredictionResponse, Error>) in
             completion(result)
         }
+    }
+    
+    /// Fetch swell prediction in DynamoDB format
+    func fetchSwellPredictionDynamoDB(country: String, region: String, spot: String, completion: @escaping (Result<[String: DynamoDBAttributeValue], Error>) -> Void) {
+        let endpoint = "\(Endpoints.swellPrediction)?spot=\(spot)&region=\(region)&country=\(country)"
+        print("Fetching swell prediction (DynamoDB format): \(spot)")
+        
+        // Create URL
+        guard let url = URL(string: "\(baseURL)/\(endpoint)") else {
+            completion(.failure(APIClientError.invalidURL))
+            return
+        }
+        
+        // Create request
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        
+        // Add session cookie if available
+        if let sessionCookie = AuthManager.shared.getSessionCookie() {
+            for (key, value) in sessionCookie {
+                request.addValue(value, forHTTPHeaderField: key)
+            }
+        }
+        
+        // Perform request
+        URLSession.shared.dataTask(with: request) { data, response, error in
+            DispatchQueue.main.async {
+                if let error = error {
+                    completion(.failure(error))
+                    return
+                }
+                
+                guard let data = data else {
+                    completion(.failure(APIClientError.noDataReceived))
+                    return
+                }
+                
+                do {
+                    // Try to parse as DynamoDB format first
+                    if let jsonObject = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                       let dynamoDBData = jsonObject as? [String: DynamoDBAttributeValue] {
+                        completion(.success(dynamoDBData))
+                    } else {
+                        // Fallback to regular format
+                        let response = try JSONDecoder().decode(SwellPredictionResponse.self, from: data)
+                        // Convert to DynamoDB format
+                        let dynamoDBData: [String: DynamoDBAttributeValue] = [
+                            "spot_id": DynamoDBAttributeValue(stringValue: response.spot_id, numberValue: nil, booleanValue: nil, binaryValue: nil, stringSetValue: nil, numberSetValue: nil, binarySetValue: nil, listValue: nil, mapValue: nil, nullValue: nil),
+                            "forecast_timestamp": DynamoDBAttributeValue(stringValue: response.forecast_timestamp, numberValue: nil, booleanValue: nil, binaryValue: nil, stringSetValue: nil, numberSetValue: nil, binarySetValue: nil, listValue: nil, mapValue: nil, nullValue: nil),
+                            "generated_at": DynamoDBAttributeValue(stringValue: response.generated_at, numberValue: nil, booleanValue: nil, binaryValue: nil, stringSetValue: nil, numberSetValue: nil, binarySetValue: nil, listValue: nil, mapValue: nil, nullValue: nil),
+                            "predicted_height": DynamoDBAttributeValue(stringValue: nil, numberValue: String(response.predicted_height), booleanValue: nil, binaryValue: nil, stringSetValue: nil, numberSetValue: nil, binarySetValue: nil, listValue: nil, mapValue: nil, nullValue: nil),
+                            "predicted_period": DynamoDBAttributeValue(stringValue: nil, numberValue: String(response.predicted_period), booleanValue: nil, binaryValue: nil, stringSetValue: nil, numberSetValue: nil, binarySetValue: nil, listValue: nil, mapValue: nil, nullValue: nil),
+                            "predicted_direction": DynamoDBAttributeValue(stringValue: nil, numberValue: String(response.predicted_direction), booleanValue: nil, binaryValue: nil, stringSetValue: nil, numberSetValue: nil, binarySetValue: nil, listValue: nil, mapValue: nil, nullValue: nil),
+                            "surf_size": DynamoDBAttributeValue(stringValue: nil, numberValue: String(response.surf_size), booleanValue: nil, binaryValue: nil, stringSetValue: nil, numberSetValue: nil, binarySetValue: nil, listValue: nil, mapValue: nil, nullValue: nil),
+                            "travel_time_hours": DynamoDBAttributeValue(stringValue: nil, numberValue: String(response.travel_time_hours), booleanValue: nil, binaryValue: nil, stringSetValue: nil, numberSetValue: nil, binarySetValue: nil, listValue: nil, mapValue: nil, nullValue: nil),
+                            "arrival_time": DynamoDBAttributeValue(stringValue: response.arrival_time, numberValue: nil, booleanValue: nil, binaryValue: nil, stringSetValue: nil, numberSetValue: nil, binarySetValue: nil, listValue: nil, mapValue: nil, nullValue: nil),
+                            "direction_quality": DynamoDBAttributeValue(stringValue: nil, numberValue: String(response.direction_quality), booleanValue: nil, binaryValue: nil, stringSetValue: nil, numberSetValue: nil, binarySetValue: nil, listValue: nil, mapValue: nil, nullValue: nil),
+                            "calibration_applied": DynamoDBAttributeValue(stringValue: nil, numberValue: String(response.calibration_applied ? 1 : 0), booleanValue: nil, binaryValue: nil, stringSetValue: nil, numberSetValue: nil, binarySetValue: nil, listValue: nil, mapValue: nil, nullValue: nil),
+                            "calibration_confidence": DynamoDBAttributeValue(stringValue: nil, numberValue: String(response.calibration_confidence), booleanValue: nil, binaryValue: nil, stringSetValue: nil, numberSetValue: nil, binarySetValue: nil, listValue: nil, mapValue: nil, nullValue: nil),
+                            "confidence": DynamoDBAttributeValue(stringValue: nil, numberValue: String(response.confidence), booleanValue: nil, binaryValue: nil, stringSetValue: nil, numberSetValue: nil, binarySetValue: nil, listValue: nil, mapValue: nil, nullValue: nil),
+                            "distance_km": DynamoDBAttributeValue(stringValue: nil, numberValue: String(response.distance_km), booleanValue: nil, binaryValue: nil, stringSetValue: nil, numberSetValue: nil, binarySetValue: nil, listValue: nil, mapValue: nil, nullValue: nil),
+                            "hours_ahead": DynamoDBAttributeValue(stringValue: nil, numberValue: String(response.hours_ahead ?? 0.0), booleanValue: nil, binaryValue: nil, stringSetValue: nil, numberSetValue: nil, binarySetValue: nil, listValue: nil, mapValue: nil, nullValue: nil)
+                        ]
+                        completion(.success(dynamoDBData))
+                    }
+                } catch {
+                    completion(.failure(error))
+                }
+            }
+        }.resume()
     }
     
     func fetchMultipleSpotsSwellPrediction(country: String, region: String, spots: [String], completion: @escaping (Result<[[SwellPredictionResponse]], Error>) -> Void) {

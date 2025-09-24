@@ -22,7 +22,7 @@ class SwellPredictionService: ObservableObject {
     
     // MARK: - Public Methods
     
-    /// Fetch swell prediction for a specific spot
+    /// Fetch swell prediction for a specific spot (handles both old and new DynamoDB format)
     func fetchSwellPrediction(for spot: SpotData, completion: @escaping (Result<SwellPredictionEntry, Error>) -> Void) {
         let spotComponents = spot.id.components(separatedBy: "#")
         guard spotComponents.count == 3 else {
@@ -37,21 +37,41 @@ class SwellPredictionService: ObservableObject {
         isLoading = true
         lastError = nil
         
-        apiClient.fetchSwellPrediction(country: country, region: region, spot: spotName) { [weak self] result in
+        // Try DynamoDB format first, fallback to regular format
+        apiClient.fetchSwellPredictionDynamoDB(country: country, region: region, spot: spotName) { [weak self] result in
             DispatchQueue.main.async {
                 self?.isLoading = false
                 
                 switch result {
-                case .success(let response):
+                case .success(let dynamoDBData):
+                    let response = SwellPredictionResponse(from: dynamoDBData)
                     let entry = SwellPredictionEntry(from: response)
                     self?.predictions[spot.id] = entry
                     completion(.success(entry))
                 case .failure(let error):
-                    self?.lastError = error
-                    completion(.failure(error))
+                    // Fallback to regular format
+                    self?.apiClient.fetchSwellPrediction(country: country, region: region, spot: spotName) { [weak self] fallbackResult in
+                        DispatchQueue.main.async {
+                            switch fallbackResult {
+                            case .success(let response):
+                                let entry = SwellPredictionEntry(from: response)
+                                self?.predictions[spot.id] = entry
+                                completion(.success(entry))
+                            case .failure(let fallbackError):
+                                self?.lastError = fallbackError
+                                completion(.failure(fallbackError))
+                            }
+                        }
+                    }
                 }
             }
         }
+    }
+    
+    /// Parse DynamoDB format data and create SwellPredictionEntry
+    func parseDynamoDBFormat(data: [String: DynamoDBAttributeValue], spotId: String) -> SwellPredictionEntry {
+        let response = SwellPredictionResponse(from: data)
+        return SwellPredictionEntry(from: response)
     }
     
     /// Fetch swell predictions for multiple spots in the same region

@@ -26,13 +26,14 @@ struct SwellPredictionResponse: Codable, Identifiable {
     let confidence: Double
     let distance_km: Double
     let reports_analyzed: Int?
+    let hours_ahead: Double?
     
     var id: String {
         "\(spot_id)-\(forecast_timestamp)"
     }
     
     // Public initializer for creating instances programmatically
-    init(spot_id: String, forecast_timestamp: String, generated_at: String, predicted_height: Double, predicted_period: Double, predicted_direction: Double, surf_size: Double, travel_time_hours: Double, arrival_time: String, direction_quality: Double, calibration_applied: Bool, calibration_confidence: Double, calibration_factor: CalibrationFactor?, confidence: Double, distance_km: Double, reports_analyzed: Int?) {
+    init(spot_id: String, forecast_timestamp: String, generated_at: String, predicted_height: Double, predicted_period: Double, predicted_direction: Double, surf_size: Double, travel_time_hours: Double, arrival_time: String, direction_quality: Double, calibration_applied: Bool, calibration_confidence: Double, calibration_factor: CalibrationFactor?, confidence: Double, distance_km: Double, reports_analyzed: Int?, hours_ahead: Double? = nil) {
         self.spot_id = spot_id
         self.forecast_timestamp = forecast_timestamp
         self.generated_at = generated_at
@@ -49,6 +50,30 @@ struct SwellPredictionResponse: Codable, Identifiable {
         self.confidence = confidence
         self.distance_km = distance_km
         self.reports_analyzed = reports_analyzed
+        self.hours_ahead = hours_ahead
+    }
+    
+    // Initializer for DynamoDB format data
+    init(from dynamoDBData: [String: DynamoDBAttributeValue]) {
+        self.spot_id = dynamoDBData["spot_id"]?.string ?? ""
+        // Use current time for forecast_timestamp and generated_at if not provided
+        let currentTime = ISO8601DateFormatter().string(from: Date())
+        self.forecast_timestamp = dynamoDBData["forecast_timestamp"]?.string ?? currentTime
+        self.generated_at = dynamoDBData["generated_at"]?.string ?? currentTime
+        self.predicted_height = dynamoDBData["predicted_height"]?.number ?? 0.0
+        self.predicted_period = dynamoDBData["predicted_period"]?.number ?? 0.0
+        self.predicted_direction = dynamoDBData["predicted_direction"]?.number ?? 0.0
+        self.surf_size = dynamoDBData["surf_size"]?.number ?? 0.0
+        self.travel_time_hours = dynamoDBData["travel_time_hours"]?.number ?? 0.0
+        self.arrival_time = dynamoDBData["arrival_time"]?.string ?? ""
+        self.direction_quality = dynamoDBData["direction_quality"]?.number ?? 0.0
+        self.calibration_applied = dynamoDBData["calibration_applied"]?.number == 1.0
+        self.calibration_confidence = dynamoDBData["calibration_confidence"]?.number ?? 0.0
+        self.calibration_factor = nil // Not in DynamoDB format
+        self.confidence = dynamoDBData["confidence"]?.number ?? 0.0
+        self.distance_km = dynamoDBData["distance_km"]?.number ?? 0.0
+        self.reports_analyzed = nil // Not in DynamoDB format
+        self.hours_ahead = dynamoDBData["hours_ahead"]?.number ?? 0.0
     }
     
     // Custom decoding to handle arrival_time as either String or numeric timestamp
@@ -79,6 +104,7 @@ struct SwellPredictionResponse: Codable, Identifiable {
         confidence = try container.decode(Double.self, forKey: .confidence)
         distance_km = try container.decode(Double.self, forKey: .distance_km)
         reports_analyzed = try container.decodeIfPresent(Int.self, forKey: .reports_analyzed)
+        hours_ahead = try container.decodeIfPresent(Double.self, forKey: .hours_ahead)
         
         // Handle arrival_time as either String or numeric timestamp
         if let arrivalTimeString = try? container.decode(String.self, forKey: .arrival_time) {
@@ -99,7 +125,7 @@ struct SwellPredictionResponse: Codable, Identifiable {
         case spot_id, forecast_timestamp, generated_at, predicted_height
         case predicted_period, predicted_direction, surf_size, travel_time_hours
         case arrival_time, direction_quality, calibration_applied, calibration_confidence, calibration_factor
-        case confidence, distance_km, reports_analyzed
+        case confidence, distance_km, reports_analyzed, hours_ahead
     }
 }
 
@@ -139,6 +165,7 @@ struct SwellPredictionEntry: Codable, Identifiable, Equatable {
     let confidence: Double
     let distanceKm: Double
     let reportsAnalyzed: Int
+    let hoursAhead: Double
     
     // Create from API response
     init(from response: SwellPredictionResponse) {
@@ -165,6 +192,7 @@ struct SwellPredictionEntry: Codable, Identifiable, Equatable {
         self.confidence = response.confidence
         self.distanceKm = response.distance_km
         self.reportsAnalyzed = response.reports_analyzed ?? 0
+        self.hoursAhead = response.hours_ahead ?? 0.0
     }
     
     // Convert back to SwellPredictionResponse if needed
@@ -187,7 +215,8 @@ struct SwellPredictionEntry: Codable, Identifiable, Equatable {
             calibration_factor: calibrationFactor,
             confidence: confidence,
             distance_km: distanceKm,
-            reports_analyzed: reportsAnalyzed
+            reports_analyzed: reportsAnalyzed,
+            hours_ahead: hoursAhead
         )
     }
 }
@@ -268,6 +297,16 @@ extension SwellPredictionEntry {
             return "\(minutes) min"
         } else {
             return String(format: "%.1f hrs", travelTimeHours)
+        }
+    }
+    
+    /// Returns hours ahead formatted for display
+    var formattedHoursAhead: String {
+        if hoursAhead < 1.0 {
+            let minutes = Int(hoursAhead * 60)
+            return "\(minutes) min"
+        } else {
+            return String(format: "%.1f hrs", hoursAhead)
         }
     }
 }
