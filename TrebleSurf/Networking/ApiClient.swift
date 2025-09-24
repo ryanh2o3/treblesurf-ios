@@ -762,10 +762,10 @@ extension APIClient {
 
 // MARK: - Swell Prediction API Extensions
 extension APIClient {
-    func fetchSwellPrediction(country: String, region: String, spot: String, completion: @escaping (Result<SwellPredictionResponse, Error>) -> Void) {
+    func fetchSwellPrediction(country: String, region: String, spot: String, completion: @escaping (Result<[SwellPredictionResponse], Error>) -> Void) {
         let endpoint = "\(Endpoints.swellPrediction)?spot=\(spot)&region=\(region)&country=\(country)"
         print("Fetching swell prediction: \(spot)")
-        request(endpoint, method: "GET") { (result: Result<SwellPredictionResponse, Error>) in
+        request(endpoint, method: "GET") { (result: Result<[SwellPredictionResponse], Error>) in
             completion(result)
         }
     }

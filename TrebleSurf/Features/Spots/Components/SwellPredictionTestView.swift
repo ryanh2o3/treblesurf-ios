@@ -95,10 +95,13 @@ struct SwellPredictionTestView: View {
         swellPredictionService.fetchSwellPrediction(for: testSpot) { result in
             DispatchQueue.main.async {
                 switch result {
-                case .success(let prediction):
-                    print("✅ Swell prediction fetched successfully: \(prediction.surfSize)m surf size")
+                case .success(let predictions):
+                    print("✅ Swell predictions fetched successfully: \(predictions.count) predictions")
+                    for (index, prediction) in predictions.enumerated() {
+                        print("  Prediction \(index + 1): \(prediction.surfSize)m surf size, arrives at \(prediction.formattedArrivalTime)")
+                    }
                 case .failure(let error):
-                    print("❌ Failed to fetch swell prediction: \(error.localizedDescription)")
+                    print("❌ Failed to fetch swell predictions: \(error.localizedDescription)")
                 }
             }
         }

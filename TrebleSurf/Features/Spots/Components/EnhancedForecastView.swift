@@ -24,6 +24,7 @@ struct EnhancedForecastView: View {
     @State private var lastScrollOffset: CGFloat = 0
     @State private var isLoadingSwellPredictions: Bool = false
     @State private var swellPredictionError: Error?
+    @State private var swellPredictions: [SwellPredictionEntry] = []
     
     init(spot: SpotData, spotImage: Image? = nil, onForecastSelectionChanged: ((ForecastEntry?) -> Void)? = nil, onSwellPredictionSelectionChanged: ((SwellPredictionEntry?) -> Void)? = nil) {
         self.spot = spot
@@ -201,11 +202,11 @@ struct EnhancedForecastView: View {
     
     @ViewBuilder
     private var swellPredictionHeader: some View {
-        if let prediction = swellPredictionService.getCachedPrediction(for: spot.id) {
+        if let selectedPrediction = swellPredictions.indices.contains(selectedCardIndex) ? swellPredictions[selectedCardIndex] : swellPredictions.first {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 6) {
-                        Text(Self.compactDayFormatter.string(from: prediction.arrivalTime))
+                        Text(Self.compactDayFormatter.string(from: selectedPrediction.arrivalTime))
                             .font(.headline)
                             .fontWeight(.semibold)
                             .foregroundColor(.primary)
@@ -218,9 +219,20 @@ struct EnhancedForecastView: View {
                             .padding(.vertical, 2)
                             .background(Color.purple)
                             .cornerRadius(4)
+                        
+                        if swellPredictions.count > 1 {
+                            Text("\(selectedCardIndex + 1)/\(swellPredictions.count)")
+                                .font(.caption2)
+                                .fontWeight(.bold)
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(Color.blue)
+                                .cornerRadius(4)
+                        }
                     }
                     
-                    Text("Arrives: \(Self.timeFormatter.string(from: prediction.arrivalTime))")
+                    Text("Arrives: \(Self.timeFormatter.string(from: selectedPrediction.arrivalTime))")
                         .font(.subheadline)
                         .foregroundColor(.secondary)
                 }
@@ -230,8 +242,8 @@ struct EnhancedForecastView: View {
                 HStack(spacing: 4) {
                     Image(systemName: "checkmark.circle.fill")
                         .font(.caption)
-                        .foregroundColor(confidenceColor(for: prediction.confidence))
-                    Text(prediction.confidencePercentage)
+                        .foregroundColor(confidenceColor(for: selectedPrediction.confidence))
+                    Text(selectedPrediction.confidencePercentage)
                         .font(.caption)
                         .fontWeight(.medium)
                         .foregroundColor(.secondary)
@@ -341,17 +353,26 @@ struct EnhancedForecastView: View {
     
     @ViewBuilder
     private func swellPredictionCards(scrollProxy: ScrollViewProxy) -> some View {
-        if let prediction = swellPredictionService.getCachedPrediction(for: spot.id) {
-            SwellPredictionCard(
-                prediction: prediction,
-                isSelected: selectedCardIndex == 0,
-                onTap: {
-                    selectCard(at: 0, scrollAction: { index in
-                        scrollProxy.scrollTo(index, anchor: UnitPoint.center)
-                    })
+        if !swellPredictions.isEmpty {
+            ForEach(Array(swellPredictions.enumerated()), id: \.element.id) { index, prediction in
+                HStack(spacing: 0) {
+                    SwellPredictionCard(
+                        prediction: prediction,
+                        isSelected: index == selectedCardIndex,
+                        onTap: {
+                            selectCard(at: index, scrollAction: { index in
+                                scrollProxy.scrollTo(index, anchor: UnitPoint.center)
+                            })
+                        }
+                    )
+                    .id(index)
+                    
+                    if index < swellPredictions.count - 1 {
+                        Spacer()
+                            .frame(width: 8)
+                    }
                 }
-            )
-            .id(0)
+            }
         } else {
             // Placeholder card when no prediction available
             VStack(spacing: 6) {
@@ -481,8 +502,8 @@ struct EnhancedForecastView: View {
     
     @ViewBuilder
     private var swellPredictionDetailSection: some View {
-        if let prediction = swellPredictionService.getCachedPrediction(for: spot.id) {
-            SwellPredictionDetailCard(prediction: prediction)
+        if let selectedPrediction = swellPredictions.indices.contains(selectedCardIndex) ? swellPredictions[selectedCardIndex] : swellPredictions.first {
+            SwellPredictionDetailCard(prediction: selectedPrediction)
                 .padding(.vertical, 16)
                 .padding(.bottom, 16)
         } else {
@@ -570,10 +591,13 @@ struct EnhancedForecastView: View {
                 self.isLoadingSwellPredictions = false
                 
                 switch result {
-                case .success(let prediction):
-                    self.onSwellPredictionSelectionChanged?(prediction)
+                case .success(let predictions):
+                    self.swellPredictions = predictions
+                    // Notify with the first prediction for backward compatibility
+                    self.onSwellPredictionSelectionChanged?(predictions.first)
                 case .failure(let error):
                     self.swellPredictionError = error
+                    self.swellPredictions = []
                     self.onSwellPredictionSelectionChanged?(nil)
                 }
             }
@@ -589,8 +613,8 @@ struct EnhancedForecastView: View {
     private func selectFirstCard() {
         if settingsStore.showSwellPredictions {
             selectedCardIndex = 0
-            if let prediction = swellPredictionService.getCachedPrediction(for: spot.id) {
-                onSwellPredictionSelectionChanged?(prediction)
+            if !swellPredictions.isEmpty {
+                onSwellPredictionSelectionChanged?(swellPredictions[0])
             }
         } else if !forecastViewModel.filteredEntries.isEmpty {
             selectedCardIndex = 0
@@ -617,8 +641,8 @@ struct EnhancedForecastView: View {
     
     private func handleSelectionChange(_ newIndex: Int) {
         if settingsStore.showSwellPredictions {
-            if let prediction = swellPredictionService.getCachedPrediction(for: spot.id) {
-                onSwellPredictionSelectionChanged?(prediction)
+            if newIndex < swellPredictions.count {
+                onSwellPredictionSelectionChanged?(swellPredictions[newIndex])
             }
         } else if newIndex < forecastViewModel.filteredEntries.count {
             onForecastSelectionChanged?(forecastViewModel.filteredEntries[newIndex])
@@ -639,9 +663,35 @@ struct EnhancedForecastView: View {
     }
     
     private func calculateMostVisibleCard(from scrollOffset: CGFloat) -> Int {
-        // For swell predictions, we only have one card
+        // For swell predictions, calculate based on available predictions
         if settingsStore.showSwellPredictions {
-            return 0
+            let cardWidth: CGFloat = 70
+            let cardPadding: CGFloat = 6
+            let totalCardWidth = cardWidth + (cardPadding * 2)
+            let screenWidth = UIScreen.main.bounds.width
+            let scrollViewPadding: CGFloat = 16
+            
+            let screenCenter = screenWidth / 2
+            var bestIndex = 0
+            var minDistanceToCenter = CGFloat.infinity
+            
+            var currentX: CGFloat = scrollViewPadding + cardPadding + (cardWidth / 2)
+            
+            for index in 0..<swellPredictions.count {
+                let cardCenterX = currentX
+                let cardScreenX = cardCenterX + scrollOffset
+                let distanceFromCenter = abs(cardScreenX - screenCenter)
+                let biasedDistance = distanceFromCenter - 20
+                
+                if biasedDistance < minDistanceToCenter {
+                    minDistanceToCenter = biasedDistance
+                    bestIndex = index
+                }
+                
+                currentX += totalCardWidth + 8 // 8 is the spacing between swell prediction cards
+            }
+            
+            return bestIndex
         }
         
         // Traditional forecast logic

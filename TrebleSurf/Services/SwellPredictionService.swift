@@ -12,6 +12,7 @@ class SwellPredictionService: ObservableObject {
     static let shared = SwellPredictionService()
     
     @Published var predictions: [String: SwellPredictionEntry] = [:]
+    @Published var multiplePredictions: [String: [SwellPredictionEntry]] = [:]
     @Published var isLoading: Bool = false
     @Published var lastError: Error?
     
@@ -23,7 +24,7 @@ class SwellPredictionService: ObservableObject {
     // MARK: - Public Methods
     
     /// Fetch swell prediction for a specific spot (handles both old and new DynamoDB format)
-    func fetchSwellPrediction(for spot: SpotData, completion: @escaping (Result<SwellPredictionEntry, Error>) -> Void) {
+    func fetchSwellPrediction(for spot: SpotData, completion: @escaping (Result<[SwellPredictionEntry], Error>) -> Void) {
         let spotComponents = spot.id.components(separatedBy: "#")
         guard spotComponents.count == 3 else {
             completion(.failure(SwellPredictionError.invalidSpotId))
@@ -47,16 +48,21 @@ class SwellPredictionService: ObservableObject {
                     let response = SwellPredictionResponse(from: dynamoDBData)
                     let entry = SwellPredictionEntry(from: response)
                     self?.predictions[spot.id] = entry
-                    completion(.success(entry))
+                    completion(.success([entry]))
                 case .failure(let error):
-                    // Fallback to regular format
+                    // Fallback to regular format - now expects array of responses
                     self?.apiClient.fetchSwellPrediction(country: country, region: region, spot: spotName) { [weak self] fallbackResult in
                         DispatchQueue.main.async {
                             switch fallbackResult {
-                            case .success(let response):
-                                let entry = SwellPredictionEntry(from: response)
-                                self?.predictions[spot.id] = entry
-                                completion(.success(entry))
+                            case .success(let responses):
+                                let entries = responses.map { SwellPredictionEntry(from: $0) }
+                                // Store all predictions
+                                self?.multiplePredictions[spot.id] = entries
+                                // Store the first prediction as the primary one for backward compatibility
+                                if let firstEntry = entries.first {
+                                    self?.predictions[spot.id] = firstEntry
+                                }
+                                completion(.success(entries))
                             case .failure(let fallbackError):
                                 self?.lastError = fallbackError
                                 completion(.failure(fallbackError))
@@ -216,14 +222,21 @@ class SwellPredictionService: ObservableObject {
         return predictions[spotId]
     }
     
+    /// Get all cached predictions for a spot
+    func getCachedMultiplePredictions(for spotId: String) -> [SwellPredictionEntry]? {
+        return multiplePredictions[spotId]
+    }
+    
     /// Clear cached predictions
     func clearCache() {
         predictions.removeAll()
+        multiplePredictions.removeAll()
     }
     
     /// Clear cached prediction for a specific spot
     func clearCache(for spotId: String) {
         predictions.removeValue(forKey: spotId)
+        multiplePredictions.removeValue(forKey: spotId)
     }
     
     /// Check if prediction is stale (older than 1 hour)
@@ -238,8 +251,9 @@ class SwellPredictionService: ObservableObject {
         if isPredictionStale(for: spot.id) {
             fetchSwellPrediction(for: spot) { result in
                 switch result {
-                case .success(let entry):
-                    completion(.success(entry))
+                case .success(let entries):
+                    // Return the first prediction for backward compatibility
+                    completion(.success(entries.first))
                 case .failure(let error):
                     completion(.failure(error))
                 }
