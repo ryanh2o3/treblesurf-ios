@@ -41,6 +41,9 @@ class QuickPhotoReportViewModel: ObservableObject {
     @Published var currentError: APIErrorHandler.ErrorDisplay?
     @Published var fieldErrors: [String: String] = [:]
     
+    // Track submission success to avoid cleanup after successful submission
+    @Published var submissionSuccessful = false
+    
     // Media validation properties
     @Published var isValidatingImage = false
     @Published var imageValidationError: String?
@@ -777,17 +780,39 @@ class QuickPhotoReportViewModel: ObservableObject {
         request.setValue("image/jpeg", forHTTPHeaderField: "Content-Type")
         request.httpBody = imageData
         
+        print("🚀 [QUICK_UPLOAD] Sending PUT request to S3...")
+        print("📋 [QUICK_UPLOAD] Request headers:")
+        for (key, value) in request.allHTTPHeaderFields ?? [:] {
+            print("   \(key): \(value)")
+        }
+        
         let startTime = Date()
-        let (_, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await URLSession.shared.data(for: request)
         let uploadTime = Date().timeIntervalSince(startTime)
         
         guard let httpResponse = response as? HTTPURLResponse else {
+            print("❌ [QUICK_UPLOAD] Invalid response from S3 - not HTTPURLResponse")
             throw NSError(domain: "SurfReport", code: 500, userInfo: [NSLocalizedDescriptionKey: "Invalid response from S3"])
         }
         
+        print("📊 [QUICK_UPLOAD] S3 response status code: \(httpResponse.statusCode)")
+        print("📋 [QUICK_UPLOAD] Response headers:")
+        for (key, value) in httpResponse.allHeaderFields {
+            print("   \(key): \(value)")
+        }
+        
+        if !data.isEmpty {
+            if let responseString = String(data: data, encoding: .utf8) {
+                print("📄 [QUICK_UPLOAD] Response body: \(responseString)")
+            }
+        }
+        
         guard httpResponse.statusCode == 200 else {
+            print("❌ [QUICK_UPLOAD] S3 upload failed with status: \(httpResponse.statusCode)")
             throw NSError(domain: "SurfReport", code: 500, userInfo: [NSLocalizedDescriptionKey: "Failed to upload image to S3 - Status: \(httpResponse.statusCode)"])
         }
+        
+        print("✅ [QUICK_UPLOAD] Image successfully uploaded to S3 in \(String(format: "%.2f", uploadTime))s")
         
     }
     
@@ -943,6 +968,7 @@ class QuickPhotoReportViewModel: ObservableObject {
             let success = try await submitSurfReport(reportData)
             
             if success {
+                submissionSuccessful = true
                 showSuccessAlert = true
                 // Dismiss after a short delay
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
@@ -1113,6 +1139,13 @@ class QuickPhotoReportViewModel: ObservableObject {
     
     /// Cleans up unused uploaded media when user dismisses the form
     func cleanupUnusedUploads() {
+        // Don't cleanup if submission was successful - the media is now part of a report
+        if submissionSuccessful {
+            print("🧹 [CLEANUP] Skipping cleanup - submission was successful")
+            return
+        }
+        
+        print("🧹 [CLEANUP] Cleaning up unused uploads after cancellation")
         Task {
             await cleanupUnusedMedia()
         }

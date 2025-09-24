@@ -111,8 +111,24 @@ extension SurfReport {
 }
 
 struct SurfReportImageResponse: Decodable {
-    let imageData: String
-    let contentType: String
+    let imageData: String?
+    let contentType: String?
+    
+    enum CodingKeys: String, CodingKey {
+        case imageData
+        case contentType
+    }
+    
+    init(imageData: String?, contentType: String?) {
+        self.imageData = imageData
+        self.contentType = contentType
+    }
+    
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        imageData = try container.decodeIfPresent(String.self, forKey: .imageData)
+        contentType = try container.decodeIfPresent(String.self, forKey: .contentType)
+    }
 }
 
 struct SurfReportVideoResponse: Decodable {
@@ -121,8 +137,24 @@ struct SurfReportVideoResponse: Decodable {
 }
 
 struct PresignedVideoViewResponse: Decodable {
-    let viewURL: String
-    let expiresAt: String
+    let viewURL: String?
+    let expiresAt: String?
+    
+    enum CodingKeys: String, CodingKey {
+        case viewURL
+        case expiresAt
+    }
+    
+    init(viewURL: String?, expiresAt: String?) {
+        self.viewURL = viewURL
+        self.expiresAt = expiresAt
+    }
+    
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        viewURL = try container.decodeIfPresent(String.self, forKey: .viewURL)
+        expiresAt = try container.decodeIfPresent(String.self, forKey: .expiresAt)
+    }
 }
 
 struct SurfReportSubmissionResponse: Decodable {

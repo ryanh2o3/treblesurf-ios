@@ -141,16 +141,22 @@ class LiveSpotViewModel: ObservableObject {
             APIClient.shared.getReportImage(key: key) { result in
                 switch result {
                 case .success(let imageData):
-                    // Cache the image for future use
-                    if let decodedImageData = Data(base64Encoded: imageData.imageData),
-                       let uiImage = UIImage(data: decodedImageData) {
-                        if let pngData = uiImage.pngData() {
-                            ImageCacheService.shared.cacheSurfReportImage(pngData, for: key)
+                    // Check if imageData is actually present
+                    if let imageDataString = imageData.imageData, !imageDataString.isEmpty {
+                        // Cache the image for future use
+                        if let decodedImageData = Data(base64Encoded: imageDataString),
+                           let uiImage = UIImage(data: decodedImageData) {
+                            if let pngData = uiImage.pngData() {
+                                ImageCacheService.shared.cacheSurfReportImage(pngData, for: key)
+                            }
                         }
+                        completion(imageData)
+                    } else {
+                        print("⚠️ [LIVE_SPOT_VIEWMODEL] Image key \(key) exists but no image data returned - likely missing from S3")
+                        completion(nil)
                     }
-                    completion(imageData)
                 case .failure(let error):
-                    print("Failed to fetch image for key \(key): \(error.localizedDescription)")
+                    print("❌ [LIVE_SPOT_VIEWMODEL] Failed to fetch image for key \(key): \(error.localizedDescription)")
                     completion(nil)
                 }
             }

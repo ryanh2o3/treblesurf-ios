@@ -232,6 +232,9 @@ struct ImageUploadView: View {
             
             // Video selection button
             Button(action: {
+                Task {
+                    await viewModel.preGenerateVideoUploadURL()
+                }
                 showingVideoPicker = true
             }) {
                 VStack(spacing: 12) {

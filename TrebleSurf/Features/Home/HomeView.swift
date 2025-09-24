@@ -637,11 +637,15 @@ struct SurfReportDetailView: View {
                 
                 switch result {
                 case .success(let viewResponse):
-                    self.videoViewURL = viewResponse.viewURL
-                    print("✅ [SURF_REPORT_DETAIL] Video view URL loaded successfully")
-                    
-                    // Download and cache the video
-                    self.downloadAndCacheVideo(from: viewResponse.viewURL, videoKey: videoKey)
+                    if let viewURL = viewResponse.viewURL {
+                        self.videoViewURL = viewURL
+                        print("✅ [SURF_REPORT_DETAIL] Video view URL loaded successfully")
+                        
+                        // Download and cache the video
+                        self.downloadAndCacheVideo(from: viewURL, videoKey: videoKey)
+                    } else {
+                        print("❌ [SURF_REPORT_DETAIL] No viewURL in response")
+                    }
                 case .failure(let error):
                     print("❌ [SURF_REPORT_DETAIL] Failed to load video view URL: \(error)")
                 }

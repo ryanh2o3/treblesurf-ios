@@ -24,6 +24,8 @@ struct SurfReportStep {
 
 
 class SurfReportSubmissionViewModel: ObservableObject {
+    let instanceId = UUID()
+    
     @Published var currentStep = 0
     @Published var selectedOptions: [Int: String] = [:]
     @Published var imageSelection: PhotosPickerItem? = nil {
@@ -54,6 +56,9 @@ class SurfReportSubmissionViewModel: ObservableObject {
     @Published var fieldErrors: [String: String] = [:]
     @Published var shouldShowPhotoPicker = false
     
+    // Track submission success to avoid cleanup after successful submission
+    @Published var submissionSuccessful = false
+    
     // New properties for S3 upload workflow
     @Published var isUploadingImage = false
     @Published var isUploadingVideo = false
@@ -63,6 +68,10 @@ class SurfReportSubmissionViewModel: ObservableObject {
     @Published var videoKey: String?
     @Published var uploadUrl: String?
     @Published var videoUploadUrl: String?
+    
+    // Track upload failures
+    @Published var imageUploadFailed = false
+    @Published var videoUploadFailed = false
     
     // Store the spotId for image uploads
     private var spotId: String?
@@ -168,6 +177,17 @@ class SurfReportSubmissionViewModel: ObservableObject {
                 return false
             }
         }
+        
+        // Check if uploads are still in progress
+        if selectedImage != nil && isUploadingImage {
+            return false
+        }
+        
+        if selectedVideoURL != nil && isUploadingVideo {
+            return false
+        }
+        
+        // Allow submission even if uploads failed - user will be notified
         return true
     }
     
@@ -236,6 +256,7 @@ class SurfReportSubmissionViewModel: ObservableObject {
         uploadUrl = nil
         isUploadingImage = false
         uploadProgress = 0.0
+        imageUploadFailed = false
         
         // Clear any image-related errors
         clearFieldError(for: "image")
@@ -257,6 +278,7 @@ class SurfReportSubmissionViewModel: ObservableObject {
         videoUploadUrl = nil
         isUploadingVideo = false
         videoUploadProgress = 0.0
+        videoUploadFailed = false
         
         // Clear any video-related errors
         clearFieldError(for: "video")
@@ -380,6 +402,20 @@ class SurfReportSubmissionViewModel: ObservableObject {
         }
     }
     
+    func continueWithFailedUploads(spotId: String) {
+        // Clear the failure flags and allow submission
+        imageUploadFailed = false
+        videoUploadFailed = false
+        
+        // Clear any error messages
+        clearAllErrors()
+        
+        // Proceed with submission
+        Task {
+            await submitReport(spotId: spotId)
+        }
+    }
+    
     // MARK: - Image Error Handling
     
     /// Handles image-specific errors and provides user guidance
@@ -420,9 +456,12 @@ class SurfReportSubmissionViewModel: ObservableObject {
     
     @MainActor
     private func loadImage() async {
+        print("📷 [LOAD_IMAGE] loadImage() called")
         guard let imageSelection = imageSelection else { 
+            print("❌ [LOAD_IMAGE] No imageSelection available")
             return 
         }
+        print("📷 [LOAD_IMAGE] Image selection found, starting load process...")
         
         do {
             if let data = try await imageSelection.loadTransferable(type: Data.self),
@@ -455,6 +494,7 @@ class SurfReportSubmissionViewModel: ObservableObject {
     
     @MainActor
     private func processValidatedImage(_ image: UIImage, imageSelection: PhotosPickerItem, data: Data) {
+        print("📷 [PROCESS_VALIDATED] processValidatedImage() called")
         selectedImage = image
         
         // Try to extract timestamp from image metadata
@@ -482,45 +522,59 @@ class SurfReportSubmissionViewModel: ObservableObject {
             }
         }
         
-        // If no timestamp found in metadata, try to use file creation date as fallback
+        // Update the flag
+        photoTimestampExtracted = timestampFound
+        
+        // Log final timestamp status
         if !timestampFound {
-            Task {
+            print("📸 [IMAGE_TIMESTAMP] No timestamp found - using current time")
+        }
+        
+        // Start upload process regardless of timestamp status
+        Task {
+            // If no timestamp found in metadata, try to use file creation date as fallback
+            if !timestampFound {
                 if let fileCreationDate = await getFileCreationDate(from: imageSelection) {
                     selectedDateTime = fileCreationDate
                     timestampFound = true
                     print("📸 [IMAGE_TIMESTAMP] Using file creation date as fallback: \(fileCreationDate)")
                 }
-                
-                // Update the flag
-                photoTimestampExtracted = timestampFound
-                
-                // Log final timestamp status
-                if !timestampFound {
-                    print("📸 [IMAGE_TIMESTAMP] No timestamp found - using current time")
+            }
+            
+            // If we already have a presigned URL, start upload immediately
+            print("🔍 [UPLOAD_CHECK] Checking upload conditions:")
+            print("🔍 [UPLOAD_CHECK] uploadUrl: \(self.uploadUrl?.prefix(50) ?? "nil")")
+            print("🔍 [UPLOAD_CHECK] imageKey: \(self.imageKey ?? "nil")")
+            print("🔍 [UPLOAD_CHECK] spotId: \(self.spotId ?? "nil")")
+            
+            if let uploadUrl = self.uploadUrl, let imageKey = self.imageKey {
+                print("✅ [UPLOAD_CHECK] Found presigned URL, starting S3 upload...")
+                do {
+                    try await uploadImageToS3(uploadURL: uploadUrl, image: image)
+                } catch {
+                    print("❌ [UPLOAD_CHECK] S3 upload failed: \(error)")
+                    // Could show error to user here if needed
                 }
+            } else if let spotId = self.spotId {
+                print("🔍 [UPLOAD_CHECK] No presigned URL found, checking conditions for new upload...")
+                print("🔍 [UPLOAD_CHECK] selectedImage: \(selectedImage != nil ? "present" : "nil")")
+                print("🔍 [UPLOAD_CHECK] imageKey: \(imageKey ?? "nil")")
+                print("🔍 [UPLOAD_CHECK] isUploadingImage: \(isUploadingImage)")
                 
-                // If we already have a presigned URL, start upload immediately
-                if let uploadUrl = self.uploadUrl, let imageKey = self.imageKey {
-                    Task {
-                        do {
-                            try await uploadImageToS3(uploadURL: uploadUrl, image: image)
-                        } catch {
-                            // Could show error to user here if needed
-                        }
-                    }
-                } else if let spotId = self.spotId {
-                    // If we have an image but no upload started, try to start it now
-                    if selectedImage != nil && imageKey == nil && !isUploadingImage && spotId != nil {
-                        Task {
-                            await startImageUploadProcess(spotId: spotId)
-                        }
-                    }
+                // If we have an image but no upload started, try to start it now
+                if selectedImage != nil && imageKey == nil && !isUploadingImage && spotId != nil {
+                    print("✅ [UPLOAD_CHECK] Starting new image upload process...")
+                    await startImageUploadProcess(spotId: spotId)
+                } else {
+                    print("❌ [UPLOAD_CHECK] Conditions not met for new upload")
                 }
-                
-                // Auto-advance to next step after photo is loaded (with a short delay)
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                    self.nextStep()
-                }
+            } else {
+                print("❌ [UPLOAD_CHECK] No spotId available")
+            }
+            
+            // Auto-advance to next step after photo is loaded (with a short delay)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                self.nextStep()
             }
         }
     }
@@ -591,7 +645,20 @@ class SurfReportSubmissionViewModel: ObservableObject {
             
             // Start video upload process
             if let spotId = self.spotId {
-                await startVideoUploadProcess(spotId: spotId, videoURL: videoURL)
+                // Check if we already have a presigned URL, if so use it directly
+                if let uploadUrl = self.videoUploadUrl, let videoKey = self.videoKey {
+                    print("✅ [VIDEO_UPLOAD_CHECK] Found presigned video URL, starting S3 upload...")
+                    do {
+                        try await uploadVideoToS3(uploadURL: uploadUrl, videoURL: videoURL)
+                    } catch {
+                        print("❌ [VIDEO_UPLOAD_CHECK] S3 video upload failed: \(error)")
+                        // Fall back to generating new URL
+                        await startVideoUploadProcess(spotId: spotId, videoURL: videoURL)
+                    }
+                } else {
+                    print("🔍 [VIDEO_UPLOAD_CHECK] No presigned video URL found, generating new one...")
+                    await startVideoUploadProcess(spotId: spotId, videoURL: videoURL)
+                }
             }
             
             // Auto-advance to next step after video is loaded
@@ -631,7 +698,9 @@ class SurfReportSubmissionViewModel: ObservableObject {
     
     /// Pre-generates presigned URL when user clicks "Add Photo" for better performance
     func preGenerateUploadURL() async {
+        print("🔗 [PRE_GENERATE] Starting presigned URL generation...")
         guard let spotId = self.spotId else {
+            print("❌ [PRE_GENERATE] No spotId available")
             return
         }
         
@@ -643,9 +712,36 @@ class SurfReportSubmissionViewModel: ObservableObject {
                 self.imageKey = uploadResponse.imageKey
                 self.uploadedImageKey = uploadResponse.imageKey
                 print("📷 [UPLOAD_TRACKING] Set uploadedImageKey: \(uploadResponse.imageKey)")
+                print("✅ [PRE_GENERATE] Presigned URL generation completed")
             }
             
         } catch {
+            print("❌ [PRE_GENERATE] Failed to generate presigned URL: \(error)")
+            // Don't show error to user since this is just optimization
+        }
+    }
+    
+    /// Pre-generates presigned URL when user clicks "Add Video" for better performance
+    func preGenerateVideoUploadURL() async {
+        print("🎬 [PRE_GENERATE_VIDEO] Starting presigned video URL generation...")
+        guard let spotId = self.spotId else {
+            print("❌ [PRE_GENERATE_VIDEO] No spotId available")
+            return
+        }
+        
+        do {
+            let uploadResponse = try await generateVideoUploadURL(spotId: spotId)
+            
+            await MainActor.run {
+                self.videoUploadUrl = uploadResponse.uploadUrl
+                self.videoKey = uploadResponse.videoKey
+                self.uploadedVideoKey = uploadResponse.videoKey
+                print("🎬 [UPLOAD_TRACKING] Set uploadedVideoKey: \(uploadResponse.videoKey)")
+                print("✅ [PRE_GENERATE_VIDEO] Presigned video URL generation completed")
+            }
+            
+        } catch {
+            print("❌ [PRE_GENERATE_VIDEO] Failed to generate presigned video URL: \(error)")
             // Don't show error to user since this is just optimization
         }
     }
@@ -918,6 +1014,11 @@ class SurfReportSubmissionViewModel: ObservableObject {
             
             await MainActor.run {
                 self.isUploadingVideo = false
+                self.videoUploadFailed = true
+                
+                // Clear the video key since upload failed
+                self.videoKey = nil
+                
                 self.handleImageError(error)
             }
         }
@@ -953,7 +1054,9 @@ class SurfReportSubmissionViewModel: ObservableObject {
             
             // Step 2: Upload image to S3
             print("☁️ [IMAGE_UPLOAD] Step 2: Uploading image to S3...")
+            print("☁️ [IMAGE_UPLOAD] About to call uploadImageToS3...")
             try await uploadImageToS3(uploadURL: uploadResponse.uploadUrl, image: image)
+            print("☁️ [IMAGE_UPLOAD] uploadImageToS3 completed successfully")
             
             let totalTime = Date().timeIntervalSince(startTime)
             print("✅ [IMAGE_UPLOAD] Image upload completed successfully in \(String(format: "%.2f", totalTime))s")
@@ -967,6 +1070,8 @@ class SurfReportSubmissionViewModel: ObservableObject {
             let totalTime = Date().timeIntervalSince(startTime)
             print("❌ [IMAGE_UPLOAD] Image upload failed after \(String(format: "%.2f", totalTime))s")
             print("❌ [IMAGE_UPLOAD] Error details:")
+            print("❌ [IMAGE_UPLOAD] Error type: \(type(of: error))")
+            print("❌ [IMAGE_UPLOAD] Error description: \(error.localizedDescription)")
             if let nsError = error as NSError? {
                 print("   - Domain: \(nsError.domain)")
                 print("   - Code: \(nsError.code)")
@@ -978,9 +1083,15 @@ class SurfReportSubmissionViewModel: ObservableObject {
             
             await MainActor.run {
                 self.isUploadingImage = false
+                self.imageUploadFailed = true
                 
+                // Clear the image key since upload failed
+                self.imageKey = nil
+                
+                print("❌ [IMAGE_UPLOAD] About to call handleImageError...")
                 // Use the new image-specific error handling
                 self.handleImageError(error)
+                print("❌ [IMAGE_UPLOAD] handleImageError completed")
             }
         }
     }
@@ -1009,6 +1120,7 @@ class SurfReportSubmissionViewModel: ObservableObject {
                     print("✅ [IMAGE_UPLOAD] Presigned URL response received")
                     print("🔑 [IMAGE_UPLOAD] Image key: \(response.imageKey)")
                     print("🌐 [IMAGE_UPLOAD] Upload URL: \(response.uploadUrl.prefix(50))...")
+                    print("⏰ [IMAGE_UPLOAD] Expires at: \(response.expiresAt)")
                     continuation.resume(returning: response)
                 case .failure(let error):
                     print("❌ [IMAGE_UPLOAD] Failed to generate presigned URL: \(error)")
@@ -1030,7 +1142,8 @@ class SurfReportSubmissionViewModel: ObservableObject {
     /// Uploads image to S3 using presigned URL
     private func uploadImageToS3(uploadURL: String, image: UIImage) async throws {
         print("☁️ [IMAGE_UPLOAD] Starting S3 upload process")
-        print("🌐 [IMAGE_UPLOAD] Upload URL: \(uploadURL.prefix(50))...")
+        print("☁️ [IMAGE_UPLOAD] Function called with URL: \(uploadURL.prefix(50))...")
+        print("☁️ [IMAGE_UPLOAD] Image size: \(image.size)")
         
         guard let url = URL(string: uploadURL) else {
             print("❌ [IMAGE_UPLOAD] Invalid upload URL: \(uploadURL)")
@@ -1052,7 +1165,12 @@ class SurfReportSubmissionViewModel: ObservableObject {
         request.httpBody = imageData
         
         print("🚀 [IMAGE_UPLOAD] Sending PUT request to S3...")
-        let (_, response) = try await URLSession.shared.data(for: request)
+        print("📋 [IMAGE_UPLOAD] Request headers:")
+        for (key, value) in request.allHTTPHeaderFields ?? [:] {
+            print("   \(key): \(value)")
+        }
+        
+        let (data, response) = try await URLSession.shared.data(for: request)
         
         guard let httpResponse = response as? HTTPURLResponse else {
             print("❌ [IMAGE_UPLOAD] Invalid response from S3 - not HTTPURLResponse")
@@ -1060,12 +1178,19 @@ class SurfReportSubmissionViewModel: ObservableObject {
         }
         
         print("📊 [IMAGE_UPLOAD] S3 response status code: \(httpResponse.statusCode)")
+        print("📋 [IMAGE_UPLOAD] Response headers:")
+        for (key, value) in httpResponse.allHeaderFields {
+            print("   \(key): \(value)")
+        }
+        
+        if !data.isEmpty {
+            if let responseString = String(data: data, encoding: .utf8) {
+                print("📄 [IMAGE_UPLOAD] Response body: \(responseString)")
+            }
+        }
         
         guard httpResponse.statusCode == 200 else {
             print("❌ [IMAGE_UPLOAD] S3 upload failed with status: \(httpResponse.statusCode)")
-            if let responseHeaders = httpResponse.allHeaderFields as? [String: String] {
-                print("📋 [IMAGE_UPLOAD] Response headers: \(responseHeaders)")
-            }
             throw NSError(domain: "SurfReport", code: 500, userInfo: [NSLocalizedDescriptionKey: "Failed to upload image to S3 - Status: \(httpResponse.statusCode)"])
         }
         
@@ -1208,7 +1333,26 @@ class SurfReportSubmissionViewModel: ObservableObject {
         print("📅 [SURF_REPORT] Current timezone: \(TimeZone.current.identifier)")
         print("📅 [SURF_REPORT] Formatted date (UTC): \(formattedDate)")
         
-        // Prepare report data - use S3 keys if available
+        // Check if uploads are still in progress
+        if selectedImage != nil && isUploadingImage {
+            print("❌ [SURF_REPORT] Cannot submit - image upload still in progress")
+            errorMessage = "Image upload is still in progress. Please wait for it to complete."
+            showErrorAlert = true
+            isSubmitting = false
+            return
+        }
+        
+        if selectedVideoURL != nil && isUploadingVideo {
+            print("❌ [SURF_REPORT] Cannot submit - video upload still in progress")
+            errorMessage = "Video upload is still in progress. Please wait for it to complete."
+            showErrorAlert = true
+            isSubmitting = false
+            return
+        }
+        
+        // Note: Upload failures are handled in the UI - if we reach here, user chose to continue
+        
+        // Prepare report data - only include S3 keys if uploads succeeded
         let reportData: [String: Any] = [
             "country": country,
             "region": region,
@@ -1219,8 +1363,8 @@ class SurfReportSubmissionViewModel: ObservableObject {
             "windAmount": selectedOptions[3] ?? "",
             "consistency": selectedOptions[4] ?? "",
             "quality": selectedOptions[5] ?? "",
-            "imageKey": imageKey ?? "",
-            "videoKey": videoKey ?? "",
+            "imageKey": (!imageUploadFailed && imageKey != nil) ? imageKey! : "",
+            "videoKey": (!videoUploadFailed && videoKey != nil) ? videoKey! : "",
             "date": formattedDate
         ]
         
@@ -1231,7 +1375,8 @@ class SurfReportSubmissionViewModel: ObservableObject {
         print("   - Wind Amount: \(selectedOptions[3] ?? "nil")")
         print("   - Consistency: \(selectedOptions[4] ?? "nil")")
         print("   - Quality: \(selectedOptions[5] ?? "nil")")
-        print("   - Image Key: \(imageKey ?? "nil")")
+        print("   - Image Key: \((!imageUploadFailed && imageKey != nil) ? imageKey! : "none (upload failed)")")
+        print("   - Video Key: \((!videoUploadFailed && videoKey != nil) ? videoKey! : "none (upload failed)")")
         print("   - Date: \(formattedDate)")
         
         do {
@@ -1240,12 +1385,18 @@ class SurfReportSubmissionViewModel: ObservableObject {
             
             print("✅ [SURF_REPORT] Surf report submitted successfully!")
             // If we get here, submission was successful
-            showSuccessAlert = true
-            // Clear any previous errors
-            clearAllErrors()
-            // Dismiss after a short delay
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-                self.shouldDismiss = true
+            await MainActor.run {
+                self.submissionSuccessful = true
+                print("🏆 [SURF_REPORT] Set submissionSuccessful = true")
+                print("🏆 [SURF_REPORT] ViewModel instanceId: \(self.instanceId)")
+                self.showSuccessAlert = true
+                // Clear any previous errors
+                self.clearAllErrors()
+                // Dismiss after a short delay
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                    print("🚪 [SURF_REPORT] Setting shouldDismiss = true")
+                    self.shouldDismiss = true
+                }
             }
         } catch {
             print("❌ [SURF_REPORT] Error during submission: \(error)")
@@ -1380,6 +1531,16 @@ class SurfReportSubmissionViewModel: ObservableObject {
     /// Cleans up unused uploaded media when user cancels or abandons the form
     func cleanupUnusedUploads() {
         print("🧹 [CLEANUP] ===== CLEANUP FUNCTION CALLED =====")
+        print("🧹 [CLEANUP] ViewModel instanceId: \(instanceId)")
+        print("🧹 [CLEANUP] submissionSuccessful = \(submissionSuccessful)")
+        print("🧹 [CLEANUP] Call stack: \(Thread.callStackSymbols.prefix(5))")
+        
+        // Don't cleanup if submission was successful - the media is now part of a report
+        if submissionSuccessful {
+            print("🧹 [CLEANUP] Skipping cleanup - submission was successful")
+            return
+        }
+        
         print("🧹 [CLEANUP] Starting cleanup of unused uploads")
         print("🧹 [CLEANUP] Uploaded image key: \(uploadedImageKey ?? "nil")")
         print("🧹 [CLEANUP] Uploaded video key: \(uploadedVideoKey ?? "nil")")

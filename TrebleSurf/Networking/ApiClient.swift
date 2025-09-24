@@ -684,13 +684,20 @@ extension APIClient {
     func getReportImage(key: String, completion: @escaping (Result<SurfReportImageResponse, Error>) -> Void) {
         let endpoint = "/api/getReportImage?key=\(key)"
         
+        print("📷 [API_CLIENT] Fetching report image for key: \(key)")
+        
         // Use flexible request method that can handle authentication gracefully
         makeFlexibleRequest(to: endpoint, requiresAuth: true) { (result: Result<SurfReportImageResponse, Error>) in
             switch result {
             case .success(let reportImage):
+                if let imageData = reportImage.imageData {
+                    print("✅ [API_CLIENT] Successfully fetched report image with data length: \(imageData.count)")
+                } else {
+                    print("⚠️ [API_CLIENT] Report image response received but imageData is nil")
+                }
                 completion(.success(reportImage))
             case .failure(let error):
-                print("Failed to fetch report image: \(error.localizedDescription)")
+                print("❌ [API_CLIENT] Failed to fetch report image: \(error.localizedDescription)")
                 completion(.failure(error))
             }
         }
@@ -719,7 +726,11 @@ extension APIClient {
         makeFlexibleRequest(to: endpoint, requiresAuth: true) { (result: Result<PresignedVideoViewResponse, Error>) in
             switch result {
             case .success(let viewResponse):
-                print("✅ [API_CLIENT] Video view URL generated successfully")
+                if let viewURL = viewResponse.viewURL {
+                    print("✅ [API_CLIENT] Video view URL generated successfully: \(viewURL.prefix(50))...")
+                } else {
+                    print("⚠️ [API_CLIENT] Video view URL response received but viewURL is nil")
+                }
                 completion(.success(viewResponse))
             case .failure(let error):
                 print("❌ [API_CLIENT] Failed to get video view URL: \(error.localizedDescription)")
@@ -727,6 +738,7 @@ extension APIClient {
             }
         }
     }
+    
 }
 
 // MARK: - Current Conditions & Forecast API Extensions
