@@ -807,12 +807,37 @@ extension APIClient {
                 }
                 
                 do {
-                    // Try to parse as DynamoDB format first
-                    if let jsonObject = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-                       let dynamoDBData = jsonObject as? [String: DynamoDBAttributeValue] {
+                    // Try to parse as array of SwellPredictionResponse first (new format)
+                    if let responses = try? JSONDecoder().decode([SwellPredictionResponse].self, from: data) {
+                        // Convert first response to DynamoDB format for backward compatibility
+                        if let firstResponse = responses.first {
+                            let dynamoDBData: [String: DynamoDBAttributeValue] = [
+                                "spot_id": DynamoDBAttributeValue(stringValue: firstResponse.spot_id, numberValue: nil, booleanValue: nil, binaryValue: nil, stringSetValue: nil, numberSetValue: nil, binarySetValue: nil, listValue: nil, mapValue: nil, nullValue: nil),
+                                "forecast_timestamp": DynamoDBAttributeValue(stringValue: firstResponse.forecast_timestamp, numberValue: nil, booleanValue: nil, binaryValue: nil, stringSetValue: nil, numberSetValue: nil, binarySetValue: nil, listValue: nil, mapValue: nil, nullValue: nil),
+                                "generated_at": DynamoDBAttributeValue(stringValue: firstResponse.generated_at, numberValue: nil, booleanValue: nil, binaryValue: nil, stringSetValue: nil, numberSetValue: nil, binarySetValue: nil, listValue: nil, mapValue: nil, nullValue: nil),
+                                "predicted_height": DynamoDBAttributeValue(stringValue: nil, numberValue: String(firstResponse.predicted_height), booleanValue: nil, binaryValue: nil, stringSetValue: nil, numberSetValue: nil, binarySetValue: nil, listValue: nil, mapValue: nil, nullValue: nil),
+                                "predicted_period": DynamoDBAttributeValue(stringValue: nil, numberValue: String(firstResponse.predicted_period), booleanValue: nil, binaryValue: nil, stringSetValue: nil, numberSetValue: nil, binarySetValue: nil, listValue: nil, mapValue: nil, nullValue: nil),
+                                "predicted_direction": DynamoDBAttributeValue(stringValue: nil, numberValue: String(firstResponse.predicted_direction), booleanValue: nil, binaryValue: nil, stringSetValue: nil, numberSetValue: nil, binarySetValue: nil, listValue: nil, mapValue: nil, nullValue: nil),
+                                "surf_size": DynamoDBAttributeValue(stringValue: nil, numberValue: String(firstResponse.surf_size), booleanValue: nil, binaryValue: nil, stringSetValue: nil, numberSetValue: nil, binarySetValue: nil, listValue: nil, mapValue: nil, nullValue: nil),
+                                "travel_time_hours": DynamoDBAttributeValue(stringValue: nil, numberValue: String(firstResponse.travel_time_hours), booleanValue: nil, binaryValue: nil, stringSetValue: nil, numberSetValue: nil, binarySetValue: nil, listValue: nil, mapValue: nil, nullValue: nil),
+                                "arrival_time": DynamoDBAttributeValue(stringValue: firstResponse.arrival_time, numberValue: nil, booleanValue: nil, binaryValue: nil, stringSetValue: nil, numberSetValue: nil, binarySetValue: nil, listValue: nil, mapValue: nil, nullValue: nil),
+                                "direction_quality": DynamoDBAttributeValue(stringValue: nil, numberValue: String(firstResponse.direction_quality), booleanValue: nil, binaryValue: nil, stringSetValue: nil, numberSetValue: nil, binarySetValue: nil, listValue: nil, mapValue: nil, nullValue: nil),
+                                "calibration_applied": DynamoDBAttributeValue(stringValue: nil, numberValue: String(firstResponse.calibration_applied ? 1 : 0), booleanValue: nil, binaryValue: nil, stringSetValue: nil, numberSetValue: nil, binarySetValue: nil, listValue: nil, mapValue: nil, nullValue: nil),
+                                "calibration_confidence": DynamoDBAttributeValue(stringValue: nil, numberValue: String(firstResponse.calibration_confidence), booleanValue: nil, binaryValue: nil, stringSetValue: nil, numberSetValue: nil, binarySetValue: nil, listValue: nil, mapValue: nil, nullValue: nil),
+                                "confidence": DynamoDBAttributeValue(stringValue: nil, numberValue: String(firstResponse.confidence), booleanValue: nil, binaryValue: nil, stringSetValue: nil, numberSetValue: nil, binarySetValue: nil, listValue: nil, mapValue: nil, nullValue: nil),
+                                "distance_km": DynamoDBAttributeValue(stringValue: nil, numberValue: String(firstResponse.distance_km), booleanValue: nil, binaryValue: nil, stringSetValue: nil, numberSetValue: nil, binarySetValue: nil, listValue: nil, mapValue: nil, nullValue: nil),
+                                "hours_ahead": DynamoDBAttributeValue(stringValue: nil, numberValue: String(firstResponse.hours_ahead ?? 0.0), booleanValue: nil, binaryValue: nil, stringSetValue: nil, numberSetValue: nil, binarySetValue: nil, listValue: nil, mapValue: nil, nullValue: nil)
+                            ]
+                            completion(.success(dynamoDBData))
+                        } else {
+                            completion(.failure(APIClientError.noDataReceived))
+                        }
+                    } else if let jsonObject = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                              let dynamoDBData = jsonObject as? [String: DynamoDBAttributeValue] {
+                        // Try to parse as DynamoDB format (legacy)
                         completion(.success(dynamoDBData))
                     } else {
-                        // Fallback to regular format
+                        // Fallback to single response format
                         let response = try JSONDecoder().decode(SwellPredictionResponse.self, from: data)
                         // Convert to DynamoDB format
                         let dynamoDBData: [String: DynamoDBAttributeValue] = [

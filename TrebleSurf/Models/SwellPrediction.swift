@@ -109,15 +109,18 @@ struct SwellPredictionResponse: Codable, Identifiable {
         // Handle arrival_time as either String or numeric timestamp
         if let arrivalTimeString = try? container.decode(String.self, forKey: .arrival_time) {
             arrival_time = arrivalTimeString
+            print("🔍 Parsed arrival_time: \(arrivalTimeString)")
         } else if let arrivalTimeNumber = try? container.decode(Double.self, forKey: .arrival_time) {
             // Convert numeric timestamp to ISO8601 string
             let date = Date(timeIntervalSince1970: arrivalTimeNumber)
             let formatter = ISO8601DateFormatter()
             arrival_time = formatter.string(from: date)
+            print("🔍 Converted numeric arrival_time: \(arrivalTimeNumber) -> \(arrival_time)")
         } else {
             // Fallback to current time if neither works
             let formatter = ISO8601DateFormatter()
             arrival_time = formatter.string(from: Date())
+            print("⚠️ Using fallback arrival_time: \(arrival_time)")
         }
     }
     
@@ -134,8 +137,8 @@ struct CalibrationFactor: Codable, Equatable {
     let surf_size_factor: Double
     let confidence_boost: Double
     let method: String
-    let similar_reports_count: Int
-    let avg_reported_surf_size: Double
+    let similar_reports_count: Int?
+    let avg_reported_surf_size: Double?
 }
 
 struct SwellPredictionStatusResponse: Codable {
@@ -169,15 +172,49 @@ struct SwellPredictionEntry: Codable, Identifiable, Equatable {
     
     // Create from API response
     init(from response: SwellPredictionResponse) {
-        let dateFormatter = ISO8601DateFormatter()
+        // Use DateFormatter for parsing dates without timezone info
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss"
+        dateFormatter.timeZone = TimeZone(abbreviation: "UTC")
+        
+        // For timestamps with milliseconds
+        let dateFormatterWithMs = DateFormatter()
+        dateFormatterWithMs.dateFormat = "yyyy-MM-dd'T'HH:mm:ss.SSSSSS"
+        dateFormatterWithMs.timeZone = TimeZone(abbreviation: "UTC")
         
         self.spotId = response.spot_id
-        self.forecastTimestamp = dateFormatter.date(from: response.forecast_timestamp) ?? Date()
-        self.generatedAt = dateFormatter.date(from: response.generated_at) ?? Date()
-        self.arrivalTime = dateFormatter.date(from: response.arrival_time) ?? Date()
         
-        // Generate ID from spot and time
-        self.id = "\(spotId)-\(forecastTimestamp.timeIntervalSince1970)"
+        // Parse forecast timestamp (numeric)
+        if let timestamp = Double(response.forecast_timestamp) {
+            self.forecastTimestamp = Date(timeIntervalSince1970: timestamp)
+        } else {
+            self.forecastTimestamp = Date()
+        }
+        
+        // Parse generated at timestamp (numeric)
+        if let timestamp = Double(response.generated_at) {
+            self.generatedAt = Date(timeIntervalSince1970: timestamp)
+        } else {
+            self.generatedAt = Date()
+        }
+        
+        // Parse arrival time (string with or without milliseconds)
+        if let date = dateFormatterWithMs.date(from: response.arrival_time) {
+            self.arrivalTime = date
+        } else if let date = dateFormatter.date(from: response.arrival_time) {
+            self.arrivalTime = date
+        } else {
+            self.arrivalTime = Date()
+        }
+        
+        // Debug: Print the arrival time conversion
+        let timeFormatter = DateFormatter()
+        timeFormatter.dateFormat = "HH:mm"
+        timeFormatter.timeZone = TimeZone(abbreviation: "UTC")
+        print("🕐 Converted arrival_time '\(response.arrival_time)' to \(timeFormatter.string(from: arrivalTime)) (UTC)")
+        
+        // Generate ID from spot and arrival time to ensure uniqueness
+        self.id = "\(spotId)-\(arrivalTime.timeIntervalSince1970)"
         
         // Copy all prediction data fields
         self.predictedHeight = response.predicted_height
@@ -287,6 +324,7 @@ extension SwellPredictionEntry {
         let formatter = DateFormatter()
         formatter.dateStyle = .short
         formatter.timeStyle = .short
+        formatter.timeZone = TimeZone(abbreviation: "UTC")
         return formatter.string(from: arrivalTime)
     }
     

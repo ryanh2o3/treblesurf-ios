@@ -98,7 +98,11 @@ struct SwellPredictionTestView: View {
                 case .success(let predictions):
                     print("✅ Swell predictions fetched successfully: \(predictions.count) predictions")
                     for (index, prediction) in predictions.enumerated() {
-                        print("  Prediction \(index + 1): \(prediction.surfSize)m surf size, arrives at \(prediction.formattedArrivalTime)")
+                        let timeFormatter = DateFormatter()
+                        timeFormatter.dateFormat = "HH:mm"
+                        timeFormatter.timeZone = TimeZone(abbreviation: "UTC")
+                        let timeString = timeFormatter.string(from: prediction.arrivalTime)
+                        print("  Prediction \(index + 1): \(prediction.surfSize)m surf size, arrives at \(prediction.formattedArrivalTime) (\(timeString) UTC)")
                     }
                 case .failure(let error):
                     print("❌ Failed to fetch swell predictions: \(error.localizedDescription)")

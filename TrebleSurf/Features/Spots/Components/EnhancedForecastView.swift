@@ -551,6 +551,7 @@ struct EnhancedForecastView: View {
     private static let timeFormatter: DateFormatter = {
         let df = DateFormatter()
         df.dateFormat = "HH:mm"
+        df.timeZone = TimeZone(abbreviation: "UTC")
         return df
     }()
     

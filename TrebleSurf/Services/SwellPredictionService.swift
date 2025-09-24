@@ -38,31 +38,32 @@ class SwellPredictionService: ObservableObject {
         isLoading = true
         lastError = nil
         
-        // Try DynamoDB format first, fallback to regular format
-        apiClient.fetchSwellPredictionDynamoDB(country: country, region: region, spot: spotName) { [weak self] result in
+        // Use regular format first (handles array responses), fallback to DynamoDB format
+        apiClient.fetchSwellPrediction(country: country, region: region, spot: spotName) { [weak self] result in
             DispatchQueue.main.async {
                 self?.isLoading = false
                 
                 switch result {
-                case .success(let dynamoDBData):
-                    let response = SwellPredictionResponse(from: dynamoDBData)
-                    let entry = SwellPredictionEntry(from: response)
-                    self?.predictions[spot.id] = entry
-                    completion(.success([entry]))
+                case .success(let responses):
+                    let entries = responses.map { SwellPredictionEntry(from: $0) }
+                        .sorted { $0.arrivalTime < $1.arrivalTime }
+                    // Store all predictions sorted by arrival time
+                    self?.multiplePredictions[spot.id] = entries
+                    // Store the first prediction as the primary one for backward compatibility
+                    if let firstEntry = entries.first {
+                        self?.predictions[spot.id] = firstEntry
+                    }
+                    completion(.success(entries))
                 case .failure(let error):
-                    // Fallback to regular format - now expects array of responses
-                    self?.apiClient.fetchSwellPrediction(country: country, region: region, spot: spotName) { [weak self] fallbackResult in
+                    // Fallback to DynamoDB format
+                    self?.apiClient.fetchSwellPredictionDynamoDB(country: country, region: region, spot: spotName) { [weak self] fallbackResult in
                         DispatchQueue.main.async {
                             switch fallbackResult {
-                            case .success(let responses):
-                                let entries = responses.map { SwellPredictionEntry(from: $0) }
-                                // Store all predictions
-                                self?.multiplePredictions[spot.id] = entries
-                                // Store the first prediction as the primary one for backward compatibility
-                                if let firstEntry = entries.first {
-                                    self?.predictions[spot.id] = firstEntry
-                                }
-                                completion(.success(entries))
+                            case .success(let dynamoDBData):
+                                let response = SwellPredictionResponse(from: dynamoDBData)
+                                let entry = SwellPredictionEntry(from: response)
+                                self?.predictions[spot.id] = entry
+                                completion(.success([entry]))
                             case .failure(let fallbackError):
                                 self?.lastError = fallbackError
                                 completion(.failure(fallbackError))

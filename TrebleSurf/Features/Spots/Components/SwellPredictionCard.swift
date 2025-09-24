@@ -15,6 +15,7 @@ struct SwellPredictionCard: View {
     private static let timeFormatter: DateFormatter = {
         let df = DateFormatter()
         df.dateFormat = "HH:mm"
+        df.timeZone = TimeZone(abbreviation: "UTC")
         return df
     }()
     
@@ -229,13 +230,17 @@ struct SwellPredictionDetailCard: View {
                             .font(.caption)
                             .foregroundColor(.secondary)
                         
-                        Text("Similar Reports: \(calibration.similar_reports_count)")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
+                        if let similarReports = calibration.similar_reports_count {
+                            Text("Similar Reports: \(similarReports)")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
                         
-                        Text("Avg Reported Size: \(String(format: "%.1f", calibration.avg_reported_surf_size))m")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
+                        if let avgSize = calibration.avg_reported_surf_size {
+                            Text("Avg Reported Size: \(String(format: "%.1f", avgSize))m")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
                     }
                     .padding(.leading, 20)
                 }
