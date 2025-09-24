@@ -68,6 +68,13 @@ class SurfReportSubmissionViewModel: ObservableObject {
     @Published var videoKey: String?
     @Published var uploadUrl: String?
     @Published var videoUploadUrl: String?
+    @Published var videoThumbnailKey: String?
+    @Published var isUploadingVideoThumbnail = false
+    
+    // Video validation properties
+    @Published var isValidatingVideo = false
+    @Published var videoValidationError: String?
+    @Published var videoValidationPassed = false
     
     // Track upload failures
     @Published var imageUploadFailed = false
@@ -75,6 +82,13 @@ class SurfReportSubmissionViewModel: ObservableObject {
     
     // Store the spotId for image uploads
     private var spotId: String?
+    
+    deinit {
+        // Clean up temporary video file when view model is deallocated
+        if let videoURL = selectedVideoURL {
+            cleanupTemporaryVideoFile(videoURL)
+        }
+    }
     
     // Track uploaded media for cleanup
     @Published var uploadedImageKey: String?
@@ -183,7 +197,7 @@ class SurfReportSubmissionViewModel: ObservableObject {
             return false
         }
         
-        if selectedVideoURL != nil && isUploadingVideo {
+        if selectedVideoURL != nil && (isUploadingVideo || isUploadingVideoThumbnail) {
             return false
         }
         
@@ -266,6 +280,11 @@ class SurfReportSubmissionViewModel: ObservableObject {
     }
     
     func clearVideo() {
+        // Clean up temporary video file
+        if let videoURL = selectedVideoURL {
+            cleanupTemporaryVideoFile(videoURL)
+        }
+        
         selectedVideoURL = nil
         selectedVideoThumbnail = nil
         videoSelection = nil
@@ -276,9 +295,16 @@ class SurfReportSubmissionViewModel: ObservableObject {
         // Clear S3 upload state
         videoKey = nil
         videoUploadUrl = nil
+        videoThumbnailKey = nil
         isUploadingVideo = false
+        isUploadingVideoThumbnail = false
         videoUploadProgress = 0.0
         videoUploadFailed = false
+        
+        // Clear validation state
+        videoValidationPassed = false
+        videoValidationError = nil
+        isValidatingVideo = false
         
         // Clear any video-related errors
         clearFieldError(for: "video")
@@ -287,6 +313,15 @@ class SurfReportSubmissionViewModel: ObservableObject {
     func clearMedia() {
         clearImage()
         clearVideo()
+    }
+    
+    private func cleanupTemporaryVideoFile(_ videoURL: URL) {
+        do {
+            try FileManager.default.removeItem(at: videoURL)
+            print("✅ [LONG_FORM_VIDEO] Cleaned up temporary video file: \(videoURL)")
+        } catch {
+            print("❌ [LONG_FORM_VIDEO] Failed to clean up temporary video file: \(error)")
+        }
     }
     
     func clearImageForRetry() {
@@ -595,41 +630,115 @@ class SurfReportSubmissionViewModel: ObservableObject {
     
     @MainActor
     private func loadVideo() async {
+        print("🎬 [LONG_FORM_VIDEO] Starting video load process")
         guard let videoSelection = videoSelection else {
+            print("❌ [LONG_FORM_VIDEO] No video selection found")
             return
         }
         
+        print("🎬 [LONG_FORM_VIDEO] Video selection found, loading transferable...")
         do {
-            if let videoURL = try await videoSelection.loadTransferable(type: URL.self) {
-                selectedVideoURL = videoURL
+            // Try loading as Data first, then convert to URL (like quick report)
+            print("🎬 [LONG_FORM_VIDEO] Attempting to load video as Data...")
+            if let videoData = try await videoSelection.loadTransferable(type: Data.self) {
+                print("✅ [LONG_FORM_VIDEO] Video data loaded successfully, size: \(videoData.count) bytes")
                 
-                // Generate thumbnail for video preview
-                if let thumbnail = await generateVideoThumbnail(from: videoURL) {
-                    selectedVideoThumbnail = thumbnail
-                }
+                // Create a temporary file URL
+                let tempDirectory = FileManager.default.temporaryDirectory
+                let tempFileName = "temp_video_\(UUID().uuidString).mov"
+                let tempURL = tempDirectory.appendingPathComponent(tempFileName)
                 
-                // Validate video using iOS ML
-                print("🔍 [VIDEO_VALIDATION] Starting iOS ML validation...")
-                ImageValidationService.shared.validateSurfVideo(videoURL) { result in
-                    Task { @MainActor in
-                        switch result {
-                        case .success(let isValid):
-                            if isValid {
-                                print("✅ [VIDEO_VALIDATION] Video validated as surf-related")
-                                self.processValidatedVideo(videoURL, videoSelection: videoSelection)
-                            } else {
-                                print("❌ [VIDEO_VALIDATION] Video not recognized as surf-related")
-                                self.handleVideoValidationFailure()
-                            }
-                        case .failure(let error):
-                            print("❌ [VIDEO_VALIDATION] Validation failed: \(error)")
-                            self.handleVideoValidationError(error)
-                        }
+                do {
+                    try videoData.write(to: tempURL)
+                    print("✅ [LONG_FORM_VIDEO] Video data written to temporary file: \(tempURL)")
+                    selectedVideoURL = tempURL
+                    
+                    // Generate thumbnail
+                    print("🎬 [LONG_FORM_VIDEO] Generating video thumbnail...")
+                    if let thumbnail = await generateVideoThumbnail(from: tempURL) {
+                        print("✅ [LONG_FORM_VIDEO] Video thumbnail generated successfully")
+                        selectedVideoThumbnail = thumbnail
+                    } else {
+                        print("❌ [LONG_FORM_VIDEO] Failed to generate video thumbnail")
                     }
+                    
+                    // Validate video using iOS ML
+                    print("🎬 [LONG_FORM_VIDEO] Starting video validation...")
+                    await validateVideo(tempURL)
+                    
+                    // Start video upload process
+                    if let spotId = self.spotId {
+                        print("🎬 [LONG_FORM_VIDEO] Starting video upload process for spotId: \(spotId)")
+                        await startVideoUploadProcess(spotId: spotId, videoURL: tempURL)
+                    } else {
+                        print("❌ [LONG_FORM_VIDEO] No spotId available for video upload")
+                    }
+                } catch {
+                    print("❌ [LONG_FORM_VIDEO] Failed to write video data to temporary file: \(error)")
+                }
+            } else {
+                print("❌ [LONG_FORM_VIDEO] Failed to load video data from selection, trying URL approach...")
+                // Fallback: try loading as URL directly
+                if let videoURL = try await videoSelection.loadTransferable(type: URL.self) {
+                    print("✅ [LONG_FORM_VIDEO] Video URL loaded successfully via fallback: \(videoURL)")
+                    selectedVideoURL = videoURL
+                    
+                    // Generate thumbnail
+                    print("🎬 [LONG_FORM_VIDEO] Generating video thumbnail...")
+                    if let thumbnail = await generateVideoThumbnail(from: videoURL) {
+                        print("✅ [LONG_FORM_VIDEO] Video thumbnail generated successfully")
+                        selectedVideoThumbnail = thumbnail
+                    } else {
+                        print("❌ [LONG_FORM_VIDEO] Failed to generate video thumbnail")
+                    }
+                    
+                    // Validate video using iOS ML
+                    print("🎬 [LONG_FORM_VIDEO] Starting video validation...")
+                    await validateVideo(videoURL)
+                    
+                    // Start video upload process
+                    if let spotId = self.spotId {
+                        print("🎬 [LONG_FORM_VIDEO] Starting video upload process for spotId: \(spotId)")
+                        await startVideoUploadProcess(spotId: spotId, videoURL: videoURL)
+                    } else {
+                        print("❌ [LONG_FORM_VIDEO] No spotId available for video upload")
+                    }
+                } else {
+                    print("❌ [LONG_FORM_VIDEO] Failed to load video URL from selection via fallback")
                 }
             }
         } catch {
-            print("❌ [VIDEO_LOAD] Failed to load video: \(error)")
+            print("❌ [LONG_FORM_VIDEO] Failed to load video: \(error)")
+        }
+    }
+    
+    @MainActor
+    private func validateVideo(_ videoURL: URL) async {
+        print("🎬 [LONG_FORM_VIDEO] Starting video validation for: \(videoURL)")
+        isValidatingVideo = true
+        videoValidationError = nil
+        videoValidationPassed = false
+        
+        ImageValidationService.shared.validateSurfVideo(videoURL) { [weak self] result in
+            Task { @MainActor in
+                self?.isValidatingVideo = false
+                
+                switch result {
+                case .success(let isValid):
+                    print("🎬 [LONG_FORM_VIDEO] Video validation completed. Valid: \(isValid)")
+                    self?.videoValidationPassed = isValid
+                    if !isValid {
+                        print("❌ [LONG_FORM_VIDEO] Video validation failed - not surf-related content")
+                        self?.videoValidationError = "This video doesn't appear to contain surf-related content. Please select a video that shows waves, surfers, or the ocean."
+                    } else {
+                        print("✅ [LONG_FORM_VIDEO] Video validation passed")
+                    }
+                case .failure(let error):
+                    print("❌ [LONG_FORM_VIDEO] Video validation error: \(error)")
+                    self?.videoValidationPassed = false
+                    self?.videoValidationError = "Failed to validate video: \(error.localizedDescription)"
+                }
+            }
         }
     }
     
@@ -645,20 +754,10 @@ class SurfReportSubmissionViewModel: ObservableObject {
             
             // Start video upload process
             if let spotId = self.spotId {
-                // Check if we already have a presigned URL, if so use it directly
-                if let uploadUrl = self.videoUploadUrl, let videoKey = self.videoKey {
-                    print("✅ [VIDEO_UPLOAD_CHECK] Found presigned video URL, starting S3 upload...")
-                    do {
-                        try await uploadVideoToS3(uploadURL: uploadUrl, videoURL: videoURL)
-                    } catch {
-                        print("❌ [VIDEO_UPLOAD_CHECK] S3 video upload failed: \(error)")
-                        // Fall back to generating new URL
-                        await startVideoUploadProcess(spotId: spotId, videoURL: videoURL)
-                    }
-                } else {
-                    print("🔍 [VIDEO_UPLOAD_CHECK] No presigned video URL found, generating new one...")
-                    await startVideoUploadProcess(spotId: spotId, videoURL: videoURL)
-                }
+                print("🎥 [VIDEO_UPLOAD] Starting video upload process for spotId: \(spotId)")
+                await startVideoUploadProcess(spotId: spotId, videoURL: videoURL)
+            } else {
+                print("❌ [VIDEO_UPLOAD] No spotId available for video upload")
             }
             
             // Auto-advance to next step after video is loaded
@@ -971,8 +1070,14 @@ class SurfReportSubmissionViewModel: ObservableObject {
         let startTime = Date()
         
         do {
-            // Step 1: Generate presigned upload URL for video
-            print("🔗 [VIDEO_UPLOAD] Step 1: Generating presigned upload URL...")
+            // Step 1: Upload video thumbnail first (if available)
+            if let thumbnail = selectedVideoThumbnail {
+                print("🎥 [VIDEO_UPLOAD] Step 1: Uploading video thumbnail...")
+                await uploadVideoThumbnail(spotId: spotId, thumbnail: thumbnail)
+            }
+            
+            // Step 2: Generate presigned upload URL for video
+            print("🔗 [VIDEO_UPLOAD] Step 2: Generating presigned upload URL...")
             let uploadResponse = try await generateVideoUploadURL(spotId: spotId)
             
             await MainActor.run {
@@ -987,8 +1092,8 @@ class SurfReportSubmissionViewModel: ObservableObject {
             print("🔑 [VIDEO_UPLOAD] Video key: \(uploadResponse.videoKey)")
             print("🌐 [VIDEO_UPLOAD] Upload URL: \(uploadResponse.uploadUrl.prefix(50))...")
             
-            // Step 2: Upload video to S3
-            print("☁️ [VIDEO_UPLOAD] Step 2: Uploading video to S3...")
+            // Step 3: Upload video to S3
+            print("☁️ [VIDEO_UPLOAD] Step 3: Uploading video to S3...")
             try await uploadVideoToS3(uploadURL: uploadResponse.uploadUrl, videoURL: videoURL)
             
             let totalTime = Date().timeIntervalSince(startTime)
@@ -1287,6 +1392,53 @@ class SurfReportSubmissionViewModel: ObservableObject {
         print("✅ [VIDEO_UPLOAD] Video successfully uploaded to S3")
     }
     
+    private func uploadVideoThumbnail(spotId: String, thumbnail: UIImage) async {
+        print("🎥 [VIDEO_THUMBNAIL] Starting video thumbnail upload...")
+        isUploadingVideoThumbnail = true
+        
+        do {
+            // Generate presigned URL for image upload
+            let imageUploadResponse = try await generateUploadURL(spotId: spotId)
+            videoThumbnailKey = imageUploadResponse.imageKey
+            uploadedVideoThumbnailKey = imageUploadResponse.imageKey
+            print("✅ [VIDEO_THUMBNAIL] Video thumbnail upload URL generated: \(imageUploadResponse.imageKey)")
+            
+            // Compress and upload the thumbnail
+            if let thumbnailData = compressImageForUploadRaw(thumbnail) {
+                try await uploadImageToS3(uploadURL: imageUploadResponse.uploadUrl, imageData: thumbnailData)
+                print("✅ [VIDEO_THUMBNAIL] Video thumbnail uploaded successfully")
+            } else {
+                print("❌ [VIDEO_THUMBNAIL] Failed to compress video thumbnail")
+            }
+        } catch {
+            print("❌ [VIDEO_THUMBNAIL] Failed to upload video thumbnail: \(error)")
+        }
+        
+        isUploadingVideoThumbnail = false
+    }
+    
+    private func uploadImageToS3(uploadURL: String, imageData: Data) async throws {
+        print("🎥 [VIDEO_THUMBNAIL] Uploading image data to S3...")
+        
+        guard let url = URL(string: uploadURL) else {
+            print("❌ [VIDEO_THUMBNAIL] Invalid upload URL: \(uploadURL)")
+            throw NSError(domain: "VideoUpload", code: 0, userInfo: [NSLocalizedDescriptionKey: "Invalid upload URL"])
+        }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "PUT"
+        request.setValue("image/jpeg", forHTTPHeaderField: "Content-Type")
+        request.httpBody = imageData
+        
+        let (_, response) = try await URLSession.shared.data(for: request)
+        
+        if let httpResponse = response as? HTTPURLResponse {
+            print("🎥 [VIDEO_THUMBNAIL] S3 image upload response status: \(httpResponse.statusCode)")
+            if httpResponse.statusCode != 200 {
+                throw NSError(domain: "VideoUpload", code: 0, userInfo: [NSLocalizedDescriptionKey: "Image upload failed with status: \(httpResponse.statusCode)"])
+            }
+        }
+    }
 
     
     @MainActor
@@ -1342,7 +1494,7 @@ class SurfReportSubmissionViewModel: ObservableObject {
             return
         }
         
-        if selectedVideoURL != nil && isUploadingVideo {
+        if selectedVideoURL != nil && (isUploadingVideo || isUploadingVideoThumbnail) {
             print("❌ [SURF_REPORT] Cannot submit - video upload still in progress")
             errorMessage = "Video upload is still in progress. Please wait for it to complete."
             showErrorAlert = true
@@ -1351,6 +1503,16 @@ class SurfReportSubmissionViewModel: ObservableObject {
         }
         
         // Note: Upload failures are handled in the UI - if we reach here, user chose to continue
+        
+        // Determine which image key to use (regular image or video thumbnail)
+        let finalImageKey: String
+        if let videoThumbnailKey = videoThumbnailKey {
+            // If we have a video thumbnail, use that as the image
+            finalImageKey = videoThumbnailKey
+        } else {
+            // Otherwise use the regular image key
+            finalImageKey = (!imageUploadFailed && imageKey != nil) ? imageKey! : ""
+        }
         
         // Prepare report data - only include S3 keys if uploads succeeded
         let reportData: [String: Any] = [
@@ -1363,7 +1525,7 @@ class SurfReportSubmissionViewModel: ObservableObject {
             "windAmount": selectedOptions[3] ?? "",
             "consistency": selectedOptions[4] ?? "",
             "quality": selectedOptions[5] ?? "",
-            "imageKey": (!imageUploadFailed && imageKey != nil) ? imageKey! : "",
+            "imageKey": finalImageKey,
             "videoKey": (!videoUploadFailed && videoKey != nil) ? videoKey! : "",
             "date": formattedDate
         ]

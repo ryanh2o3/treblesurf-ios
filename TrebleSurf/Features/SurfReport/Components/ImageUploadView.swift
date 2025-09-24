@@ -137,7 +137,18 @@ struct ImageUploadView: View {
             }
             
             // Upload progress indicator
-            if viewModel.isUploadingVideo {
+            if viewModel.isUploadingVideoThumbnail {
+                VStack(spacing: 12) {
+                    ProgressView()
+                        .progressViewStyle(LinearProgressViewStyle())
+                        .frame(height: 8)
+                    
+                    Text("Uploading video thumbnail...")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                .padding(.horizontal)
+            } else if viewModel.isUploadingVideo {
                 VStack(spacing: 12) {
                     ProgressView(value: viewModel.videoUploadProgress)
                         .progressViewStyle(LinearProgressViewStyle())
@@ -148,11 +159,40 @@ struct ImageUploadView: View {
                         .foregroundColor(.secondary)
                 }
                 .padding(.horizontal)
-            } else if viewModel.videoUploadProgress >= 1.0 {
+            } else if viewModel.videoUploadProgress >= 1.0 && viewModel.videoThumbnailKey != nil {
                 HStack {
                     Image(systemName: "checkmark.circle.fill")
                         .foregroundColor(.green)
-                    Text("Video uploaded successfully")
+                    Text("Video and thumbnail uploaded successfully")
+                        .font(.caption)
+                        .foregroundColor(.green)
+                }
+            }
+            
+            // Video validation status
+            if viewModel.isValidatingVideo {
+                HStack {
+                    ProgressView()
+                        .scaleEffect(0.8)
+                    Text("Validating video...")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+            } else if let validationError = viewModel.videoValidationError {
+                HStack {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundColor(.red)
+                    Text(validationError)
+                        .font(.caption)
+                        .foregroundColor(.red)
+                        .multilineTextAlignment(.center)
+                }
+                .padding(.horizontal)
+            } else if viewModel.videoValidationPassed {
+                HStack {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundColor(.green)
+                    Text("Video validated successfully")
                         .font(.caption)
                         .foregroundColor(.green)
                 }
@@ -232,9 +272,6 @@ struct ImageUploadView: View {
             
             // Video selection button
             Button(action: {
-                Task {
-                    await viewModel.preGenerateVideoUploadURL()
-                }
                 showingVideoPicker = true
             }) {
                 VStack(spacing: 12) {
