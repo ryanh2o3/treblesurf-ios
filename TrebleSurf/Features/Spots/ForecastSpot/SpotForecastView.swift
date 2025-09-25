@@ -447,29 +447,24 @@ struct SpotForecastView: View {
     // MARK: - Auto-Selection Logic
     
     private func calculateMostVisibleCard(from scrollOffset: CGFloat) -> Int {
-        // Use a simpler approach based on scroll position percentage
-        // This avoids issues with scale effects and dynamic spacing
+        // Use a very simple approach: calculate based on scroll offset and average card width
+        // This is more reliable than trying to track exact positions
         
         let screenWidth = UIScreen.main.bounds.width
         let scrollViewPadding: CGFloat = 16
         
-        // Calculate the center of the visible area
-        let visibleCenter = screenWidth / 2
+        // Calculate which card should be centered based on scroll offset
+        // Each card is approximately 70 points wide + 8 points average spacing = 78 points total
+        let averageCardWidth: CGFloat = 78
         
-        // Calculate which card index should be centered based on scroll offset
-        // We'll use an approximate calculation that works better with SwiftUI's layout
+        // Calculate the scroll position relative to the start of the content
+        let scrollPosition = abs(scrollOffset) + (screenWidth / 2) - scrollViewPadding
         
-        let approximateCardWidth: CGFloat = 70 + 12 // 70 width + 6 padding on each side
-        let approximateSpacing: CGFloat = 8 // Average spacing between cards
+        // Determine which card index this position corresponds to
+        let cardIndex = Int(scrollPosition / averageCardWidth)
         
-        // Calculate the scroll position as a percentage of card width
-        let scrollPosition = abs(scrollOffset) + visibleCenter - scrollViewPadding
-        let cardIndex = Int(scrollPosition / (approximateCardWidth + approximateSpacing))
-        
-        // Clamp the index to valid range
-        let clampedIndex = max(0, min(cardIndex, viewModel.filteredEntries.count - 1))
-        
-        return clampedIndex
+        // Clamp to valid range
+        return max(0, min(cardIndex, viewModel.filteredEntries.count - 1))
     }
     
     private func handleScrollOffsetChange(_ offset: CGFloat) {
