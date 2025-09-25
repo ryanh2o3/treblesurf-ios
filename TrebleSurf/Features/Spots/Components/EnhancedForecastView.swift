@@ -666,63 +666,31 @@ struct EnhancedForecastView: View {
     }
     
     private func calculateMostVisibleCard(from scrollOffset: CGFloat) -> Int {
-        // For swell predictions, calculate based on available predictions
-        if settingsStore.showSwellPredictions {
-            let cardWidth: CGFloat = 70
-            let cardPadding: CGFloat = 6
-            let totalCardWidth = cardWidth + (cardPadding * 2)
-            let screenWidth = UIScreen.main.bounds.width
-            let scrollViewPadding: CGFloat = 16
-            
-            let screenCenter = screenWidth / 2
-            var bestIndex = 0
-            var minDistanceToCenter = CGFloat.infinity
-            
-            var currentX: CGFloat = scrollViewPadding + cardPadding + (cardWidth / 2)
-            
-            for index in 0..<swellPredictions.count {
-                let cardCenterX = currentX
-                let cardScreenX = cardCenterX + scrollOffset
-                let distanceFromCenter = abs(cardScreenX - screenCenter)
-                
-                if distanceFromCenter < minDistanceToCenter {
-                    minDistanceToCenter = distanceFromCenter
-                    bestIndex = index
-                }
-                
-                currentX += totalCardWidth + 8 // 8 is the spacing between swell prediction cards
-            }
-            
-            return bestIndex
-        }
+        // Use a simpler approach based on scroll position percentage
+        // This avoids issues with scale effects and dynamic spacing
         
-        // Traditional forecast logic
-        let cardWidth: CGFloat = 70
-        let cardPadding: CGFloat = 6
-        let totalCardWidth = cardWidth + (cardPadding * 2)
         let screenWidth = UIScreen.main.bounds.width
         let scrollViewPadding: CGFloat = 16
         
-        let screenCenter = screenWidth / 2
-        var bestIndex = 0
-        var minDistanceToCenter = CGFloat.infinity
+        // Calculate the center of the visible area
+        let visibleCenter = screenWidth / 2
         
-        var currentX: CGFloat = scrollViewPadding + cardPadding + (cardWidth / 2)
+        // Calculate which card index should be centered based on scroll offset
+        let approximateCardWidth: CGFloat = 70 + 12 // 70 width + 6 padding on each side
+        let approximateSpacing: CGFloat = 8 // Average spacing between cards
         
-        for index in 0..<forecastViewModel.filteredEntries.count {
-            let cardCenterX = currentX
-            let cardScreenX = cardCenterX + scrollOffset
-            let distanceFromCenter = abs(cardScreenX - screenCenter)
-            
-            if distanceFromCenter < minDistanceToCenter {
-                minDistanceToCenter = distanceFromCenter
-                bestIndex = index
-            }
-            
-            currentX += totalCardWidth + spacingAfterCard(at: index)
+        // Calculate the scroll position as a percentage of card width
+        let scrollPosition = abs(scrollOffset) + visibleCenter - scrollViewPadding
+        let cardIndex = Int(scrollPosition / (approximateCardWidth + approximateSpacing))
+        
+        // Clamp the index to valid range based on current mode
+        if settingsStore.showSwellPredictions {
+            let clampedIndex = max(0, min(cardIndex, swellPredictions.count - 1))
+            return clampedIndex
+        } else {
+            let clampedIndex = max(0, min(cardIndex, forecastViewModel.filteredEntries.count - 1))
+            return clampedIndex
         }
-        
-        return bestIndex
     }
     
     private func handleScrollOffsetChange(_ offset: CGFloat) {

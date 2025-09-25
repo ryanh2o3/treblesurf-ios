@@ -447,42 +447,29 @@ struct SpotForecastView: View {
     // MARK: - Auto-Selection Logic
     
     private func calculateMostVisibleCard(from scrollOffset: CGFloat) -> Int {
-        let cardWidth: CGFloat = 70 // Updated card width
-        let cardPadding: CGFloat = 6 // Updated internal padding
-        let totalCardWidth = cardWidth + (cardPadding * 2) // Width including padding
+        // Use a simpler approach based on scroll position percentage
+        // This avoids issues with scale effects and dynamic spacing
+        
         let screenWidth = UIScreen.main.bounds.width
         let scrollViewPadding: CGFloat = 16
         
-        // Calculate the center of the visible screen area
-        let screenCenter = screenWidth / 2
+        // Calculate the center of the visible area
+        let visibleCenter = screenWidth / 2
         
-        // The scroll offset is negative when scrolling right
-        // Calculate positions of each card to find the most centered one
-        var bestIndex = 0
-        var minDistanceToCenter = CGFloat.infinity
+        // Calculate which card index should be centered based on scroll offset
+        // We'll use an approximate calculation that works better with SwiftUI's layout
         
-        var currentX: CGFloat = scrollViewPadding + cardPadding + (cardWidth / 2)
+        let approximateCardWidth: CGFloat = 70 + 12 // 70 width + 6 padding on each side
+        let approximateSpacing: CGFloat = 8 // Average spacing between cards
         
-        for index in 0..<viewModel.filteredEntries.count {
-            // Calculate this card's center position relative to the scroll content
-            let cardCenterX = currentX
-            
-            // Calculate where this card appears on screen given the current scroll offset
-            let cardScreenX = cardCenterX + scrollOffset
-            
-            // Calculate distance from screen center
-            let distanceFromCenter = abs(cardScreenX - screenCenter)
-            
-            if distanceFromCenter < minDistanceToCenter {
-                minDistanceToCenter = distanceFromCenter
-                bestIndex = index
-            }
-            
-            // Move to next card position
-            currentX += totalCardWidth + spacingAfterCard(at: index)
-        }
+        // Calculate the scroll position as a percentage of card width
+        let scrollPosition = abs(scrollOffset) + visibleCenter - scrollViewPadding
+        let cardIndex = Int(scrollPosition / (approximateCardWidth + approximateSpacing))
         
-        return bestIndex
+        // Clamp the index to valid range
+        let clampedIndex = max(0, min(cardIndex, viewModel.filteredEntries.count - 1))
+        
+        return clampedIndex
     }
     
     private func handleScrollOffsetChange(_ offset: CGFloat) {
