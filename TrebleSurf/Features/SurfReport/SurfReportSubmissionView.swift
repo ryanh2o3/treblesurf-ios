@@ -152,13 +152,17 @@ struct SurfReportSubmissionView: View {
     
     private var timestampStatusText: some View {
         Group {
-            if viewModel.selectedImage != nil && viewModel.photoTimestampExtracted {
-                Text("📸 Photo timestamp detected: \(formatDate(viewModel.selectedDateTime))")
+            if (viewModel.selectedImage != nil || viewModel.selectedVideoURL != nil) && viewModel.photoTimestampExtracted {
+                let mediaType = viewModel.selectedVideoURL != nil ? "Video" : "Photo"
+                let emoji = viewModel.selectedVideoURL != nil ? "🎥" : "📸"
+                Text("\(emoji) \(mediaType) timestamp detected: \(formatDate(viewModel.selectedDateTime))")
                     .font(.subheadline)
                     .foregroundColor(.green)
                     .padding(.horizontal)
-            } else if viewModel.selectedImage != nil && !viewModel.photoTimestampExtracted {
-                Text("📸 Photo added but no timestamp found - please select date manually")
+            } else if (viewModel.selectedImage != nil || viewModel.selectedVideoURL != nil) && !viewModel.photoTimestampExtracted {
+                let mediaType = viewModel.selectedVideoURL != nil ? "video" : "photo"
+                let emoji = viewModel.selectedVideoURL != nil ? "🎥" : "📸"
+                Text("\(emoji) \(mediaType.capitalized) added but no timestamp found - please select date manually")
                     .font(.subheadline)
                     .foregroundColor(.orange)
                     .padding(.horizontal)

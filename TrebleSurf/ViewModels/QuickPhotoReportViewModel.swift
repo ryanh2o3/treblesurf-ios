@@ -216,6 +216,23 @@ class QuickPhotoReportViewModel: ObservableObject {
                         print("❌ [QUICK_VIDEO] Failed to generate video thumbnail")
                     }
                     
+                    // Try to extract timestamp from video metadata
+                    var timestampFound = false
+                    if let fileCreationDate = await getFileCreationDate(from: videoSelection) {
+                        selectedDateTime = fileCreationDate
+                        timestampFound = true
+                        photoTimestampExtracted = true
+                        print("🎥 [QUICK_VIDEO] Using video creation date: \(fileCreationDate)")
+                    }
+                    
+                    // Update timestamp selector visibility
+                    if !timestampFound {
+                        print("🎥 [QUICK_VIDEO] No video timestamp found - will show timestamp selector")
+                        showTimestampSelector = true
+                    } else {
+                        showTimestampSelector = false
+                    }
+                    
                     // Validate video using iOS ML
                     print("🎬 [QUICK_VIDEO] Starting video validation...")
                     await validateVideo(tempURL)
@@ -244,6 +261,23 @@ class QuickPhotoReportViewModel: ObservableObject {
                         selectedVideoThumbnail = thumbnail
                     } else {
                         print("❌ [QUICK_VIDEO] Failed to generate video thumbnail")
+                    }
+                    
+                    // Try to extract timestamp from video metadata
+                    var timestampFound = false
+                    if let fileCreationDate = await getFileCreationDate(from: videoSelection) {
+                        selectedDateTime = fileCreationDate
+                        timestampFound = true
+                        photoTimestampExtracted = true
+                        print("🎥 [QUICK_VIDEO] Using video creation date: \(fileCreationDate)")
+                    }
+                    
+                    // Update timestamp selector visibility
+                    if !timestampFound {
+                        print("🎥 [QUICK_VIDEO] No video timestamp found - will show timestamp selector")
+                        showTimestampSelector = true
+                    } else {
+                        showTimestampSelector = false
                     }
                     
                     // Validate video using iOS ML
@@ -543,6 +577,10 @@ class QuickPhotoReportViewModel: ObservableObject {
         selectedVideo = nil
         selectedVideoURL = nil
         selectedVideoThumbnail = nil
+        photoTimestampExtracted = false
+        showTimestampSelector = false
+        // Reset to current time when video is cleared
+        selectedDateTime = Date()
         
         // Clear S3 upload state
         videoKey = nil

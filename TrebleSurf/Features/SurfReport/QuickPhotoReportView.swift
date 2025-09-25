@@ -189,6 +189,14 @@ struct QuickPhotoReportView: View {
                                 }
                             }
                             
+                            // Video timestamp status
+                            if viewModel.photoTimestampExtracted {
+                                Text("🎥 Video timestamp detected: \(formatDate(viewModel.selectedDateTime))")
+                                    .font(.subheadline)
+                                    .foregroundColor(.green)
+                                    .padding(.horizontal)
+                            }
+                            
                             Button("Change Video") {
                                 viewModel.clearVideo()
                             }
@@ -309,16 +317,16 @@ struct QuickPhotoReportView: View {
                 // Timestamp selector (shown when no timestamp found)
                 if viewModel.showTimestampSelector {
                     VStack(alignment: .leading, spacing: 16) {
-                        Text("When was this photo taken?")
+                        Text("When was this media taken?")
                             .font(.headline)
                         
                         VStack(alignment: .leading, spacing: 8) {
-                            Text("No timestamp found in photo - please select the time")
+                            Text("No timestamp found in media - please select the time")
                                 .font(.subheadline)
                                 .foregroundColor(.orange)
                             
                             DatePicker(
-                                "Photo Date & Time",
+                                "Media Date & Time",
                                 selection: $viewModel.selectedDateTime,
                                 displayedComponents: [.date, .hourAndMinute]
                             )

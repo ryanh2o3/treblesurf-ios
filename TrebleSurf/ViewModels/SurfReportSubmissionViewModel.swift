@@ -166,7 +166,7 @@ class SurfReportSubmissionViewModel: ObservableObject {
         ),
         SurfReportStep(
             title: "Date & Time",
-            description: "When did you surf? (Uses photo timestamp, file date, or manual selection)",
+            description: "When did you surf? (Uses photo/video timestamp, file date, or manual selection)",
             options: []
         )
     ]
@@ -662,6 +662,20 @@ class SurfReportSubmissionViewModel: ObservableObject {
                         print("❌ [LONG_FORM_VIDEO] Failed to generate video thumbnail")
                     }
                     
+                    // Try to extract timestamp from video metadata
+                    var timestampFound = false
+                    if let fileCreationDate = await getFileCreationDate(from: videoSelection) {
+                        selectedDateTime = fileCreationDate
+                        timestampFound = true
+                        photoTimestampExtracted = true
+                        print("🎥 [LONG_FORM_VIDEO] Using video creation date: \(fileCreationDate)")
+                    }
+                    
+                    // Log final timestamp status
+                    if !timestampFound {
+                        print("🎥 [LONG_FORM_VIDEO] No video timestamp found - using current time")
+                    }
+                    
                     // Validate video using iOS ML
                     print("🎬 [LONG_FORM_VIDEO] Starting video validation...")
                     await validateVideo(tempURL)
@@ -690,6 +704,20 @@ class SurfReportSubmissionViewModel: ObservableObject {
                         selectedVideoThumbnail = thumbnail
                     } else {
                         print("❌ [LONG_FORM_VIDEO] Failed to generate video thumbnail")
+                    }
+                    
+                    // Try to extract timestamp from video metadata
+                    var timestampFound = false
+                    if let fileCreationDate = await getFileCreationDate(from: videoSelection) {
+                        selectedDateTime = fileCreationDate
+                        timestampFound = true
+                        photoTimestampExtracted = true
+                        print("🎥 [LONG_FORM_VIDEO] Using video creation date: \(fileCreationDate)")
+                    }
+                    
+                    // Log final timestamp status
+                    if !timestampFound {
+                        print("🎥 [LONG_FORM_VIDEO] No video timestamp found - using current time")
                     }
                     
                     // Validate video using iOS ML
