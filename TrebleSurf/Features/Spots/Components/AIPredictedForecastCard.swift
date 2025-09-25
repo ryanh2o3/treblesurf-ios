@@ -77,7 +77,9 @@ struct AIPredictedForecastCard: View {
                 }
             }
         }
-        .frame(width: 70, height: 100)
+        .padding(6)
+        .frame(width: 70)
+        .frame(minHeight: 100)
         .background(
             RoundedRectangle(cornerRadius: 8)
                 .fill(isSelected ? Color.purple.opacity(0.15) : Color(.systemGray6))
@@ -86,7 +88,6 @@ struct AIPredictedForecastCard: View {
                         .stroke(isSelected ? Color.purple : Color.clear, lineWidth: 1.5)
                 )
         )
-        .padding(6)
         .onTapGesture {
             onTap()
         }

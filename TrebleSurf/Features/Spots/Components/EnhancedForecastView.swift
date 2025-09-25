@@ -299,6 +299,7 @@ struct EnhancedForecastView: View {
                         }
                     }
                     .padding(.horizontal, 16)
+                    .frame(minHeight: 150)// Ensure minimum height for cards
                 }
             }
             .coordinateSpace(name: "forecastScroll")
@@ -390,7 +391,9 @@ struct EnhancedForecastView: View {
                     .font(.title3)
                     .foregroundColor(.secondary)
             }
-            .frame(width: 70, height: 100)
+            .padding(6)
+            .frame(width: 70)
+            .frame(minHeight: 100)
             .background(
                 RoundedRectangle(cornerRadius: 8)
                     .fill(Color(.systemGray6))
@@ -399,7 +402,6 @@ struct EnhancedForecastView: View {
                             .stroke(Color(.systemGray4), lineWidth: 1)
                     )
             )
-            .padding(6)
             .id(0)
         }
     }
@@ -682,10 +684,9 @@ struct EnhancedForecastView: View {
                 let cardCenterX = currentX
                 let cardScreenX = cardCenterX + scrollOffset
                 let distanceFromCenter = abs(cardScreenX - screenCenter)
-                let biasedDistance = distanceFromCenter - 20
                 
-                if biasedDistance < minDistanceToCenter {
-                    minDistanceToCenter = biasedDistance
+                if distanceFromCenter < minDistanceToCenter {
+                    minDistanceToCenter = distanceFromCenter
                     bestIndex = index
                 }
                 
@@ -712,10 +713,9 @@ struct EnhancedForecastView: View {
             let cardCenterX = currentX
             let cardScreenX = cardCenterX + scrollOffset
             let distanceFromCenter = abs(cardScreenX - screenCenter)
-            let biasedDistance = distanceFromCenter - 20
             
-            if biasedDistance < minDistanceToCenter {
-                minDistanceToCenter = biasedDistance
+            if distanceFromCenter < minDistanceToCenter {
+                minDistanceToCenter = distanceFromCenter
                 bestIndex = index
             }
             

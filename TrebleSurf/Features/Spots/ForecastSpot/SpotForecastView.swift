@@ -441,7 +441,7 @@ struct SpotForecastView: View {
         let nextDay = calendar.dateComponents([.year, .month, .day], from: nextEntry.dateForecastedFor)
         
         // If it's a different day, use larger spacing
-        return (currentDay != nextDay) ? 24 : 8
+        return (currentDay != nextDay) ? 20 : 4
     }
     
     // MARK: - Auto-Selection Logic
@@ -470,12 +470,11 @@ struct SpotForecastView: View {
             // Calculate where this card appears on screen given the current scroll offset
             let cardScreenX = cardCenterX + scrollOffset
             
-            // Calculate distance from screen center - bias towards selecting earlier
+            // Calculate distance from screen center
             let distanceFromCenter = abs(cardScreenX - screenCenter)
-            let biasedDistance = distanceFromCenter - 20 // Bias to select 20px earlier
             
-            if biasedDistance < minDistanceToCenter {
-                minDistanceToCenter = biasedDistance
+            if distanceFromCenter < minDistanceToCenter {
+                minDistanceToCenter = distanceFromCenter
                 bestIndex = index
             }
             
@@ -579,7 +578,9 @@ struct ForecastCard: View {
                 }
             }
         }
-        .frame(width: 70, height: 100)
+        .padding(6)
+        .frame(width: 70)
+        .frame(minHeight: 100)
         .background(
             RoundedRectangle(cornerRadius: 8)
                 .fill(isSelected ? Color.blue.opacity(0.15) : Color(.systemGray6))
@@ -588,7 +589,6 @@ struct ForecastCard: View {
                         .stroke(isSelected ? Color.blue : Color.clear, lineWidth: 1.5)
                 )
         )
-        .padding(6)
         .onTapGesture {
             onTap()
         }
