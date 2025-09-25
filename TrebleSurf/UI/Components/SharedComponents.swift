@@ -31,8 +31,14 @@ struct ReadingCard: View {
         }
         .padding()
         .frame(maxWidth: .infinity, minHeight: 100, alignment: .leading)
-        .background(Color.gray.opacity(0.1))
-        .cornerRadius(12)
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(Color(.systemGray6))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(Color(.systemGray4), lineWidth: 0.5)
+                )
+        )
     }
 }
 

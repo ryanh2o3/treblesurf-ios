@@ -11,7 +11,9 @@ struct LiveSpotView: View {
     @State private var selectedReport: SurfReport?
     @State private var showingVideoPlayer = false
     @State private var videoURL: URL?
-    @State private var showAIPrediction = false
+    @State private var aiPrediction: SwellPredictionEntry? = nil
+    @State private var isLoadingAI = false
+    @State private var aiErrorMessage: String? = nil
 
     var body: some View {
         ScrollView {
@@ -120,23 +122,54 @@ struct LiveSpotView: View {
                     }
                 }
                 
-                // AI Prediction toggle
-                AIPredictionToggle(isEnabled: $showAIPrediction, spotId: spotId)
-                    .padding(.horizontal, 6)
-                
                 // Surf conditions grid
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("Surf Conditions")
-                        .font(.headline)
+                    HStack {
+                        Text("Surf Conditions")
+                            .font(.headline)
+                        
+                        Spacer()
+                        
+                        // ML indicator
+                        if isLoadingAI {
+                            HStack(spacing: 4) {
+                                ProgressView()
+                                    .scaleEffect(0.7)
+                                Text("loading ML...")
+                                    .font(.caption2)
+                                    .foregroundColor(.secondary)
+                            }
+                        } else if aiPrediction != nil {
+                            HStack(spacing: 4) {
+                                Image(systemName: "brain.head.profile")
+                                    .font(.caption2)
+                                    .foregroundColor(.purple)
+                                Text("powered by ML")
+                                    .font(.caption2)
+                                    .foregroundColor(.secondary)
+                            }
+                        } else if aiErrorMessage != nil {
+                            HStack(spacing: 4) {
+                                Image(systemName: "exclamationmark.triangle")
+                                    .font(.caption2)
+                                    .foregroundColor(.orange)
+                                Text("ML unavailable")
+                                    .font(.caption2)
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                    }
                     
                     LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 16) {
+                        // Surf Size - use AI prediction if available
                         ReadingCard(
-                            title: "Surf Size",
-                            value: String(format: "%.1f", dataStore.currentConditions.surfSize),
+                            title: aiPrediction != nil ? "Surf Size (ML)" : "Surf Size",
+                            value: aiPrediction != nil ? String(format: "%.1f", aiPrediction!.surfSize) : String(format: "%.1f", dataStore.currentConditions.surfSize),
                             unit: "m",
                             icon: "water.waves"
                         )
                         
+                        // Surf Messiness - keep current conditions
                         ReadingCard(
                             title: "Surf Messiness",
                             value: dataStore.currentConditions.surfMessiness,
@@ -144,6 +177,7 @@ struct LiveSpotView: View {
                             icon: "water.waves.and.arrow.up"
                         )
                         
+                        // Relative Wind - keep current conditions
                         ReadingCard(
                             title: "Relative Wind",
                             value: dataStore.currentConditions.formattedRelativeWindDirection,
@@ -151,20 +185,23 @@ struct LiveSpotView: View {
                             icon: "arrow.up.left.and.arrow.down.right"
                         )
                         
+                        // Swell Period - use AI prediction if available
                         ReadingCard(
-                            title: "Swell Period",
-                            value: String(format: "%.0f", dataStore.currentConditions.swellPeriod),
+                            title: aiPrediction != nil ? "Swell Period (ML)" : "Swell Period",
+                            value: aiPrediction != nil ? String(format: "%.0f", aiPrediction!.predictedPeriod) : String(format: "%.0f", dataStore.currentConditions.swellPeriod),
                             unit: "sec",
                             icon: "timer"
                         )
                         
+                        // Swell Direction - use AI prediction if available
                         ReadingCard(
-                            title: "Swell Direction",
-                            value: String(format: "%.0f", dataStore.currentConditions.swellDirection),
+                            title: aiPrediction != nil ? "Swell Direction (ML)" : "Swell Direction",
+                            value: aiPrediction != nil ? String(format: "%.0f", aiPrediction!.predictedDirection) : String(format: "%.0f", dataStore.currentConditions.swellDirection),
                             unit: "°",
                             icon: "swellDirection"
                         )
                         
+                        // Wave Energy - keep current conditions
                         ReadingCard(
                             title: "Wave Energy",
                             value: String(format: "%.0f", dataStore.currentConditions.waveEnergy),
@@ -174,6 +211,22 @@ struct LiveSpotView: View {
                     }
                 }
                 .padding(.horizontal, 6)
+                
+                // Debug info for AI prediction (temporary)
+                if aiErrorMessage != nil {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Debug Info")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        Text("SpotId: \(spotId)")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                        Text("Error: \(aiErrorMessage ?? "Unknown")")
+                            .font(.caption2)
+                            .foregroundColor(.red)
+                    }
+                    .padding(.horizontal, 6)
+                }
                 
                 // Weather conditions grid
                 VStack(alignment: .leading, spacing: 6) {
@@ -270,6 +323,9 @@ struct LiveSpotView: View {
             
             // Refresh surf reports
             viewModel.refreshSurfReports(for: spotId)
+            
+            // Refresh AI prediction
+            fetchAIPrediction()
         }
         .task {
             // Trigger data fetch when view appears
@@ -282,12 +338,14 @@ struct LiveSpotView: View {
             // Fetch surf reports for this spot
             viewModel.fetchSurfReports(for: spotId)
             
-
+            // Fetch AI prediction
+            fetchAIPrediction()
         }
         .onChange(of: refreshTrigger) { _, newValue in
             // Refresh data when refresh trigger changes
             dataStore.fetchConditions(for: spotId) { _ in }
             viewModel.refreshSurfReports(for: spotId)
+            fetchAIPrediction()
         }
         .sheet(item: $selectedReport) { report in
             SurfReportDetailView(report: report, backButtonText: "Back to \(viewModel.getSpotName(from: spotId))")
@@ -423,6 +481,42 @@ struct LiveSpotView: View {
             return "Media"
         default:
             return "Photo"
+        }
+    }
+    
+    private func fetchAIPrediction() {
+        print("🤖 [LiveSpotView] Starting AI prediction fetch for spotId: \(spotId)")
+        
+        // Convert spotId back to country/region/spot format
+        let components = spotId.split(separator: "#")
+        guard components.count >= 3 else {
+            print("❌ [LiveSpotView] Invalid spot ID format: \(spotId)")
+            aiErrorMessage = "Invalid spot ID format"
+            return
+        }
+        
+        let country = String(components[0])
+        let region = String(components[1])
+        let spot = String(components[2])
+        
+        print("🤖 [LiveSpotView] Fetching AI prediction for: \(country)/\(region)/\(spot)")
+        
+        isLoadingAI = true
+        aiErrorMessage = nil
+        
+        APIClient.shared.fetchClosestAIPrediction(country: country, region: region, spot: spot) { result in
+            DispatchQueue.main.async {
+                self.isLoadingAI = false
+                
+                switch result {
+                case .success(let response):
+                    print("✅ [LiveSpotView] AI prediction loaded successfully: surfSize=\(response.surf_size)")
+                    self.aiPrediction = SwellPredictionEntry(from: response)
+                case .failure(let error):
+                    print("❌ [LiveSpotView] AI prediction failed: \(error.localizedDescription)")
+                    self.aiErrorMessage = "Failed to load AI prediction: \(error.localizedDescription)"
+                }
+            }
         }
     }
 }
