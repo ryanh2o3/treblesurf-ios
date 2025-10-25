@@ -12,20 +12,25 @@ struct ThemeToggleButton: View {
             HStack(spacing: 8) {
                 Image(systemName: settingsStore.selectedTheme.icon)
                     .font(.title3)
-                    .foregroundColor(.accentColor)
+                    .foregroundColor(.primary)
                 
                 Text(settingsStore.selectedTheme.rawValue)
                     .font(.caption)
                     .fontWeight(.medium)
+                    .foregroundColor(.primary)
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
             .background(
                 RoundedRectangle(cornerRadius: 16)
-                    .fill(Color.accentColor.opacity(0.1))
+                    .fill(.ultraThinMaterial)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 16)
+                            .stroke(.quaternary, lineWidth: 0.5)
+                    )
             )
         }
-        .buttonStyle(PlainButtonStyle())
+        .buttonStyle(PlainButtonStyle()) // Use plain button style for better compatibility
     }
 }
 

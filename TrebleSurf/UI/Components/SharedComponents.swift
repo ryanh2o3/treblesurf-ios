@@ -7,12 +7,21 @@ struct ReadingCard: View {
     let value: String
     let unit: String
     let icon: String
+    let iconColor: Color
+    
+    init(title: String, value: String, unit: String, icon: String, iconColor: Color = .blue) {
+        self.title = title
+        self.value = value
+        self.unit = unit
+        self.icon = icon
+        self.iconColor = iconColor
+    }
     
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Image(systemName: icon)
-                    .foregroundColor(.blue)
+                    .foregroundColor(iconColor)
                 
                 Text(title)
                     .font(.caption)
@@ -32,11 +41,11 @@ struct ReadingCard: View {
         .padding()
         .frame(maxWidth: .infinity, minHeight: 100, alignment: .leading)
         .background(
-            RoundedRectangle(cornerRadius: 12)
-                .fill(Color(.systemGray6))
+            RoundedRectangle(cornerRadius: 16) // Increased corner radius for iOS 18 Liquid Glass
+                .fill(.ultraThinMaterial) // Use system material instead of custom background
                 .overlay(
-                    RoundedRectangle(cornerRadius: 12)
-                        .stroke(Color(.systemGray4), lineWidth: 0.5)
+                    RoundedRectangle(cornerRadius: 16)
+                        .stroke(.quaternary, lineWidth: 0.5) // Use system stroke color
                 )
         )
     }

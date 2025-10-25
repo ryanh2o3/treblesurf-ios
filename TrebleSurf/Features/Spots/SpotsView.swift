@@ -32,21 +32,9 @@ struct SpotsView: View {
     @State private var selectedForecastEntry: ForecastEntry? = nil
     
     var body: some View {
-        NavigationView {
+        NavigationStack {
             MainLayout {
                 VStack(spacing: 16) {
-                    // Header with title and theme toggle
-                    HStack {
-                        Text("Spots")
-                            .font(.title2)
-                            .fontWeight(.bold)
-                        
-                        Spacer()
-                        
-                        ThemeToggleButton()
-                    }
-                    .padding(.horizontal)
-                    
                     // Spots list or details
                     if let selectedSpot = selectedSpot {
                         SpotDetailView(
@@ -63,13 +51,16 @@ struct SpotsView: View {
                     viewModel.setDataStore(dataStore)
                     await viewModel.loadSpots()
                 }
+                .navigationTitle("Spots")
+                .navigationBarTitleDisplayMode(.large)
+                .toolbar {
+                    ToolbarItem(placement: .navigationBarTrailing) {
+                        ThemeToggleButton()
+                    }
+                }
             }
-            .navigationBarHidden(true)
-
         }
     }
-    
-
     
     private var spotsListView: some View {
         ScrollView {
@@ -95,8 +86,12 @@ struct SpotsView: View {
             await viewModel.refreshSpots()
             await viewModel.refreshSurfReports()
         }
+        .safeAreaInset(edge: .bottom) {
+            Rectangle()
+                .fill(Color.clear)
+                .frame(height: 0)
+        }
     }
-    
 }
 
 struct SpotCard: View {
@@ -177,8 +172,14 @@ struct SpotCard: View {
                 .foregroundColor(.gray)
         }
         .padding()
-        .background(Color.gray.opacity(0.1))
-        .cornerRadius(12)
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .fill(.ultraThinMaterial)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16)
+                        .stroke(.quaternary, lineWidth: 0.5)
+                )
+        )
     }
 }
 
@@ -186,17 +187,19 @@ struct SpotCard: View {
 struct LiveSpotOverlay: View {
     @EnvironmentObject var dataStore: DataStore
     let spotId: String
+    let aiPrediction: SwellPredictionEntry?
     
     var body: some View {
         ZStack {
             // Direction arrows - centered
             HStack(spacing: 8) {
-                // Swell arrow (blue)
+                // Swell arrow - purple if AI prediction available, blue otherwise
                 VStack(spacing: 4) {
                     Image(systemName: "arrow.down")
                         .font(.system(size: 40, weight: .bold))
-                        .foregroundColor(.blue)
-                        .rotationEffect(Angle(degrees: dataStore.currentConditions.swellDirection))
+                        .foregroundColor(aiPrediction != nil ? .purple : .blue)
+                        .rotationEffect(Angle(degrees: aiPrediction?.predictedDirection ?? dataStore.currentConditions.swellDirection))
+                        .animation(.easeInOut(duration: 0.4), value: aiPrediction?.id)
                         .scaleEffect(1.0)
                 }
                 
@@ -214,9 +217,9 @@ struct LiveSpotOverlay: View {
             VStack(alignment: .trailing, spacing: 8) {
                 HStack(spacing: 8) {
                     Circle()
-                        .fill(Color.blue)
+                        .fill(aiPrediction != nil ? Color.purple : Color.blue)
                         .frame(width: 12, height: 12)
-                    Text("Swell")
+                    Text(aiPrediction != nil ? "AI Swell" : "Swell")
                         .font(.caption2)
                         .foregroundColor(.white)
                 }

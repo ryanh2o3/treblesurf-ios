@@ -6,20 +6,9 @@ struct BuoysView: View {
     @State private var selectedBuoy: Buoy?
     
     var body: some View {
-        NavigationView {
+        NavigationStack {
             MainLayout {
-                VStack(spacing: 16) {
-                    // Header with title and theme toggle
-                    HStack {
-                        Text("Buoys")
-                            .font(.title2)
-                            .fontWeight(.bold)
-                        
-                        Spacer()
-                        
-                        ThemeToggleButton()
-                    }
-                    .padding(.horizontal)
+            VStack(spacing: 16) {
                     
                     // Buoy list or details
                     if let selectedBuoy = selectedBuoy {
@@ -41,9 +30,19 @@ struct BuoysView: View {
                 .task {
                     await viewModel.loadBuoys()
                 }
+                .navigationTitle("Buoys")
+                .navigationBarTitleDisplayMode(.large)
+                .toolbar {
+                    ToolbarItem(placement: .navigationBarTrailing) {
+                        ThemeToggleButton()
+                    }
+                }
+                .safeAreaInset(edge: .bottom) {
+                    Rectangle()
+                        .fill(Color.clear)
+                        .frame(height: 0)
+                }
             }
-            .navigationBarHidden(true)
-
         }
     }
     
@@ -198,8 +197,14 @@ struct BuoyCard: View {
                 .foregroundColor(.gray)
         }
         .padding()
-        .background(Color.gray.opacity(0.1))
-        .cornerRadius(12)
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .fill(.ultraThinMaterial)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16)
+                        .stroke(.quaternary, lineWidth: 0.5)
+                )
+        )
     }
 }
 

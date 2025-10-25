@@ -9,21 +9,10 @@ struct HomeView: View {
     @State private var videoURL: URL?
     
     var body: some View {
-        NavigationView {
+        NavigationStack {
             MainLayout {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 20) {
-                    // Header with title and theme toggle
-                    HStack {
-                        Text("Treble Surf")
-                            .font(.title2)
-                            .fontWeight(.bold)
-                        
-                        Spacer()
-                        
-                        ThemeToggleButton()
-                    }
-                    .padding(.horizontal)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
                     
                     // Current conditions card
                     if viewModel.isLoadingConditions {
@@ -72,10 +61,20 @@ struct HomeView: View {
                 .refreshable {
                     await viewModel.refreshData()
                 }
-                            .navigationBarHidden(true)
-
                 .onAppear {
                     viewModel.loadData()
+                }
+                .safeAreaInset(edge: .bottom) {
+                    Rectangle()
+                        .fill(Color.clear)
+                        .frame(height: 0)
+                }
+                .navigationTitle("Treble Surf")
+                .navigationBarTitleDisplayMode(.large)
+                .toolbar {
+                    ToolbarItem(placement: .navigationBarTrailing) {
+                        ThemeToggleButton()
+                    }
                 }
                 .sheet(item: $selectedReport) { report in
                     SurfReportDetailView(report: report)
@@ -152,8 +151,14 @@ struct HomeView: View {
                 .foregroundColor(.secondary)
         }
         .padding()
-        .background(Color.gray.opacity(0.1))
-        .cornerRadius(12)
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .fill(.ultraThinMaterial)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16)
+                        .stroke(.quaternary, lineWidth: 0.5)
+                )
+        )
         .padding(.horizontal)
     }
     
@@ -198,8 +203,14 @@ struct HomeView: View {
                 .foregroundColor(.secondary)
         }
         .padding()
-        .background(Color.gray.opacity(0.1))
-        .cornerRadius(12)
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .fill(.ultraThinMaterial)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16)
+                        .stroke(.quaternary, lineWidth: 0.5)
+                )
+        )
         .padding(.horizontal)
     }
     
@@ -309,8 +320,14 @@ struct HomeView: View {
             .padding(12)
         }
         .frame(width: 160, height: 180)
-        .background(Color.gray.opacity(0.1))
-        .cornerRadius(12)
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .fill(.ultraThinMaterial)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16)
+                        .stroke(.quaternary, lineWidth: 0.5)
+                )
+        )
         .onReceive(report.objectWillChange) { _ in
             // Force UI update when imageData changes
         }
@@ -397,8 +414,14 @@ struct HomeView: View {
             }
         }
         .padding(16)
-        .background(Color.gray.opacity(0.1))
-        .cornerRadius(12)
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .fill(.ultraThinMaterial)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16)
+                        .stroke(.quaternary, lineWidth: 0.5)
+                )
+        )
     }
 }
 

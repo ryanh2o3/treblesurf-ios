@@ -10,31 +10,19 @@ struct MainLayout<Content: View>: View {
     
     var body: some View {
         ZStack {
-            // Background
+            // Background - simplified for Liquid Glass compatibility
             backgroundGradient
-                .ignoresSafeArea()
+                .ignoresSafeArea(.all)
             
-            // Content
+            // Content with proper safe area handling
             content
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
+        .background(Color(.systemBackground)) // Ensure system background extends everywhere
     }
     
     var backgroundGradient: some View {
-        Group {
-            if colorScheme == .dark {
-                Color("Gray950")
-            } else {
-                LinearGradient(
-                    gradient: Gradient(colors: [
-                        Color("Blue100").opacity(0.1),
-                        Color("Gray200").opacity(0.7),
-                        Color("Blue100").opacity(0.1)
-                    ]),
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-            }
-        }
+        // Use pure system background for optimal Liquid Glass integration
+        Color(.systemBackground)
     }
 }

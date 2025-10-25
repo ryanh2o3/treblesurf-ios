@@ -10,6 +10,9 @@ struct SpotDetailView: View {
     @State private var selectedViewMode: String = "Live"
     @State private var selectedForecastEntry: ForecastEntry? = nil
     @State private var selectedSwellPrediction: SwellPredictionEntry? = nil
+    @State private var liveAIPrediction: SwellPredictionEntry? = nil
+    @State private var isLoadingAI = false
+    @State private var aiErrorMessage: String? = nil
     
     init(spot: SpotData, onBack: @escaping () -> Void, showBackButton: Bool = true) {
         self.spot = spot
@@ -60,7 +63,7 @@ struct SpotDetailView: View {
                             VStack(spacing: 12) {
                                 // Key data display - will be populated by child views
                                 if selectedViewMode == "Live" {
-                                    LiveSpotOverlay(spotId: spot.id)
+                                    LiveSpotOverlay(spotId: spot.id, aiPrediction: liveAIPrediction)
                                         .environmentObject(DataStore.shared)
                                 } else {
                                     EnhancedSpotOverlay(
@@ -119,7 +122,7 @@ struct SpotDetailView: View {
                     
                     // Content based on selected view mode
                     if selectedViewMode == "Live" {
-                        LiveSpotView(spotId: spot.id, refreshTrigger: viewModel.isRefreshing, spotImage: nil)
+                        LiveSpotView(spotId: spot.id, refreshTrigger: viewModel.isRefreshing, spotImage: nil, aiPrediction: liveAIPrediction)
                             .id(spot.id)
                             .clipped()
                     } else {
@@ -155,9 +158,46 @@ struct SpotDetailView: View {
         }
         .onAppear {
             viewModel.setDataStore(DataStore.shared)
+            fetchLiveAIPrediction()
         }
         .padding(.horizontal, showBackButton ? 0 : 16)
         .padding(.bottom, showBackButton ? 0 : 20)
+    }
+    
+    private func fetchLiveAIPrediction() {
+        print("🤖 [SpotDetailView] Starting AI prediction fetch for spot: \(spot.id)")
+        
+        // Convert spotId back to country/region/spot format
+        let components = spot.id.split(separator: "#")
+        guard components.count >= 3 else {
+            print("❌ [SpotDetailView] Invalid spot ID format: \(spot.id)")
+            aiErrorMessage = "Invalid spot ID format"
+            return
+        }
+        
+        let country = String(components[0])
+        let region = String(components[1])
+        let spotName = String(components[2])
+        
+        print("🤖 [SpotDetailView] Fetching AI prediction for: \(country)/\(region)/\(spotName)")
+        
+        isLoadingAI = true
+        aiErrorMessage = nil
+        
+        APIClient.shared.fetchClosestAIPrediction(country: country, region: region, spot: spotName) { result in
+            DispatchQueue.main.async {
+                self.isLoadingAI = false
+                
+                switch result {
+                case .success(let response):
+                    print("✅ [SpotDetailView] AI prediction loaded successfully: surfSize=\(response.surf_size)")
+                    self.liveAIPrediction = SwellPredictionEntry(from: response)
+                case .failure(let error):
+                    print("❌ [SpotDetailView] AI prediction failed: \(error.localizedDescription)")
+                    self.aiErrorMessage = "Failed to load AI prediction: \(error.localizedDescription)"
+                }
+            }
+        }
     }
 }
 

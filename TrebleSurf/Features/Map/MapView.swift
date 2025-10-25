@@ -9,7 +9,7 @@ struct MapView: View {
     )
     
     var body: some View {
-        NavigationView {
+        NavigationStack {
             MainLayout {
                 ZStack {
                     // Map with markers - simplified structure
@@ -46,10 +46,14 @@ struct MapView: View {
                         VStack {
                             ProgressView("Loading map data...")
                                 .padding()
-                                .background(
-                                    RoundedRectangle(cornerRadius: 12)
-                                        .fill(.ultraThinMaterial)
+                        .background(
+                            RoundedRectangle(cornerRadius: 16)
+                                .fill(.ultraThinMaterial)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 16)
+                                        .stroke(.quaternary, lineWidth: 0.5)
                                 )
+                        )
                         }
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                         .padding(.top, 100)
@@ -74,8 +78,12 @@ struct MapView: View {
                         }
                         .padding()
                         .background(
-                            RoundedRectangle(cornerRadius: 12)
+                            RoundedRectangle(cornerRadius: 16)
                                 .fill(.ultraThinMaterial)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 16)
+                                        .stroke(.quaternary, lineWidth: 0.5)
+                                )
                         )
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                         .padding(.top, 100)
@@ -115,8 +123,12 @@ struct MapView: View {
                                     showBackButton: false
                                 )
                                 .background(
-                                    RoundedRectangle(cornerRadius: 16)
+                                    RoundedRectangle(cornerRadius: 20)
                                         .fill(.ultraThinMaterial)
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: 20)
+                                                .stroke(.quaternary, lineWidth: 0.5)
+                                        )
                                         .shadow(radius: 8)
                                 )
                                 .padding(.horizontal, 16)
@@ -141,8 +153,12 @@ struct MapView: View {
                                     showBackButton: false
                                 )
                                 .background(
-                                    RoundedRectangle(cornerRadius: 16)
+                                    RoundedRectangle(cornerRadius: 20)
                                         .fill(.ultraThinMaterial)
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: 20)
+                                                .stroke(.quaternary, lineWidth: 0.5)
+                                        )
                                         .shadow(radius: 8)
                                 )
                                 .padding(.horizontal, 16)
@@ -165,7 +181,8 @@ struct MapView: View {
                     .animation(.easeInOut(duration: 0.3), value: viewModel.selectedBuoy != nil)
                 }
             }
-            .navigationBarHidden(true)
+            .navigationTitle("Map")
+            .navigationBarTitleDisplayMode(.large)
         }
     }
     

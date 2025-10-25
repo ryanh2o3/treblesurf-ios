@@ -6,7 +6,7 @@ struct SettingsView: View {
     @Environment(\.colorScheme) var colorScheme
     
     var body: some View {
-        NavigationView {
+        NavigationStack {
             List {
                 // Theme Section
                 Section {
@@ -196,6 +196,11 @@ struct SettingsView: View {
             }
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.large)
+            .safeAreaInset(edge: .bottom) {
+                Rectangle()
+                    .fill(Color.clear)
+                    .frame(height: 0)
+            }
         }
     }
 }

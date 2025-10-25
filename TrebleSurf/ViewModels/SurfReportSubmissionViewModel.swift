@@ -1636,17 +1636,17 @@ class SurfReportSubmissionViewModel: ObservableObject {
             throw error
         }
         
-        // Check if we have a CSRF token, refresh if needed
-        if AuthManager.shared.csrfToken == nil {
-            print("🔄 [SURF_REPORT] No CSRF token found, refreshing...")
-            await withCheckedContinuation { continuation in
-                APIClient.shared.refreshCSRFToken { success in
-                    print("🔄 [SURF_REPORT] CSRF token refresh result: \(success)")
-                    continuation.resume()
+        // Always refresh CSRF token before making the request to ensure it's current
+        print("🔄 [SURF_REPORT] Refreshing CSRF token before submission...")
+        await withCheckedContinuation { continuation in
+            APIClient.shared.refreshCSRFToken { success in
+                if success {
+                    print("✅ [SURF_REPORT] CSRF token refreshed successfully: \(AuthManager.shared.csrfToken?.prefix(10) ?? "nil")...")
+                } else {
+                    print("⚠️ [SURF_REPORT] CSRF token refresh failed, proceeding with existing token")
                 }
+                continuation.resume()
             }
-        } else {
-            print("✅ [SURF_REPORT] CSRF token available: \(AuthManager.shared.csrfToken?.prefix(10) ?? "nil")...")
         }
         
         print("🚀 [SURF_REPORT] Making POST request to: \(endpoint)")
