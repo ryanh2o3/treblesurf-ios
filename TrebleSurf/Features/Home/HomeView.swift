@@ -480,7 +480,7 @@ struct SurfReportDetailView: View {
                                 .cornerRadius(16)
                             
                             // Show play button or loading indicator if this is a video
-                            if report.videoKey != nil {
+                            if let videoKey = report.videoKey, !videoKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                                 if isLoadingVideo {
                                     ProgressView()
                                         .progressViewStyle(CircularProgressViewStyle(tint: .white))
@@ -498,7 +498,7 @@ struct SurfReportDetailView: View {
                         }
                         .onTapGesture {
                             // If this is a video, play it
-                            if report.videoKey != nil {
+                            if let videoKey = report.videoKey, !videoKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                                 if let cachedURL = cachedVideoURL {
                                     playVideoFromCachedURL(cachedURL)
                                 } else if let viewURL = videoViewURL {
@@ -598,7 +598,7 @@ struct SurfReportDetailView: View {
             cleanupOldCachedVideos()
             
             // Check for cached video first, then load if needed
-            if report.videoKey != nil {
+            if let videoKey = report.videoKey, !videoKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 checkForCachedVideo()
                 if videoViewURL == nil && cachedVideoURL == nil {
                     loadVideoViewURL()
