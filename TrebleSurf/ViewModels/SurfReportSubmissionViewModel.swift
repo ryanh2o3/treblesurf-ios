@@ -594,9 +594,20 @@ class SurfReportSubmissionViewModel: ObservableObject {
                 print("✅ [UPLOAD_CHECK] Found presigned URL, starting S3 upload...")
                 do {
                     try await uploadImageToS3(uploadURL: uploadUrl, image: image)
+                    print("✅ [UPLOAD_CHECK] S3 upload completed successfully")
                 } catch {
                     print("❌ [UPLOAD_CHECK] S3 upload failed: \(error)")
-                    // Could show error to user here if needed
+                    
+                    // Clear the keys since upload failed
+                    await MainActor.run {
+                        self.imageKey = nil
+                        self.uploadedImageKey = nil
+                        self.imageUploadFailed = true
+                        self.isUploadingImage = false
+                        
+                        // Handle the error properly
+                        self.handleImageError(error)
+                    }
                 }
             } else if let spotId = self.spotId {
                 print("🔍 [UPLOAD_CHECK] No presigned URL found, checking conditions for new upload...")
@@ -1306,6 +1317,8 @@ class SurfReportSubmissionViewModel: ObservableObject {
         request.httpMethod = "PUT"
         request.setValue("image/jpeg", forHTTPHeaderField: "Content-Type")
         request.httpBody = imageData
+        request.timeoutInterval = 30 // 30 second timeout
+        request.allowsCellularAccess = true // Allow cellular fallback
         
         print("🚀 [IMAGE_UPLOAD] Sending PUT request to S3...")
         print("📋 [IMAGE_UPLOAD] Request headers:")
@@ -1408,6 +1421,8 @@ class SurfReportSubmissionViewModel: ObservableObject {
         request.httpMethod = "PUT"
         request.setValue("video/mp4", forHTTPHeaderField: "Content-Type")
         request.httpBody = videoData
+        request.timeoutInterval = 60 // 60 second timeout for larger video files
+        request.allowsCellularAccess = true // Allow cellular fallback
         
         print("🚀 [VIDEO_UPLOAD] Sending PUT request to S3...")
         let (_, response) = try await URLSession.shared.data(for: request)
@@ -1467,6 +1482,8 @@ class SurfReportSubmissionViewModel: ObservableObject {
         request.httpMethod = "PUT"
         request.setValue("image/jpeg", forHTTPHeaderField: "Content-Type")
         request.httpBody = imageData
+        request.timeoutInterval = 30 // 30 second timeout
+        request.allowsCellularAccess = true // Allow cellular fallback
         
         let (_, response) = try await URLSession.shared.data(for: request)
         
