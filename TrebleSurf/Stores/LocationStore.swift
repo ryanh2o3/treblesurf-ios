@@ -21,6 +21,7 @@ struct LocationData: Codable, Identifiable {
     }
 }
 
+@MainActor
 class LocationStore: NSObject, ObservableObject, LocationStoreProtocol {
     static let shared = LocationStore()
     
@@ -145,7 +146,7 @@ extension LocationStore: CLLocationManagerDelegate {
             }
             
             if let placemark = placemarks?.first {
-                DispatchQueue.main.async {
+                Task { @MainActor in
                     self.country = placemark.country ?? ""
                     self.region = placemark.administrativeArea ?? ""
                     self.spot = placemark.locality ?? ""
@@ -165,24 +166,23 @@ extension LocationStore: CLLocationManagerDelegate {
     
     /// Reset the store to its initial state - clears all location data
     func resetToInitialState() {
-        DispatchQueue.main.async {
-            // Reset all published properties to initial values
-            self.country = ""
-            self.region = ""
-            self.spot = ""
-            self.coordinates = nil
-            self.isLocationServiceEnabled = false
-            self.savedLocations = []
-            
-            // Clear saved locations from disk
-            self.savedLocationsData = Data()
-            UserDefaults.standard.removeObject(forKey: "savedLocations")
-            UserDefaults.standard.synchronize()
-            
-            // Stop location updates
-            self.locationManager.stopUpdatingLocation()
-            
-            print("LocationStore reset to initial state")
-        }
+        // Already on MainActor, no need for DispatchQueue
+        // Reset all published properties to initial values
+        self.country = ""
+        self.region = ""
+        self.spot = ""
+        self.coordinates = nil
+        self.isLocationServiceEnabled = false
+        self.savedLocations = []
+        
+        // Clear saved locations from disk
+        self.savedLocationsData = Data()
+        UserDefaults.standard.removeObject(forKey: "savedLocations")
+        UserDefaults.standard.synchronize()
+        
+        // Stop location updates
+        self.locationManager.stopUpdatingLocation()
+        
+        print("LocationStore reset to initial state")
     }
 }

@@ -12,6 +12,7 @@ struct CurrentConditions {
     var quality: String = "N/A"
 }
 
+@MainActor
 class LiveSpotViewModel: ObservableObject {
     @Published var currentConditions = CurrentConditions()
     @Published var recentReports: [SurfReport] = []
@@ -27,17 +28,15 @@ class LiveSpotViewModel: ObservableObject {
         // Simulate network delay
         try? await Task.sleep(nanoseconds: 1_000_000_000)
         
-        await MainActor.run {
-            // Sample data
-            self.currentConditions = CurrentConditions(
-                waveHeight: "4-6 ft",
-                windDirection: "NW",
-                windSpeed: "12 mph",
-                temperature: "68°F",
-                quality: "Good"
-            )
-            self.isLoading = false
-        }
+        // Already on MainActor, no need for MainActor.run
+        self.currentConditions = CurrentConditions(
+            waveHeight: "4-6 ft",
+            windDirection: "NW",
+            windSpeed: "12 mph",
+            temperature: "68°F",
+            quality: "Good"
+        )
+        self.isLoading = false
     }
     
     func fetchSurfReports(for spotId: String) {
@@ -51,15 +50,13 @@ class LiveSpotViewModel: ObservableObject {
         let region = String(components[1])
         let spot = String(components[2])
         
-        // Clear existing reports before fetching new ones
-        DispatchQueue.main.async {
-            self.recentReports = []
-            self.isLoading = true
-            self.errorMessage = nil
-        }
+        // Clear existing reports before fetching new ones (already on MainActor)
+        self.recentReports = []
+        self.isLoading = true
+        self.errorMessage = nil
         
         APIClient.shared.fetchSurfReports(country: country, region: region, spot: spot) { [weak self] result in
-            DispatchQueue.main.async {
+            Task { @MainActor [weak self] in
                 self?.isLoading = false
                 
                 switch result {
@@ -96,7 +93,7 @@ class LiveSpotViewModel: ObservableObject {
                         
                         if let imageKey = response.imageKey, !imageKey.isEmpty {
                             self?.fetchImage(for: imageKey) { imageData in
-                                DispatchQueue.main.async {
+                                Task { @MainActor [weak self] in
                                     report.imageData = imageData?.imageData
                                     self?.objectWillChange.send()
                                 }
@@ -174,11 +171,9 @@ class LiveSpotViewModel: ObservableObject {
     
     // Force refresh surf reports by clearing cache and fetching fresh data
     func refreshSurfReports(for spotId: String) {
-        // Clear existing data
-        DispatchQueue.main.async {
-            self.recentReports = []
-            self.errorMessage = nil
-        }
+        // Clear existing data (already on MainActor)
+        self.recentReports = []
+        self.errorMessage = nil
         
         // Fetch fresh data
         fetchSurfReports(for: spotId)

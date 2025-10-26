@@ -9,6 +9,7 @@ import AVFoundation
 
 // MARK: - Quick Photo Report View Model
 
+@MainActor
 class QuickPhotoReportViewModel: ObservableObject {
     @Published var selectedImage: UIImage? = nil
     @Published var imageSelection: PhotosPickerItem? = nil {
@@ -26,7 +27,12 @@ class QuickPhotoReportViewModel: ObservableObject {
             }
         }
     }
-    @Published var selectedVideoURL: URL? = nil
+    @Published var selectedVideoURL: URL? = nil {
+        didSet {
+            // Keep track of video URL for cleanup in deinit (nonisolated)
+            temporaryVideoURL = selectedVideoURL
+        }
+    }
     @Published var selectedVideoThumbnail: UIImage? = nil
     @Published var selectedDateTime: Date = Date()
     @Published var photoTimestampExtracted: Bool = false
@@ -66,9 +72,12 @@ class QuickPhotoReportViewModel: ObservableObject {
     
     private var spotId: String?
     
+    // Nonisolated storage for video URL cleanup in deinit
+    nonisolated(unsafe) private var temporaryVideoURL: URL?
+    
     deinit {
         // Clean up temporary video file when view model is deallocated
-        if let videoURL = selectedVideoURL {
+        if let videoURL = temporaryVideoURL {
             cleanupTemporaryVideoFile(videoURL)
         }
     }
@@ -596,7 +605,7 @@ class QuickPhotoReportViewModel: ObservableObject {
         isValidatingVideo = false
     }
     
-    private func cleanupTemporaryVideoFile(_ videoURL: URL) {
+    nonisolated private func cleanupTemporaryVideoFile(_ videoURL: URL) {
         do {
             try FileManager.default.removeItem(at: videoURL)
             print("✅ [QUICK_VIDEO] Cleaned up temporary video file: \(videoURL)")
@@ -1009,7 +1018,8 @@ class QuickPhotoReportViewModel: ObservableObject {
                 submissionSuccessful = true
                 showSuccessAlert = true
                 // Dismiss after a short delay
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                Task { @MainActor in
+                    try? await Task.sleep(nanoseconds: 1_500_000_000) // 1.5 seconds
                     self.shouldDismiss = true
                 }
             } else {

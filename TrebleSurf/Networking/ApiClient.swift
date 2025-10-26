@@ -286,12 +286,19 @@ class APIClient: APIClientProtocol {
     
     // MARK: - Authenticated Request Method
     func makeAuthenticatedRequest<T: Decodable>(to endpoint: String, method: String = "GET", body: Data? = nil, completion: @escaping (Result<T, Error>) -> Void) {
-        // Check if user is authenticated
-        guard AuthManager.shared.isAuthenticated else {
-            let error = NSError(domain: "APIClient", code: APIClientError.userNotAuthenticated.rawValue, userInfo: [NSLocalizedDescriptionKey: APIClientError.userNotAuthenticated.localizedDescription])
-            completion(.failure(error))
-            return
+        // Check if user is authenticated (check session existence directly)
+        Task { @MainActor in
+            guard AuthManager.shared.isAuthenticated else {
+                let error = NSError(domain: "APIClient", code: APIClientError.userNotAuthenticated.rawValue, userInfo: [NSLocalizedDescriptionKey: APIClientError.userNotAuthenticated.localizedDescription])
+                completion(.failure(error))
+                return
+            }
+            
+            self.performAuthenticatedRequest(to: endpoint, method: method, body: body, completion: completion)
         }
+    }
+    
+    private func performAuthenticatedRequest<T: Decodable>(to endpoint: String, method: String, body: Data?, completion: @escaping (Result<T, Error>) -> Void) {
         
         // In development environment, check server availability first
         if isDevelopmentEnvironment {
@@ -318,19 +325,21 @@ class APIClient: APIClientProtocol {
                    nsError.code == 401 {
                     print("🔐 Received 401, attempting session refresh...")
                     
-                    // Try to refresh the session
-                    AuthManager.shared.validateSession { success, user in
-                        if success {
-                            print("✅ Session refreshed, retrying original request...")
-                            // Retry the original request
-                            self.request(endpoint, method: method, body: body, completion: completion)
-                        } else {
-                            print("❌ Session refresh failed, clearing auth state")
-                            // Clear auth state and return the original error
-                            DispatchQueue.main.async {
-                                AuthManager.shared.clearAllAppData()
+                    // Try to refresh the session (on main actor)
+                    Task { @MainActor in
+                        AuthManager.shared.validateSession { success, user in
+                            if success {
+                                print("✅ Session refreshed, retrying original request...")
+                                // Retry the original request
+                                self.request(endpoint, method: method, body: body, completion: completion)
+                            } else {
+                                print("❌ Session refresh failed, clearing auth state")
+                                // Clear auth state and return the original error
+                                Task { @MainActor in
+                                    AuthManager.shared.clearAllAppData()
+                                }
+                                completion(.failure(error))
                             }
-                            completion(.failure(error))
                         }
                     }
                 } else {
@@ -513,13 +522,17 @@ class APIClient: APIClientProtocol {
     
     // MARK: - Session Management
     func validateSession(completion: @escaping (Bool) -> Void) {
-        AuthManager.shared.validateSession { success, _ in
-            completion(success)
+        Task { @MainActor in
+            AuthManager.shared.validateSession { success, _ in
+                completion(success)
+            }
         }
     }
     
     func logout(completion: @escaping (Bool) -> Void) {
-        AuthManager.shared.logout(completion: completion)
+        Task { @MainActor in
+            AuthManager.shared.logout(completion: completion)
+        }
     }
     
     func getSessionCookie() -> [String: String]? {
@@ -560,8 +573,10 @@ class APIClient: APIClientProtocol {
                 if httpResponse.statusCode == 200 {
                     // Extract CSRF token from response headers
                     if let csrfToken = httpResponse.value(forHTTPHeaderField: "X-CSRF-Token") {
-                        AuthManager.shared.csrfToken = csrfToken
-                        print("✅ CSRF token refreshed: \(csrfToken.prefix(10))...")
+                        Task { @MainActor in
+                            AuthManager.shared.csrfToken = csrfToken
+                            print("✅ CSRF token refreshed: \(csrfToken.prefix(10))...")
+                        }
                         completion(true)
                     } else {
                         print("⚠️  No CSRF token in response headers")

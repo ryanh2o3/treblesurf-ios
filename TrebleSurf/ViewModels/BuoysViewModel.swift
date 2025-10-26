@@ -8,6 +8,7 @@
 import Foundation
 import Combine
 
+@MainActor
 class BuoysViewModel: ObservableObject {
     @Published var buoys: [Buoy] = []
     @Published var selectedFilter: String? = nil

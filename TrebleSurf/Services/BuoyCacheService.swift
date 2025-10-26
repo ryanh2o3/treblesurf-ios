@@ -2,6 +2,7 @@ import Foundation
 import Combine
 
 // MARK: - Buoy Cache Service
+@MainActor
 class BuoyCacheService: ObservableObject {
     static let shared = BuoyCacheService()
     
@@ -28,16 +29,11 @@ class BuoyCacheService: ObservableObject {
     
     /// Cache buoy data
     func cacheBuoyData(_ responses: [BuoyResponse]) {
-        cacheQueue.async { [weak self] in
-            guard let self = self else { return }
-            
-            DispatchQueue.main.async {
-                for response in responses {
-                    self.cachedBuoyData[response.name] = response
-                }
-                self.lastFetchTime = Date()
-            }
+        // Already on MainActor, can update directly
+        for response in responses {
+            self.cachedBuoyData[response.name] = response
         }
+        self.lastFetchTime = Date()
     }
     
     /// Check if cache is expired
@@ -48,12 +44,9 @@ class BuoyCacheService: ObservableObject {
     
     /// Clear cache
     func clearCache() {
-        cacheQueue.async { [weak self] in
-            DispatchQueue.main.async {
-                self?.cachedBuoyData.removeAll()
-                self?.lastFetchTime = nil
-            }
-        }
+        // Already on MainActor, can clear directly
+        self.cachedBuoyData.removeAll()
+        self.lastFetchTime = nil
     }
     
     /// Get specific buoy data by name

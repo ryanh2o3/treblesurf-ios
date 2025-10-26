@@ -34,22 +34,26 @@ class WeatherBuoyService: ObservableObject {
         buoyNames: [String],
         completion: @escaping (Result<[BuoyResponse], Error>) -> Void
     ) {
-        // Check cache first
-        if let cachedData = buoyCacheService.getCachedBuoyData(for: buoyNames) {
-            completion(.success(cachedData))
-            return
-        }
-        
-        // Fetch from API if not cached
-        apiClient.fetchBuoyData(buoyNames: buoyNames) { [weak self] result in
-            switch result {
-            case .success(let buoyResponses):
-                // Cache the data for future use
-                self?.buoyCacheService.cacheBuoyData(buoyResponses)
-                completion(.success(buoyResponses))
-            case .failure(let error):
-                print("Failed to fetch buoy data: \(error.localizedDescription)")
-                completion(.failure(error))
+        // Check cache first (on main actor)
+        Task { @MainActor in
+            if let cachedData = self.buoyCacheService.getCachedBuoyData(for: buoyNames) {
+                completion(.success(cachedData))
+                return
+            }
+            
+            // Fetch from API if not cached
+            self.apiClient.fetchBuoyData(buoyNames: buoyNames) { [weak self] result in
+                switch result {
+                case .success(let buoyResponses):
+                    // Cache the data for future use (on main actor)
+                    Task { @MainActor in
+                        self?.buoyCacheService.cacheBuoyData(buoyResponses)
+                    }
+                    completion(.success(buoyResponses))
+                case .failure(let error):
+                    print("Failed to fetch buoy data: \(error.localizedDescription)")
+                    completion(.failure(error))
+                }
             }
         }
     }

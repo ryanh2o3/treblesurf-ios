@@ -21,8 +21,7 @@ struct SurfReportStep {
     let options: [SurfReportOption]
 }
 
-
-
+@MainActor
 class SurfReportSubmissionViewModel: ObservableObject {
     let instanceId = UUID()
     
@@ -43,7 +42,12 @@ class SurfReportSubmissionViewModel: ObservableObject {
         }
     }
     @Published var selectedImage: UIImage? = nil
-    @Published var selectedVideoURL: URL? = nil
+    @Published var selectedVideoURL: URL? = nil {
+        didSet {
+            // Keep track of video URL for cleanup in deinit (nonisolated)
+            temporaryVideoURL = selectedVideoURL
+        }
+    }
     @Published var selectedVideoThumbnail: UIImage? = nil
     @Published var selectedDateTime: Date = Date()
     @Published var photoTimestampExtracted: Bool = false
@@ -83,9 +87,12 @@ class SurfReportSubmissionViewModel: ObservableObject {
     // Store the spotId for image uploads
     private var spotId: String?
     
+    // Nonisolated storage for video URL cleanup in deinit
+    nonisolated(unsafe) private var temporaryVideoURL: URL?
+    
     deinit {
         // Clean up temporary video file when view model is deallocated
-        if let videoURL = selectedVideoURL {
+        if let videoURL = temporaryVideoURL {
             cleanupTemporaryVideoFile(videoURL)
         }
     }
@@ -221,7 +228,8 @@ class SurfReportSubmissionViewModel: ObservableObject {
         // Auto-advance to next step after a short delay (excluding photo step and date step)
         // Photo step is now at index 6, date step is at index 7, so auto-advance up to step 5
         if currentStep < 6 {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 300_000_000) // 0.3 seconds
                 self.nextStep()
             }
         }
@@ -315,7 +323,7 @@ class SurfReportSubmissionViewModel: ObservableObject {
         clearVideo()
     }
     
-    private func cleanupTemporaryVideoFile(_ videoURL: URL) {
+    nonisolated private func cleanupTemporaryVideoFile(_ videoURL: URL) {
         do {
             try FileManager.default.removeItem(at: videoURL)
             print("✅ [LONG_FORM_VIDEO] Cleaned up temporary video file: \(videoURL)")
@@ -608,7 +616,8 @@ class SurfReportSubmissionViewModel: ObservableObject {
             }
             
             // Auto-advance to next step after photo is loaded (with a short delay)
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 1_000_000_000) // 1.0 second
                 self.nextStep()
             }
         }
@@ -789,7 +798,8 @@ class SurfReportSubmissionViewModel: ObservableObject {
             }
             
             // Auto-advance to next step after video is loaded
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 1_000_000_000) // 1.0 second
                 self.nextStep()
             }
         }
@@ -1583,7 +1593,8 @@ class SurfReportSubmissionViewModel: ObservableObject {
                 // Clear any previous errors
                 self.clearAllErrors()
                 // Dismiss after a short delay
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                Task { @MainActor in
+                    try? await Task.sleep(nanoseconds: 1_500_000_000) // 1.5 seconds
                     print("🚪 [SURF_REPORT] Setting shouldDismiss = true")
                     self.shouldDismiss = true
                 }

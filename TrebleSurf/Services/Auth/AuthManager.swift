@@ -9,6 +9,7 @@ import GoogleSignIn
 import SwiftUI
 import UIKit
 
+@MainActor
 class AuthManager: ObservableObject, AuthManagerProtocol {
     static let shared = AuthManager()
     
@@ -18,7 +19,7 @@ class AuthManager: ObservableObject, AuthManagerProtocol {
     private let csrfKey = "com.treblesurf.csrfToken"
     private let sessionKey = "com.treblesurf.sessionId"
     
-    var csrfToken: String? {
+    nonisolated var csrfToken: String? {
         get {
             return KeychainHelper.shared.retrieve(key: csrfKey)
         }
@@ -31,7 +32,7 @@ class AuthManager: ObservableObject, AuthManagerProtocol {
         }
     }
     
-    var sessionId: String? {
+    nonisolated var sessionId: String? {
         get {
             return KeychainHelper.shared.retrieve(key: sessionKey)
         }
@@ -124,7 +125,7 @@ class AuthManager: ObservableObject, AuthManagerProtocol {
             
             do {
                 let authResponse = try JSONDecoder().decode(AuthResponse.self, from: data)
-                DispatchQueue.main.async {
+                Task { @MainActor in
                     self.currentUser = authResponse.user
                     self.isAuthenticated = true
                 }
@@ -300,7 +301,7 @@ class AuthManager: ObservableObject, AuthManagerProtocol {
             do {
                 let validateResponse = try JSONDecoder().decode(ValidateResponse.self, from: data)
                 if validateResponse.valid {
-                    DispatchQueue.main.async {
+                    Task { @MainActor in
                         self.currentUser = validateResponse.user
                         self.isAuthenticated = true
                     }
@@ -308,7 +309,7 @@ class AuthManager: ObservableObject, AuthManagerProtocol {
                     completion(true, validateResponse.user)
                 } else {
                     print("Session validation returned invalid")
-                    DispatchQueue.main.async {
+                    Task { @MainActor in
                         self.clearAllAppData()
                     }
                     completion(false, nil)
@@ -354,7 +355,7 @@ class AuthManager: ObservableObject, AuthManagerProtocol {
         }
         
         URLSession.shared.dataTask(with: request) { data, response, error in
-            DispatchQueue.main.async {
+            Task { @MainActor in
                 if let error = error {
                     print("Logout request failed: \(error.localizedDescription)")
                     // Even if server logout fails, clear local data
@@ -382,30 +383,29 @@ class AuthManager: ObservableObject, AuthManagerProtocol {
     
     /// Comprehensive method to clear all app data, caches, and user preferences
     func clearAllAppData() {
-        DispatchQueue.main.async {
-            // Clear authentication data
-            self.currentUser = nil
-            self.isAuthenticated = false
-            self.csrfToken = nil
-            self.sessionId = nil
-            
-            // Clear all UserDefaults
-            self.clearAllUserDefaults()
-            
-            // Clear all @AppStorage values
-            self.clearAllAppStorage()
-            
-            // Clear all caches
-            self.clearAllCaches()
-            
-            // Reset all stores to initial state
-            self.resetAllStores()
-            
-            // Sign out from Google
-            self.signOutFromGoogle()
-            
-            print("All app data cleared successfully")
-        }
+        // Already on MainActor, no need for DispatchQueue
+        // Clear authentication data
+        self.currentUser = nil
+        self.isAuthenticated = false
+        self.csrfToken = nil
+        self.sessionId = nil
+        
+        // Clear all UserDefaults
+        self.clearAllUserDefaults()
+        
+        // Clear all @AppStorage values
+        self.clearAllAppStorage()
+        
+        // Clear all caches
+        self.clearAllCaches()
+        
+        // Reset all stores to initial state
+        self.resetAllStores()
+        
+        // Sign out from Google
+        self.signOutFromGoogle()
+        
+        print("All app data cleared successfully")
     }
     
     /// Clear all UserDefaults values
@@ -491,7 +491,7 @@ class AuthManager: ObservableObject, AuthManagerProtocol {
         request.httpBody = try? JSONSerialization.data(withJSONObject: body)
         
         URLSession.shared.dataTask(with: request) { data, response, error in
-            DispatchQueue.main.async {
+            Task { @MainActor in
                 if let error = error {
                     print("Dev session creation failed: \(error.localizedDescription)")
                     completion(false)
@@ -537,7 +537,7 @@ class AuthManager: ObservableObject, AuthManagerProtocol {
                             theme: "dark"
                         )
                         
-                        DispatchQueue.main.async {
+                        Task { @MainActor in
                             self.currentUser = devUser
                             self.isAuthenticated = true
                         }
@@ -563,12 +563,12 @@ class AuthManager: ObservableObject, AuthManagerProtocol {
         return nil
     }
     
-    func getCsrfHeader() -> [String: String]? {
+    nonisolated func getCsrfHeader() -> [String: String]? {
         guard let csrf = csrfToken else { return nil }
         return ["X-CSRF-Token": csrf]
     }
     
-    func getSessionCookie() -> [String: String]? {
+    nonisolated func getSessionCookie() -> [String: String]? {
         guard let sessionId = sessionId else { return nil }
         return ["Cookie": "session_id=\(sessionId)"]
     }

@@ -202,11 +202,11 @@ class DataStore: ObservableObject, DataStoreProtocol {
             switch result {
             case .success(let spots):
                 print("Successfully fetched \(spots.count) spots for region: \(region)")
-                // Cache the data with current timestamp
-                self.regionSpotsCache[region] = (spots, Date())
                 
                 Task { @MainActor [weak self] in
                     guard let self = self else { return }
+                    // Cache the data with current timestamp (on main thread)
+                    self.regionSpotsCache[region] = (spots, Date())
                     // Update the published property
                     self.regionSpots = spots
                     completion(.success(spots))

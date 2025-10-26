@@ -26,6 +26,7 @@ enum ThemeMode: String, CaseIterable, Identifiable {
     }
 }
 
+@MainActor
 class SettingsStore: ObservableObject, SettingsStoreProtocol {
     static let shared = SettingsStore()
     
@@ -123,21 +124,20 @@ class SettingsStore: ObservableObject, SettingsStoreProtocol {
     
     /// Reset the store to its initial state - resets theme preferences
     func resetToInitialState() {
-        DispatchQueue.main.async {
-            // Reset to system theme (default)
-            self.selectedTheme = .system
-            self.isDarkMode = false
-            
-            // Clear UserDefaults
-            UserDefaults.standard.removeObject(forKey: "selectedTheme")
-            UserDefaults.standard.removeObject(forKey: "isDarkMode")
-            UserDefaults.standard.removeObject(forKey: "showSwellPredictions")
-            UserDefaults.standard.synchronize()
-            
-            // Update color scheme
-            self.updateColorScheme()
-            
-            print("SettingsStore reset to initial state")
-        }
+        // Already on MainActor, no need for DispatchQueue
+        // Reset to system theme (default)
+        self.selectedTheme = .system
+        self.isDarkMode = false
+        
+        // Clear UserDefaults
+        UserDefaults.standard.removeObject(forKey: "selectedTheme")
+        UserDefaults.standard.removeObject(forKey: "isDarkMode")
+        UserDefaults.standard.removeObject(forKey: "showSwellPredictions")
+        UserDefaults.standard.synchronize()
+        
+        // Update color scheme
+        self.updateColorScheme()
+        
+        print("SettingsStore reset to initial state")
     }
 }
