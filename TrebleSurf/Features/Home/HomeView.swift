@@ -16,45 +16,106 @@ struct HomeView: View {
                     
                     // Current conditions card
                     if viewModel.isLoadingConditions {
-                        currentConditionLoadingView()
+                        SkeletonCurrentConditions()
+                            .padding(.horizontal)
+                            .transition(.opacity.combined(with: .scale(scale: 0.95)))
                     } else if let condition = viewModel.currentCondition {
                         currentConditionView(condition)
+                            .transition(.opacity.combined(with: .scale(scale: 0.95)))
                     }
                     
                     // Recent reports section (replacing featured spots)
-                    VStack(alignment: .leading) {
+                    VStack(alignment: .leading, spacing: 12) {
                         Text("Recent Reports")
                             .font(.headline)
                             .padding(.horizontal)
                         
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(alignment: .top, spacing: 15) {
-                                ForEach(viewModel.recentReports) { report in
-                                    reportCard(report)
-                                        .onTapGesture {
-                                            selectedReport = report
-                                            // If the report has a video key, we'll handle video playback in the detail view
-                                            // The detail view will fetch the presigned URL for video viewing
-                                        }
+                        if viewModel.isLoadingReports {
+                            ScrollView(.horizontal, showsIndicators: false) {
+                                HStack(alignment: .top, spacing: 15) {
+                                    ForEach(0..<3, id: \.self) { _ in
+                                        SkeletonReportCard()
+                                    }
                                 }
+                                .padding(.horizontal)
+                            }
+                            .transition(.opacity)
+                        } else if viewModel.recentReports.isEmpty {
+                            HStack {
+                                Spacer()
+                                VStack(spacing: 8) {
+                                    Image(systemName: "doc.text.magnifyingglass")
+                                        .font(.system(size: 32))
+                                        .foregroundColor(.secondary)
+                                    Text("No recent reports")
+                                        .font(.subheadline)
+                                        .foregroundColor(.secondary)
+                                }
+                                .frame(height: 120)
+                                Spacer()
                             }
                             .padding(.horizontal)
+                        } else {
+                            ScrollView(.horizontal, showsIndicators: false) {
+                                HStack(alignment: .top, spacing: 15) {
+                                    ForEach(viewModel.recentReports) { report in
+                                        reportCard(report)
+                                            .onTapGesture {
+                                                selectedReport = report
+                                            }
+                                            .transition(.opacity.combined(with: .scale(scale: 0.95)))
+                                    }
+                                }
+                                .padding(.horizontal)
+                            }
+                            .transition(.opacity)
                         }
                     }
+                    .animation(.easeInOut(duration: 0.3), value: viewModel.isLoadingReports)
+                    .animation(.easeInOut(duration: 0.3), value: viewModel.recentReports.count)
                     
                     // Weather buoys section
-                    VStack(alignment: .leading) {
+                    VStack(alignment: .leading, spacing: 12) {
                         Text("Weather Buoys")
                             .font(.headline)
                             .padding(.horizontal)
                         
-                        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 16) {
-                            ForEach(viewModel.weatherBuoys) { buoy in
-                                weatherBuoyCard(buoy)
+                        if viewModel.isLoadingBuoys {
+                            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 16) {
+                                ForEach(0..<2, id: \.self) { _ in
+                                    SkeletonBuoyCard()
+                                }
                             }
+                            .padding(.horizontal)
+                            .transition(.opacity)
+                        } else if viewModel.weatherBuoys.isEmpty {
+                            HStack {
+                                Spacer()
+                                VStack(spacing: 8) {
+                                    Image(systemName: "water.waves.slash")
+                                        .font(.system(size: 32))
+                                        .foregroundColor(.secondary)
+                                    Text("No buoy data available")
+                                        .font(.subheadline)
+                                        .foregroundColor(.secondary)
+                                }
+                                .frame(height: 120)
+                                Spacer()
+                            }
+                            .padding(.horizontal)
+                        } else {
+                            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 16) {
+                                ForEach(viewModel.weatherBuoys) { buoy in
+                                    weatherBuoyCard(buoy)
+                                        .transition(.opacity.combined(with: .scale(scale: 0.95)))
+                                }
+                            }
+                            .padding(.horizontal)
+                            .transition(.opacity)
                         }
-                        .padding(.horizontal)
                     }
+                    .animation(.easeInOut(duration: 0.3), value: viewModel.isLoadingBuoys)
+                    .animation(.easeInOut(duration: 0.3), value: viewModel.weatherBuoys.count)
                     }
                     .padding(.vertical)
                 }

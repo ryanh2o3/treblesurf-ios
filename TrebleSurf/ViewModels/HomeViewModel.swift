@@ -36,6 +36,8 @@ class HomeViewModel: ObservableObject {
     @Published var weatherBuoys: [WeatherBuoy] = []
     @Published var spots: [SpotData] = []
     @Published var isLoadingConditions: Bool = true
+    @Published var isLoadingReports: Bool = true
+    @Published var isLoadingBuoys: Bool = true
     
     // MARK: - Dependencies
     private let config: AppConfigurationProtocol
@@ -189,10 +191,12 @@ class HomeViewModel: ObservableObject {
     
     private func fetchWeatherBuoys() {
         let buoyNames = config.defaultBuoys
+        isLoadingBuoys = true
         
         // Check cache first
         if let cachedData = buoyCacheService.getCachedBuoyData(for: buoyNames) {
             updateWeatherBuoys(with: cachedData)
+            isLoadingBuoys = false
             return
         }
         
@@ -205,12 +209,14 @@ class HomeViewModel: ObservableObject {
                     // Cache the data for future use
                     self.buoyCacheService.cacheBuoyData(buoyResponses)
                     self.updateWeatherBuoys(with: buoyResponses)
+                    self.isLoadingBuoys = false
                 }
             case .failure(let error):
                 print("Failed to fetch buoy data: \(error.localizedDescription)")
                 // Update buoys with error state
                 Task { @MainActor [weak self] in
                     self?.updateWeatherBuoysWithError()
+                    self?.isLoadingBuoys = false
                 }
             }
         }
@@ -283,6 +289,8 @@ class HomeViewModel: ObservableObject {
     }
     
     private func fetchSurfReports() {
+        isLoadingReports = true
+        
         // Use SurfReportService to fetch and cache reports
         surfReportService.fetchSurfReports(
             country: config.defaultCountry,
@@ -294,8 +302,10 @@ class HomeViewModel: ObservableObject {
                 switch result {
                 case .success(let reports):
                     self.recentReports = reports
+                    self.isLoadingReports = false
                 case .failure(let error):
                     print("Failed to fetch surf reports: \(error.localizedDescription)")
+                    self.isLoadingReports = false
                 }
             }
         }

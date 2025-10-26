@@ -69,11 +69,37 @@ struct BuoyDetailView: View {
                                 ReadingCard(title: "Air Temp", value: currentBuoy.airTemp, unit: "°C", icon: "thermometer.sun")
                             }
                         }
+                        .transition(.opacity.combined(with: .scale(scale: 0.95)))
                     } else {
-                        ProgressView("Loading buoy data...")
-                            .frame(maxWidth: .infinity, minHeight: 100)
+                        // Skeleton loading for current readings
+                        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 16) {
+                            ForEach(0..<6, id: \.self) { _ in
+                                VStack(alignment: .leading, spacing: 8) {
+                                    HStack {
+                                        SkeletonCircle()
+                                            .frame(width: 20, height: 20)
+                                        SkeletonLine(width: 80)
+                                            .frame(height: 12)
+                                    }
+                                    SkeletonLine(width: 60)
+                                        .frame(height: 20)
+                                }
+                                .padding()
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 12)
+                                        .fill(.ultraThinMaterial)
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: 12)
+                                                .stroke(.quaternary, lineWidth: 0.5)
+                                        )
+                                )
+                            }
+                        }
+                        .transition(.opacity)
                     }
                 }
+                .animation(.easeInOut(duration: 0.3), value: viewModel.buoys.isEmpty)
                 
                 // Wave height chart
                 VStack(alignment: .leading, spacing: 12) {
@@ -104,23 +130,49 @@ struct BuoyDetailView: View {
                                 }
                                 .frame(height: 200)
                                 .chartYScale(domain: 0...calculateChartMaxY(for: currentBuoy))
+                                .transition(.opacity.combined(with: .scale(scale: 0.95)))
                             } else {
-                                Text("No historical data available")
-                                    .foregroundColor(.secondary)
-                                    .frame(height: 200)
+                                VStack(spacing: 8) {
+                                    Image(systemName: "chart.line.uptrend.xyaxis")
+                                        .font(.system(size: 32))
+                                        .foregroundColor(.secondary)
+                                    Text("No historical data available")
+                                        .font(.subheadline)
+                                        .foregroundColor(.secondary)
+                                }
+                                .frame(height: 200)
+                                .frame(maxWidth: .infinity)
                             }
                         } else {
-                            Text("Loading chart data...")
-                                .foregroundColor(.secondary)
-                                .frame(height: 200)
+                            // Skeleton loading for chart
+                            VStack(spacing: 8) {
+                                SkeletonShape(cornerRadius: 12)
+                                    .frame(height: 160)
+                                HStack(spacing: 8) {
+                                    ForEach(0..<5, id: \.self) { _ in
+                                        SkeletonLine(width: 50)
+                                            .frame(height: 8)
+                                    }
+                                }
+                            }
+                            .frame(height: 200)
+                            .transition(.opacity)
                         }
                     } else {
                         // Fallback for iOS < 16
-                        Text("Chart requires iOS 16 or later")
-                            .foregroundColor(.secondary)
-                            .frame(height: 200)
+                        VStack(spacing: 8) {
+                            Image(systemName: "exclamationmark.triangle")
+                                .font(.system(size: 32))
+                                .foregroundColor(.orange)
+                            Text("Chart requires iOS 16 or later")
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                        }
+                        .frame(height: 200)
+                        .frame(maxWidth: .infinity)
                     }
                 }
+                .animation(.easeInOut(duration: 0.3), value: viewModel.buoys.isEmpty)
                 
                 // Additional information
                 VStack(alignment: .leading, spacing: 12) {

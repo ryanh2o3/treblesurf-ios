@@ -42,9 +42,24 @@ struct SpotDetailView: View {
                         
                         // Refresh indicator
                         if viewModel.isRefreshing {
-                            ProgressView()
-                                .scaleEffect(0.8)
-                                .frame(width: 20, height: 20)
+                            ZStack {
+                                Circle()
+                                    .stroke(lineWidth: 2)
+                                    .foregroundColor(.gray.opacity(0.2))
+                                    .frame(width: 20, height: 20)
+                                
+                                Circle()
+                                    .trim(from: 0, to: 0.7)
+                                    .stroke(style: StrokeStyle(lineWidth: 2, lineCap: .round))
+                                    .foregroundColor(.blue)
+                                    .frame(width: 20, height: 20)
+                                    .rotationEffect(Angle(degrees: viewModel.isRefreshing ? 360 : 0))
+                                    .animation(
+                                        Animation.linear(duration: 1)
+                                            .repeatForever(autoreverses: false),
+                                        value: viewModel.isRefreshing
+                                    )
+                            }
                         }
                     }
                     .padding(.top, 8)

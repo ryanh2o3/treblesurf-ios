@@ -44,49 +44,29 @@ struct MapView: View {
                     // Loading indicator
                     if viewModel.isLoading {
                         VStack {
-                            ProgressView("Loading map data...")
-                                .padding()
-                        .background(
-                            RoundedRectangle(cornerRadius: 16)
-                                .fill(.ultraThinMaterial)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 16)
-                                        .stroke(.quaternary, lineWidth: 0.5)
-                                )
-                        )
+                            GlassLoadingIndicator("Loading map data...")
+                                .transition(.opacity.combined(with: .scale(scale: 0.95)))
                         }
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                         .padding(.top, 100)
+                        .animation(.easeInOut(duration: 0.3), value: viewModel.isLoading)
                     }
                     
                     // Error message
                     if let errorMessage = viewModel.errorMessage {
                         VStack {
-                            Text("Error")
-                                .font(.headline)
-                                .foregroundColor(.red)
-                            Text(errorMessage)
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                                .multilineTextAlignment(.center)
-                            
-                            Button("Retry") {
+                            GlassErrorAlert(
+                                title: "Map Loading Error",
+                                message: errorMessage
+                            ) {
                                 viewModel.loadMapData()
                             }
-                            .buttonStyle(.borderedProminent)
-                            .padding(.top, 8)
+                            .transition(.opacity.combined(with: .scale(scale: 0.95)))
                         }
-                        .padding()
-                        .background(
-                            RoundedRectangle(cornerRadius: 16)
-                                .fill(.ultraThinMaterial)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 16)
-                                        .stroke(.quaternary, lineWidth: 0.5)
-                                )
-                        )
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                         .padding(.top, 100)
+                        .padding(.horizontal, 20)
+                        .animation(.easeInOut(duration: 0.3), value: viewModel.errorMessage != nil)
                     }
                     
                     // Refresh button

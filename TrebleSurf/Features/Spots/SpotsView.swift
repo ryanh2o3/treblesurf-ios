@@ -66,21 +66,48 @@ struct SpotsView: View {
         ScrollView {
             LazyVStack(spacing: 16) {
                 if viewModel.isLoading {
-                    ProgressView()
-                        .frame(maxWidth: .infinity, minHeight: 100)
+                    // Show skeleton loaders
+                    ForEach(0..<4, id: \.self) { _ in
+                        SkeletonListCard()
+                    }
+                    .transition(.opacity.combined(with: .scale(scale: 0.95)))
                 } else if viewModel.spots.isEmpty {
-                    Text("No spots available")
-                        .foregroundColor(.secondary)
-                        .frame(maxWidth: .infinity, minHeight: 100)
+                    // Empty state with glass design
+                    VStack(spacing: 12) {
+                        Image(systemName: "mappin.slash")
+                            .font(.system(size: 48))
+                            .foregroundColor(.secondary)
+                        
+                        Text("No spots available")
+                            .font(.headline)
+                            .foregroundColor(.secondary)
+                        
+                        Text("Pull to refresh")
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 60)
+                    .background(
+                        RoundedRectangle(cornerRadius: 16)
+                            .fill(.ultraThinMaterial)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 16)
+                                    .stroke(.quaternary, lineWidth: 0.5)
+                            )
+                    )
                 } else {
                     ForEach(viewModel.spots) { spot in
                         SpotCard(spot: spot)
                             .onTapGesture {
                                 selectedSpot = spot
                             }
+                            .transition(.opacity.combined(with: .scale(scale: 0.95)))
                     }
                 }
             }
+            .animation(.easeInOut(duration: 0.3), value: viewModel.isLoading)
+            .animation(.easeInOut(duration: 0.3), value: viewModel.spots.count)
         }
         .refreshable {
             await viewModel.refreshSpots()

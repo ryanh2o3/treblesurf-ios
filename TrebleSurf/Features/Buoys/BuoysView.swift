@@ -90,21 +90,48 @@ struct BuoysView: View {
         ScrollView {
             LazyVStack(spacing: 16) {
                 if viewModel.isRefreshing {
-                    ProgressView()
-                        .frame(maxWidth: .infinity, minHeight: 100)
+                    // Show skeleton loaders
+                    ForEach(0..<3, id: \.self) { _ in
+                        SkeletonListCard()
+                    }
+                    .transition(.opacity.combined(with: .scale(scale: 0.95)))
                 } else if viewModel.filteredBuoys.isEmpty {
-                    Text("No buoys available")
-                        .foregroundColor(.secondary)
-                        .frame(maxWidth: .infinity, minHeight: 100)
+                    // Empty state with glass design
+                    VStack(spacing: 12) {
+                        Image(systemName: "water.waves.slash")
+                            .font(.system(size: 48))
+                            .foregroundColor(.secondary)
+                        
+                        Text("No buoys available")
+                            .font(.headline)
+                            .foregroundColor(.secondary)
+                        
+                        Text("Pull to refresh")
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 60)
+                    .background(
+                        RoundedRectangle(cornerRadius: 16)
+                            .fill(.ultraThinMaterial)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 16)
+                                    .stroke(.quaternary, lineWidth: 0.5)
+                            )
+                    )
                 } else {
                     ForEach(viewModel.filteredBuoys) { buoy in
                         BuoyCard(buoy: buoy)
                             .onTapGesture {
                                 selectedBuoy = buoy
                             }
+                            .transition(.opacity.combined(with: .scale(scale: 0.95)))
                     }
                 }
             }
+            .animation(.easeInOut(duration: 0.3), value: viewModel.isRefreshing)
+            .animation(.easeInOut(duration: 0.3), value: viewModel.filteredBuoys.count)
         }
         .refreshable {
             await viewModel.refreshBuoys()
