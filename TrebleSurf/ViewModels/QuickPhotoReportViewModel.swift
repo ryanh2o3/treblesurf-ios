@@ -218,7 +218,7 @@ class QuickPhotoReportViewModel: ObservableObject {
                     
                     // Generate thumbnail
                     print("🎬 [QUICK_VIDEO] Generating video thumbnail...")
-                    if let thumbnail = generateVideoThumbnail(from: tempURL) {
+                    if let thumbnail = await generateVideoThumbnail(from: tempURL) {
                         print("✅ [QUICK_VIDEO] Video thumbnail generated successfully")
                         selectedVideoThumbnail = thumbnail
                     } else {
@@ -265,7 +265,7 @@ class QuickPhotoReportViewModel: ObservableObject {
                     
                     // Generate thumbnail
                     print("🎬 [QUICK_VIDEO] Generating video thumbnail...")
-                    if let thumbnail = generateVideoThumbnail(from: videoURL) {
+                    if let thumbnail = await generateVideoThumbnail(from: videoURL) {
                         print("✅ [QUICK_VIDEO] Video thumbnail generated successfully")
                         selectedVideoThumbnail = thumbnail
                     } else {
@@ -339,7 +339,7 @@ class QuickPhotoReportViewModel: ObservableObject {
         }
     }
     
-    private func generateVideoThumbnail(from videoURL: URL) -> UIImage? {
+    private func generateVideoThumbnail(from videoURL: URL) async -> UIImage? {
         let asset = AVAsset(url: videoURL)
         let imageGenerator = AVAssetImageGenerator(asset: asset)
         imageGenerator.appliesPreferredTrackTransform = true
@@ -348,8 +348,13 @@ class QuickPhotoReportViewModel: ObservableObject {
         let time = CMTime(seconds: 1, preferredTimescale: 60)
         
         do {
-            let cgImage = try imageGenerator.copyCGImage(at: time, actualTime: nil)
-            return UIImage(cgImage: cgImage)
+            if #available(iOS 18.0, *) {
+                let (cgImage, _) = try await imageGenerator.image(at: time)
+                return UIImage(cgImage: cgImage)
+            } else {
+                let cgImage = try imageGenerator.copyCGImage(at: time, actualTime: nil)
+                return UIImage(cgImage: cgImage)
+            }
         } catch {
             print("Failed to generate video thumbnail: \(error)")
             return nil
@@ -539,12 +544,8 @@ class QuickPhotoReportViewModel: ObservableObject {
             return
         }
         
-        let startTime = Date()
-        
         do {
             let uploadResponse = try await generateUploadURL(spotId: spotId)
-            
-            let generationTime = Date().timeIntervalSince(startTime)
             
             await MainActor.run {
                 self.uploadUrl = uploadResponse.uploadUrl
@@ -552,7 +553,6 @@ class QuickPhotoReportViewModel: ObservableObject {
             }
             
         } catch {
-            let generationTime = Date().timeIntervalSince(startTime)
             // Don't show error to user since this is just optimization
         }
     }
@@ -1081,7 +1081,7 @@ class QuickPhotoReportViewModel: ObservableObject {
         return await withCheckedContinuation { continuation in
             APIClient.shared.postRequest(to: endpoint, body: jsonData) { (result: Result<SurfReportSubmissionResponse, Error>) in
                 switch result {
-                case .success(let response):
+                case .success:
                     continuation.resume(returning: true)
                 case .failure(let error):
                     // If it's a 403 error, try refreshing the CSRF token and retry once
@@ -1092,9 +1092,9 @@ class QuickPhotoReportViewModel: ObservableObject {
                                     // Retry the request
                                     APIClient.shared.postRequest(to: endpoint, body: jsonData) { (retryResult: Result<SurfReportSubmissionResponse, Error>) in
                                         switch retryResult {
-                                        case .success(let response):
+                                        case .success:
                                             continuation.resume(returning: true)
-                                        case .failure(let retryError):
+                                        case .failure:
                                             continuation.resume(returning: false)
                                         }
                                     }

@@ -1683,7 +1683,7 @@ class SurfReportSubmissionViewModel: ObservableObject {
         try await withCheckedThrowingContinuation { continuation in
             APIClient.shared.postRequest(to: endpoint, body: jsonData) { (result: Result<SurfReportSubmissionResponse, Error>) in
                 switch result {
-                case .success(let response):
+                case .success:
                     print("✅ [SURF_REPORT] POST request successful")
                     // Clear uploaded media tracking since submission was successful
                     self.uploadedImageKey = nil
@@ -1712,21 +1712,21 @@ class SurfReportSubmissionViewModel: ObservableObject {
                                     // Retry the request
                                     APIClient.shared.postRequest(to: endpoint, body: jsonData) { (retryResult: Result<SurfReportSubmissionResponse, Error>) in
                                         switch retryResult {
-                                        case .success(let response):
+                                        case .success:
                                             print("✅ [SURF_REPORT] Retry request successful")
                                             continuation.resume()
-                                        case .failure(let retryError):
-                                            print("❌ [SURF_REPORT] Retry request failed: \(retryError)")
+                                        case .failure(let error):
+                                            print("❌ [SURF_REPORT] Retry request failed: \(error)")
                                             print("❌ [SURF_REPORT] Retry error details:")
-                                            if let retryNsError = retryError as NSError? {
-                                                print("   - Domain: \(retryNsError.domain)")
-                                                print("   - Code: \(retryNsError.code)")
-                                                print("   - Description: \(retryNsError.localizedDescription)")
-                                                if let retryUserInfo = retryNsError.userInfo as? [String: Any] {
-                                                    print("   - User Info: \(retryUserInfo)")
+                                            if let nsError = error as NSError? {
+                                                print("   - Domain: \(nsError.domain)")
+                                                print("   - Code: \(nsError.code)")
+                                                print("   - Description: \(nsError.localizedDescription)")
+                                                if let userInfo = nsError.userInfo as? [String: Any] {
+                                                    print("   - User Info: \(userInfo)")
                                                 }
                                             }
-                                            continuation.resume(throwing: retryError)
+                                            continuation.resume(throwing: error)
                                         }
                                     }
                                 } else {
