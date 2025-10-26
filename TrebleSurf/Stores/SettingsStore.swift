@@ -26,7 +26,7 @@ enum ThemeMode: String, CaseIterable, Identifiable {
     }
 }
 
-class SettingsStore: ObservableObject {
+class SettingsStore: ObservableObject, SettingsStoreProtocol {
     static let shared = SettingsStore()
     
     @Published var selectedTheme: ThemeMode = .system {

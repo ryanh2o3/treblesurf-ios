@@ -9,6 +9,7 @@ enum ForecastViewMode: String, CaseIterable, Identifiable {
     var id: String { self.rawValue }
 }
 
+@MainActor
 class SpotForecastViewModel: ObservableObject {
     @Published var selectedMode: ForecastViewMode = .hourly
     @Published var filteredEntries: [ForecastEntry] = []

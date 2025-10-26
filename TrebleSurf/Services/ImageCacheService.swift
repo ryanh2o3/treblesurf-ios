@@ -23,7 +23,7 @@ struct CachedImageData: Codable {
 }
 
 // MARK: - Image Cache Service
-class ImageCacheService: ObservableObject {
+class ImageCacheService: ObservableObject, ImageCacheProtocol {
     static let shared = ImageCacheService()
     
     // MARK: - Properties

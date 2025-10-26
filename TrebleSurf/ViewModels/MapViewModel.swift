@@ -3,6 +3,7 @@ import MapKit
 import Combine
 import SwiftUI
 
+@MainActor
 class MapViewModel: ObservableObject {
     @Published var surfSpots: [SpotData] = []
     @Published var buoys: [BuoyLocation] = []
@@ -118,12 +119,12 @@ class MapViewModel: ObservableObject {
     }
     
     // Load current conditions for a selected spot
-    private func loadCurrentConditions(for spot: SpotData) {
+    func loadCurrentConditions(for spot: SpotData) {
         isLoadingConditions = true
         
         // Use the existing DataStore method to fetch conditions
         dataStore.fetchConditions(for: spot.id) { [weak self] success in
-            DispatchQueue.main.async {
+            Task { @MainActor in
                 self?.isLoadingConditions = false
                 if success {
                     // Get conditions from the DataStore's currentConditions property

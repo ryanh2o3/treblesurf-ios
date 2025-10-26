@@ -64,7 +64,7 @@ struct HTTPError: Error {
     }
 }
 
-class APIClient {
+class APIClient: APIClientProtocol {
     static let shared = APIClient()
     
     // MARK: - Environment Configuration

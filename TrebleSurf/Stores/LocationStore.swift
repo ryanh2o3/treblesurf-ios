@@ -21,7 +21,7 @@ struct LocationData: Codable, Identifiable {
     }
 }
 
-class LocationStore: NSObject, ObservableObject {
+class LocationStore: NSObject, ObservableObject, LocationStoreProtocol {
     static let shared = LocationStore()
     
     @Published var country: String = ""

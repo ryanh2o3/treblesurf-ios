@@ -9,7 +9,7 @@ import GoogleSignIn
 import SwiftUI
 import UIKit
 
-class AuthManager: ObservableObject {
+class AuthManager: ObservableObject, AuthManagerProtocol {
     static let shared = AuthManager()
     
     @Published var currentUser: User?
@@ -442,13 +442,19 @@ class AuthManager: ObservableObject {
     /// Reset all stores to initial state
     private func resetAllStores() {
         // Reset DataStore
-        DataStore.shared.resetToInitialState()
+        Task { @MainActor in
+            await DataStore.shared.resetToInitialState()
+        }
         
         // Reset LocationStore
-        LocationStore.shared.resetToInitialState()
+        Task { @MainActor in
+            LocationStore.shared.resetToInitialState()
+        }
         
         // Reset SettingsStore
-        SettingsStore.shared.resetToInitialState()
+        Task { @MainActor in
+            SettingsStore.shared.resetToInitialState()
+        }
         
         print("All stores reset to initial state")
     }

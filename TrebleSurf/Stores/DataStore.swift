@@ -6,13 +6,35 @@
 //
 import Foundation
 import SwiftUI
-class DataStore: ObservableObject {
+
+@MainActor
+class DataStore: ObservableObject, DataStoreProtocol {
     static let shared = DataStore()
+    
+    private let config: AppConfigurationProtocol
+    private let apiClient: APIClientProtocol
+    
+    init(
+        config: AppConfigurationProtocol = AppConfiguration.shared,
+        apiClient: APIClientProtocol = APIClient.shared
+    ) {
+        self.config = config
+        self.apiClient = apiClient
+    }
 
     @Published var currentConditions = ConditionData(from: [:])
     @Published var currentConditionsTimestamp: String = ""
     // Cache for storing multiple spot conditions with timestamps
     private var spotConditionsCache: [String: (conditions: ConditionData, forecastTimestamp: String, timestamp: Date)] = [:]
+    
+    // Use configuration for cache expiration
+    private var cacheExpirationInterval: TimeInterval {
+        config.cacheExpirationInterval
+    }
+    
+    private var spotCacheExpirationInterval: TimeInterval {
+        config.spotCacheExpirationInterval
+    }
     
     // Computed property for relative time display
     var relativeTimeDisplay: String {
@@ -53,22 +75,17 @@ class DataStore: ObservableObject {
     // Current selected spot ID
     @Published var currentSpotId: String = ""
     
-    // Cache expiration time (e.g., 30 minutes)
-    private let cacheExpirationInterval: TimeInterval = 30 * 60
-    private let spotCacheExpirationInterval: TimeInterval = 60 * 60 * 24 * 4
     // Fetch conditions for a spot
     func fetchConditions(for spotId: String, completion: @escaping (Bool) -> Void = {_ in}) {
         // Check if we have cached data that's still valid
         if let cached = spotConditionsCache[spotId],
            Date().timeIntervalSince(cached.timestamp) < cacheExpirationInterval {
             
-            // Use cached data but ensure updates on main thread
-            DispatchQueue.main.async {
-                self.currentSpotId = spotId
-                self.currentConditions = cached.conditions
-                self.currentConditionsTimestamp = cached.forecastTimestamp
-                completion(true)
-            }
+            // Use cached data - already on main thread since we're @MainActor
+            currentSpotId = spotId
+            currentConditions = cached.conditions
+            currentConditionsTimestamp = cached.forecastTimestamp
+            completion(true)
             return
         }
 
@@ -85,14 +102,15 @@ class DataStore: ObservableObject {
         let spot = String(components[2])
         
         // Make API call
-        APIClient.shared.fetchCurrentConditions(country: country, region: region, spot: spot) { [weak self] (result: Result<[CurrentConditionsResponse], Error>) in
+        apiClient.fetchCurrentConditions(country: country, region: region, spot: spot) { [weak self] (result: Result<[CurrentConditionsResponse], Error>) in
             guard let self = self else { return }
             
             switch result {
             case .success(let responses):
                 if let firstResponse = responses.first {
-                    // Update on main thread
-                    DispatchQueue.main.async {
+                    // Update on main actor (handled by @MainActor annotation)
+                    Task { @MainActor [weak self] in
+                        guard let self = self else { return }
                         // Update current conditions
                         self.currentConditions = firstResponse.data
                         self.currentConditionsTimestamp = firstResponse.generated_at
@@ -119,11 +137,9 @@ class DataStore: ObservableObject {
             if let cached = spotForecastCache[spotId],
                Date().timeIntervalSince(cached.timestamp) < cacheExpirationInterval {
                 
-                // Use cached data but ensure updates on main thread
-                DispatchQueue.main.async {
-                    self.currentForecastEntries = cached.forecast
-                    completion(true)
-                }
+                // Use cached data - already on main thread
+                currentForecastEntries = cached.forecast
+                completion(true)
                 return
             }
 
@@ -140,7 +156,7 @@ class DataStore: ObservableObject {
             let spot = String(components[2])
             
             // Make API call and convert response to ForecastEntry objects directly
-            APIClient.shared.fetchForecast(country: country, region: region, spot: spot) { [weak self] (result: Result<[ForecastResponse], Error>) in
+            apiClient.fetchForecast(country: country, region: region, spot: spot) { [weak self] (result: Result<[ForecastResponse], Error>) in
                 guard let self = self else { return }
                 
                 switch result {
@@ -148,8 +164,9 @@ class DataStore: ObservableObject {
                     // Convert to ForecastEntry objects
                     let entries = responses.toForecastEntries()
                     
-                    // Update on main thread
-                    DispatchQueue.main.async {
+                    // Update on main actor
+                    Task { @MainActor [weak self] in
+                        guard let self = self else { return }
                         // Update current forecast with flattened data
                         self.currentForecastEntries = entries
                         
@@ -171,17 +188,15 @@ class DataStore: ObservableObject {
         if let cached = regionSpotsCache[region],
            Date().timeIntervalSince(cached.timestamp) < spotCacheExpirationInterval {
             
-            // Use cached data
-            DispatchQueue.main.async {
-                completion(.success(cached.spots))
-            }
+            // Use cached data - already on main thread
+            completion(.success(cached.spots))
             return
         }
 
         print("Fetching spots for region: \(region)")
         
         // For now we only handle Donegal, but this could be expanded
-        APIClient.shared.fetchDonegalSpots { [weak self] result in
+        apiClient.fetchDonegalSpots { [weak self] result in
             guard let self = self else { return }
             print("result \(result)")
             switch result {
@@ -190,7 +205,8 @@ class DataStore: ObservableObject {
                 // Cache the data with current timestamp
                 self.regionSpotsCache[region] = (spots, Date())
                 
-                DispatchQueue.main.async {
+                Task { @MainActor [weak self] in
+                    guard let self = self else { return }
                     // Update the published property
                     self.regionSpots = spots
                     completion(.success(spots))
@@ -226,20 +242,20 @@ class DataStore: ObservableObject {
                    Date().timeIntervalSince(cachedData.timestamp) < self.spotCacheExpirationInterval {
                     print("Using cached image data from regionSpotsCache for spotId: \(spotId)")
                     
-                    // Convert base64 to UIImage if we have it cached
-                    if let image = UIImage(data: Data(base64Encoded: imageData) ?? Data()) {
-                        let swiftUIImage = Image(uiImage: image)
-                        
-                        // Cache this image in the dedicated image cache for future use
-                        if let imageData = image.pngData() {
-                            ImageCacheService.shared.cacheSpotImage(imageData, for: spotId)
+                        // Convert base64 to UIImage if we have it cached
+                        if let image = UIImage(data: Data(base64Encoded: imageData) ?? Data()) {
+                            let swiftUIImage = Image(uiImage: image)
+                            
+                            // Cache this image in the dedicated image cache for future use
+                            if let imageData = image.pngData() {
+                                ImageCacheService.shared.cacheSpotImage(imageData, for: spotId)
+                            }
+                            
+                            Task { @MainActor in
+                                completion(swiftUIImage)
+                            }
+                            return
                         }
-                        
-                        DispatchQueue.main.async {
-                            completion(swiftUIImage)
-                        }
-                        return
-                    }
                 }
             }
             
@@ -256,12 +272,13 @@ class DataStore: ObservableObject {
             let spot = String(components[2])
             
             // Call locationInfo API route
-            APIClient.shared.fetchLocationInfo(country: country, region: region, spot: spot) { [weak self] result in
+            self.apiClient.fetchLocationInfo(country: country, region: region, spot: spot) { [weak self] result in
                 guard let self = self else { return }
                 
                 switch result {
                 case .success(let spotData):
-                    DispatchQueue.main.async {
+                    Task { @MainActor [weak self] in
+                        guard let self = self else { return }
                         // Update cache with the new image data
                         for (regionKey, cachedData) in self.regionSpotsCache {
                             var updatedSpots = cachedData.spots
@@ -287,7 +304,7 @@ class DataStore: ObservableObject {
                                 ImageCacheService.shared.cacheSpotImage(pngData, for: spotId)
                             }
                             
-                            DispatchQueue.main.async {
+                            Task { @MainActor in
                                 completion(swiftUIImage)
                             }
                         } else {
@@ -306,7 +323,7 @@ class DataStore: ObservableObject {
                         
                         // Note: Surf report image preloading is handled in the ViewModels
                         // when they fetch surf reports, as they have access to the image keys
-                    }
+                        }
                     
                 case .failure(let error):
                     print("Error fetching spot image: \(error)")
@@ -462,21 +479,19 @@ class DataStore: ObservableObject {
     
     /// Reset the store to its initial state - clears all data and caches
     func resetToInitialState() {
-        DispatchQueue.main.async {
-            // Reset all published properties to initial values
-            self.currentConditions = ConditionData(from: [:])
-            self.currentConditionsTimestamp = ""
-            self.currentForecastEntries = []
-            self.currentSpotId = ""
-            self.regionSpots = []
-            
-            // Clear all caches
-            self.spotConditionsCache.removeAll()
-            self.spotForecastCache.removeAll()
-            self.regionSpotsCache.removeAll()
-            self.clearImageCache() // Also clear all image caches
-            
-            print("DataStore reset to initial state including image caches")
-        }
+        // Reset all published properties to initial values (already on main thread)
+        currentConditions = ConditionData(from: [:])
+        currentConditionsTimestamp = ""
+        currentForecastEntries = []
+        currentSpotId = ""
+        regionSpots = []
+        
+        // Clear all caches
+        spotConditionsCache.removeAll()
+        spotForecastCache.removeAll()
+        regionSpotsCache.removeAll()
+        clearImageCache() // Also clear all image caches
+        
+        print("DataStore reset to initial state including image caches")
     }
 }

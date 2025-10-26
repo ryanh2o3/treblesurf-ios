@@ -41,6 +41,7 @@ struct WeatherBuoy: Identifiable {
     }
 }
 
+@MainActor
 class HomeViewModel: ObservableObject {
     @Published var currentCondition: CurrentCondition?
     @Published var featuredSpots: [FeaturedSpot] = []
@@ -49,21 +50,23 @@ class HomeViewModel: ObservableObject {
     @Published var spots: [SpotData] = []
     @Published var isLoadingConditions: Bool = true
     
+    // MARK: - Dependencies
+    private let config: AppConfigurationProtocol
+    private let apiClient: APIClientProtocol
+    private let buoyCacheService = BuoyCacheService.shared
+    
     // MARK: - Caching Properties
     private var surfReportsCache: [String: CachedSurfReports] = [:]
     private let cacheQueue = DispatchQueue(label: "com.treblesurf.cache", qos: .utility)
     private var cancellables = Set<AnyCancellable>()
     
-    // MARK: - Shared Buoy Cache
-    private let buoyCacheService = BuoyCacheService.shared
-    
-    var formattedCurrentDate: String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "EEEE, MMMM d"
-        return formatter.string(from: Date())
-    }
-    
-    init() {
+    init(
+        config: AppConfigurationProtocol = AppConfiguration.shared,
+        apiClient: APIClientProtocol = APIClient.shared
+    ) {
+        self.config = config
+        self.apiClient = apiClient
+        
         // Initial setup
         setupCacheCleanup()
         setupWeatherBuoys()
@@ -76,12 +79,15 @@ class HomeViewModel: ObservableObject {
             .store(in: &cancellables)
     }
     
+    var formattedCurrentDate: String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "EEEE, MMMM d"
+        return formatter.string(from: Date())
+    }
+    
     // MARK: - Weather Buoys Setup
     private func setupWeatherBuoys() {
-        weatherBuoys = [
-            WeatherBuoy(name: "M4"),
-            WeatherBuoy(name: "M6")
-        ]
+        weatherBuoys = config.defaultBuoys.map { WeatherBuoy(name: $0) }
     }
     
     // MARK: - Cache Management
@@ -170,10 +176,10 @@ class HomeViewModel: ObservableObject {
     
     // MARK: - Private Methods
     private func fetchSpots() {
-        APIClient.shared.fetchSpots(country: "Ireland", region: "Donegal") { [weak self] result in
+        apiClient.fetchSpots(country: config.defaultCountry, region: config.defaultRegion) { [weak self] result in
             switch result {
             case .success(let spots):
-                DispatchQueue.main.async {
+                Task { @MainActor [weak self] in
                     self?.spots = spots
                     self?.updateCurrentConditionsFromBallyhiernan()
                 }
@@ -188,23 +194,22 @@ class HomeViewModel: ObservableObject {
         let ballyhiernanSpot = "Ballyhiernan"
         
         // Set loading state
-        DispatchQueue.main.async {
-            self.isLoadingConditions = true
-        }
+        isLoadingConditions = true
         
         // Fetch current conditions for Ballyhiernan
-        APIClient.shared.fetchCurrentConditions(country: "Ireland", region: "Donegal", spot: ballyhiernanSpot) { [weak self] result in
-            DispatchQueue.main.async {
-                self?.isLoadingConditions = false
+        apiClient.fetchCurrentConditions(country: config.defaultCountry, region: config.defaultRegion, spot: ballyhiernanSpot) { [weak self] result in
+            Task { @MainActor [weak self] in
+                guard let self = self else { return }
+                self.isLoadingConditions = false
                 
                 switch result {
                 case .success(let conditionsResponses):
                     if let firstCondition = conditionsResponses.first {
-                        let condition = self?.createCurrentCondition(from: firstCondition.data, spotName: ballyhiernanSpot)
-                        self?.currentCondition = condition
+                        let condition = self.createCurrentCondition(from: firstCondition.data, spotName: ballyhiernanSpot)
+                        self.currentCondition = condition
                     } else {
                         // Fallback to mock data if no conditions available
-                        self?.currentCondition = CurrentCondition(
+                        self.currentCondition = CurrentCondition(
                             waveHeight: "1.5m",
                             windDirection: "W",
                             windSpeed: "15 km/h",
@@ -215,7 +220,7 @@ class HomeViewModel: ObservableObject {
                 case .failure(let error):
                     print("Failed to fetch current conditions for Ballyhiernan: \(error.localizedDescription)")
                     // Fallback to mock data on error
-                    self?.currentCondition = CurrentCondition(
+                    self.currentCondition = CurrentCondition(
                         waveHeight: "1.5m",
                         windDirection: "W",
                         windSpeed: "15 km/h",
@@ -260,7 +265,7 @@ class HomeViewModel: ObservableObject {
     }
     
     private func fetchWeatherBuoys() {
-        let buoyNames = ["M4", "M6"]
+        let buoyNames = config.defaultBuoys
         
         // Check cache first
         if let cachedData = buoyCacheService.getCachedBuoyData(for: buoyNames) {
@@ -269,18 +274,19 @@ class HomeViewModel: ObservableObject {
         }
         
         // Fetch from API if not cached
-        APIClient.shared.fetchBuoyData(buoyNames: buoyNames) { [weak self] result in
+        apiClient.fetchBuoyData(buoyNames: buoyNames) { [weak self] result in
             switch result {
             case .success(let buoyResponses):
-                DispatchQueue.main.async {
+                Task { @MainActor [weak self] in
+                    guard let self = self else { return }
                     // Cache the data for future use
-                    self?.buoyCacheService.cacheBuoyData(buoyResponses)
-                    self?.updateWeatherBuoys(with: buoyResponses)
+                    self.buoyCacheService.cacheBuoyData(buoyResponses)
+                    self.updateWeatherBuoys(with: buoyResponses)
                 }
             case .failure(let error):
                 print("Failed to fetch buoy data: \(error.localizedDescription)")
                 // Update buoys with error state
-                DispatchQueue.main.async {
+                Task { @MainActor [weak self] in
                     self?.updateWeatherBuoysWithError()
                 }
             }
@@ -288,7 +294,7 @@ class HomeViewModel: ObservableObject {
     }
     
     private func updateWeatherBuoysFromCache() {
-        let buoyNames = ["M4", "M6"]
+        let buoyNames = config.defaultBuoys
         if let cachedData = buoyCacheService.getCachedBuoyData(for: buoyNames) {
             updateWeatherBuoys(with: cachedData)
         }
@@ -355,15 +361,13 @@ class HomeViewModel: ObservableObject {
     
     private func fetchSurfReports() {
         // Check cache first
-        if let cachedReports = getCachedReports(country: "Ireland", region: "Donegal") {
-            DispatchQueue.main.async { [weak self] in
-                self?.recentReports = cachedReports
-            }
+        if let cachedReports = getCachedReports(country: config.defaultCountry, region: config.defaultRegion) {
+            recentReports = cachedReports
             return
         }
         
         // First fetch all spots, then get reports for each spot
-        APIClient.shared.fetchSpots(country: "Ireland", region: "Donegal") { [weak self] result in
+        apiClient.fetchSpots(country: config.defaultCountry, region: config.defaultRegion) { [weak self] result in
             switch result {
             case .success(let spots):
                 // Fetch reports for each spot
@@ -380,7 +384,7 @@ class HomeViewModel: ObservableObject {
         
         for spot in spots {
             group.enter()
-            APIClient.shared.fetchSurfReports(country: "Ireland", region: "Donegal", spot: spot.name) { [weak self] result in
+            apiClient.fetchSurfReports(country: config.defaultCountry, region: config.defaultRegion, spot: spot.name) { [weak self] result in
                 defer { group.leave() }
                 
                 switch result {
@@ -419,7 +423,7 @@ class HomeViewModel: ObservableObject {
                             print("Debug - ImageKey from API: '\(imageKey)'")
                             // Use the imageKey directly as it should already contain the full path
                             self?.fetchImage(for: imageKey) { imageData in
-                                DispatchQueue.main.async {
+                                Task { @MainActor [weak self] in
                                     report.imageData = imageData?.imageData
                                     self?.objectWillChange.send() // Notify UI of changes
                                 }
@@ -446,7 +450,7 @@ class HomeViewModel: ObservableObject {
             self.recentReports = allReports
             
             // Cache the results
-            self.cacheReports(allReports, country: "Ireland", region: "Donegal")
+            self.cacheReports(allReports, country: self.config.defaultCountry, region: self.config.defaultRegion)
             
             // Preload surf report images for better user experience
             let imageKeys = allReports.compactMap { $0.imageKey }.filter { !$0.isEmpty }
@@ -470,7 +474,7 @@ class HomeViewModel: ObservableObject {
             }
             
             // If not cached, fetch from API
-            APIClient.shared.getReportImage(key: key) { result in
+            self.apiClient.getReportImage(key: key) { result in
                 switch result {
                 case .success(let imageData):
                     // Check if imageData is actually present
