@@ -3,43 +3,28 @@ import Foundation
 import SwiftUI
 
 @MainActor
-class SpotsViewModel: ObservableObject {
+class SpotsViewModel: BaseViewModel {
     @Published var spots: [SpotData] = []
-    @Published var isLoading: Bool = false
     @Published var isRefreshing: Bool = false
-    @Published var errorMessage: String?
     
     private var dataStore: DataStore = DataStore()
 
     func setDataStore(_ store: DataStore) {
-            dataStore = store
-        }
+        dataStore = store
+    }
     
     func loadSpots() async {
-        isLoading = true
-        errorMessage = nil
+        logger.info("Loading spots for region: Donegal", category: .api)
         
-        do {
-            try await withCheckedThrowingContinuation { continuation in
-                dataStore.fetchRegionSpots(region: "Donegal") { [weak self] result in
-                    switch result {
-                    case .success(let spots):
-                        Task { @MainActor in
-                            self?.spots = spots
-                            self?.isLoading = false
-                        }
-                        continuation.resume()
-                    case .failure(let error):
-                        Task { @MainActor in
-                            self?.errorMessage = error.localizedDescription
-                            self?.isLoading = false
-                        }
-                        continuation.resume(throwing: error)
-                    }
+        executeTask(context: "Load spots") {
+            let spots = try await withCheckedThrowingContinuation { continuation in
+                self.dataStore.fetchRegionSpots(region: "Donegal") { result in
+                    continuation.resume(with: result)
                 }
             }
-        } catch {
-            // Error already handled in the continuation
+            
+            self.spots = spots
+            self.logger.info("Loaded \(spots.count) spots", category: .general)
         }
     }
     
@@ -50,7 +35,9 @@ class SpotsViewModel: ObservableObject {
     
     // Refresh spots data by clearing cache and reloading
     func refreshSpots() async {
+        logger.info("Refreshing spots data", category: .general)
         isRefreshing = true
+        clearError()
         
         // Clear the region spots cache and refresh data
         dataStore.refreshRegionData(for: "Donegal")
@@ -59,10 +46,12 @@ class SpotsViewModel: ObservableObject {
         await loadSpots()
         
         isRefreshing = false
+        logger.info("Spots refresh complete", category: .general)
     }
     
     // Refresh individual spot data
     func refreshSpotData(for spotId: String) async {
+        logger.info("Refreshing spot data for: \(spotId)", category: .general)
         isRefreshing = true
         
         // Clear the specific spot's cache and refresh data
@@ -72,10 +61,12 @@ class SpotsViewModel: ObservableObject {
         try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
         
         isRefreshing = false
+        logger.debug("Spot data refreshed for: \(spotId)", category: .general)
     }
     
     // Refresh surf reports for all spots
     func refreshSurfReports() async {
+        logger.info("Refreshing surf reports for all spots", category: .general)
         isRefreshing = true
         
         // Refresh surf reports for each spot
@@ -84,6 +75,7 @@ class SpotsViewModel: ObservableObject {
         }
         
         isRefreshing = false
+        logger.info("Surf reports refresh complete for all spots", category: .general)
     }
     
     // Refresh surf reports for a specific spot
@@ -92,17 +84,26 @@ class SpotsViewModel: ObservableObject {
         
         // Convert spot data to country/region/spot format
         let components = spot.countryRegionSpot.split(separator: "/")
-        guard components.count >= 3 else { return }
+        guard components.count >= 3 else {
+            logger.warning("Invalid spot format: \(spot.countryRegionSpot)", category: .dataProcessing)
+            return
+        }
         
         let country = String(components[0])
         let region = String(components[1])
         let spotName = String(components[2])
         
+        logger.debug("Refreshing surf reports for spot: \(spotName)", category: .api)
+        
         // Fetch fresh surf reports for this spot
         await withCheckedContinuation { continuation in
             APIClient.shared.fetchSurfReports(country: country, region: region, spot: spotName) { result in
-                // The LiveSpotViewModel will handle the actual display of surf reports
-                // This just ensures fresh data is fetched
+                switch result {
+                case .success:
+                    self.logger.debug("Successfully refreshed reports for \(spotName)", category: .api)
+                case .failure(let error):
+                    self.logger.error("Failed to refresh reports for \(spotName): \(error.localizedDescription)", category: .api)
+                }
                 continuation.resume()
             }
         }

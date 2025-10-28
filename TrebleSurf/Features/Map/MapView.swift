@@ -52,23 +52,6 @@ struct MapView: View {
                         .animation(.easeInOut(duration: 0.3), value: viewModel.isLoading)
                     }
                     
-                    // Error message
-                    if let errorMessage = viewModel.errorMessage {
-                        VStack {
-                            GlassErrorAlert(
-                                title: "Map Loading Error",
-                                message: errorMessage
-                            ) {
-                                viewModel.loadMapData()
-                            }
-                            .transition(.opacity.combined(with: .scale(scale: 0.95)))
-                        }
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-                        .padding(.top, 100)
-                        .padding(.horizontal, 20)
-                        .animation(.easeInOut(duration: 0.3), value: viewModel.errorMessage != nil)
-                    }
-                    
                     // Refresh button
                     VStack {
                         HStack {
@@ -164,6 +147,9 @@ struct MapView: View {
             .navigationTitle("Map")
             .navigationBarTitleDisplayMode(.large)
         }
+        .errorAlert(error: $viewModel.errorPresentation, onRetry: {
+            viewModel.loadMapData()
+        })
     }
     
     // Navigate to detailed spot view
@@ -178,7 +164,6 @@ struct MapView: View {
         // 1. Changing to the Spots tab
         // 2. Pushing a detail view
         // 3. Using a navigation coordinator
-        print("Navigate to spot details for: \(spot.name)")
     }
 }
 

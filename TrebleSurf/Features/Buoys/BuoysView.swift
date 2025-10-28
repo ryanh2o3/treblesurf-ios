@@ -44,6 +44,11 @@ struct BuoysView: View {
                 }
             }
         }
+        .errorAlert(error: $viewModel.errorPresentation, onRetry: {
+            Task {
+                await viewModel.loadBuoys()
+            }
+        })
     }
     
 
