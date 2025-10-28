@@ -183,7 +183,7 @@ class SurfReportService: ObservableObject {
                         // Extract just the spot name from countryRegionSpot
                         let spotName = DataFormatter.extractSpotName(from: response.countryRegionSpot)
                         
-                        var report = SurfReport(
+                        let report = SurfReport(
                             consistency: response.consistency,
                             imageKey: response.imageKey,
                             videoKey: response.videoKey,

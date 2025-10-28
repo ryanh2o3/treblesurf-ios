@@ -1202,9 +1202,9 @@ class QuickPhotoReportViewModel: ObservableObject {
         var cleanupTasks: [Task<Void, Never>] = []
         
         // Clean up any uploaded image (since user is dismissing, it's unused)
-        if let imageKey = imageKey {
+        if let uploadedImageKey = imageKey {
             cleanupTasks.append(Task {
-                await deleteUploadedMedia(key: imageKey, type: "image")
+                await deleteUploadedMedia(key: uploadedImageKey, type: "image")
             })
         }
         

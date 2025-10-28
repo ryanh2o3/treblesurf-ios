@@ -1634,11 +1634,11 @@ class SurfReportSubmissionViewModel: ObservableObject {
         var finalReportData = reportData
         finalReportData["iosValidated"] = true
         
-        if let imageKey = imageKey {
-            print("📷 [SURF_REPORT] Using S3 image key: \(imageKey)")
+        if let uploadedImageKey = imageKey {
+            print("📷 [SURF_REPORT] Using S3 image key: \(uploadedImageKey)")
         }
-        if let videoKey = videoKey {
-            print("🎥 [SURF_REPORT] Using S3 video key: \(videoKey)")
+        if let uploadedVideoKey = videoKey {
+            print("🎥 [SURF_REPORT] Using S3 video key: \(uploadedVideoKey)")
         }
         if imageKey == nil && videoKey == nil {
             print("📷 [SURF_REPORT] No media data to include")
