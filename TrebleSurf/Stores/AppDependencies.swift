@@ -11,7 +11,7 @@ import SwiftUI
 /// Centralized dependency container for the app
 @MainActor
 class AppDependencies {
-    static let shared = AppDependencies()
+    nonisolated static let shared = AppDependencies()
     
     // MARK: - Lazy Dependencies
     
@@ -26,12 +26,12 @@ class AppDependencies {
     
     // MARK: - Initialization
     
-    private init() {}
+    nonisolated private init() {}
     
     // MARK: - Testing Support
     
     /// Create a mock dependencies instance for testing
-    static func createMock() -> AppDependencies {
+    nonisolated static func createMock() -> AppDependencies {
         let deps = AppDependencies()
         // In the future, can swap implementations here
         // deps.dataStore = MockDataStore()

@@ -23,7 +23,7 @@ struct LocationData: Codable, Identifiable {
 
 @MainActor
 class LocationStore: NSObject, ObservableObject, LocationStoreProtocol {
-    static let shared = LocationStore()
+    nonisolated static let shared = LocationStore()
     
     @Published var country: String = ""
     @Published var region: String = ""
@@ -37,10 +37,12 @@ class LocationStore: NSObject, ObservableObject, LocationStoreProtocol {
     private let locationManager = CLLocationManager()
     private let geocoder = CLGeocoder()
     
-    private override init() {
+    nonisolated private override init() {
         super.init()
-        setupLocationManager()
-        loadSavedLocations()
+        Task { @MainActor in
+            self.setupLocationManager()
+            self.loadSavedLocations()
+        }
     }
     
     func setupLocationManager() {

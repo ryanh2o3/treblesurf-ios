@@ -4,7 +4,7 @@ import Combine
 // MARK: - Buoy Cache Service
 @MainActor
 class BuoyCacheService: ObservableObject {
-    static let shared = BuoyCacheService()
+    nonisolated static let shared = BuoyCacheService()
     
     @Published var cachedBuoyData: [String: BuoyResponse] = [:]
     @Published var lastFetchTime: Date?
@@ -12,7 +12,7 @@ class BuoyCacheService: ObservableObject {
     private let cacheExpirationInterval: TimeInterval = 5 * 60 // 5 minutes
     private let cacheQueue = DispatchQueue(label: "com.treblesurf.buoycache", qos: .utility)
     
-    private init() {}
+    nonisolated private init() {}
     
     // MARK: - Public Methods
     

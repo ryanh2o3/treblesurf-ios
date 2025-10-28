@@ -11,7 +11,7 @@ import UIKit
 
 @MainActor
 class AuthManager: ObservableObject, AuthManagerProtocol {
-    static let shared = AuthManager()
+    nonisolated static let shared = AuthManager()
     
     @Published var currentUser: User?
     @Published var isAuthenticated: Bool = false
@@ -54,13 +54,16 @@ class AuthManager: ObservableObject, AuthManagerProtocol {
         }
     }
     
+    // MARK: - Initialization
+    
+    nonisolated private init() {}
+    
     // MARK: - Authentication Methods
     
     /// Check if we have any stored authentication data
-    func hasStoredAuthData() -> Bool {
+    nonisolated func hasStoredAuthData() -> Bool {
         return (sessionId != nil && !sessionId!.isEmpty) || 
-               (csrfToken != nil && !csrfToken!.isEmpty) ||
-               currentUser != nil
+               (csrfToken != nil && !csrfToken!.isEmpty)
     }
     
     /// Debug method to print current authentication state
@@ -95,7 +98,9 @@ class AuthManager: ObservableObject, AuthManagerProtocol {
         request.httpBody = try? JSONSerialization.data(withJSONObject: body)
         print("📤 Sending request to backend: \(request.url?.absoluteString ?? "Invalid URL")")
 
-        URLSession.shared.dataTask(with: request) { data, response, error in
+        URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
+            guard let self = self else { return }
+            
             if let error = error {
                 print("Request failed with error: \(error.localizedDescription)")
                 completion(false, nil)
@@ -137,7 +142,7 @@ class AuthManager: ObservableObject, AuthManagerProtocol {
         }.resume()
     }
     
-    private func extractSessionId(from cookieString: String) {
+    nonisolated private func extractSessionId(from cookieString: String) {
         print("Extracting session ID from cookies: \(cookieString)")
         
         // Parse Set-Cookie header to extract session_id
@@ -229,7 +234,9 @@ class AuthManager: ObservableObject, AuthManagerProtocol {
             print("No local session ID available, attempting validation without cookie")
         }
         
-        URLSession.shared.dataTask(with: request) { data, response, error in
+        URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
+            guard let self = self else { return }
+            
             if let error = error {
                 print("Validation request failed: \(error.localizedDescription)")
                 
@@ -241,7 +248,9 @@ class AuthManager: ObservableObject, AuthManagerProtocol {
                            nsError.code == NSURLErrorTimedOut {
                             print("Development server not available, using local session validation")
                             if let sessionId = self.sessionId, !sessionId.isEmpty {
-                                completion(true, self.currentUser)
+                                Task { @MainActor in
+                                    completion(true, self.currentUser)
+                                }
                                 return
                             }
                         }
@@ -309,9 +318,7 @@ class AuthManager: ObservableObject, AuthManagerProtocol {
                     completion(true, validateResponse.user)
                 } else {
                     print("Session validation returned invalid")
-                    Task { @MainActor in
-                        self.clearAllAppData()
-                    }
+                    self.clearAllAppData()
                     completion(false, nil)
                 }
             } catch {
@@ -354,39 +361,42 @@ class AuthManager: ObservableObject, AuthManagerProtocol {
             print("Adding CSRF token for logout: \(csrfToken)")
         }
         
-        URLSession.shared.dataTask(with: request) { data, response, error in
-            Task { @MainActor in
-                if let error = error {
-                    print("Logout request failed: \(error.localizedDescription)")
-                    // Even if server logout fails, clear local data
-                    self.clearAllAppData()
-                    completion(true)
-                    return
-                }
-                
-                if let httpResponse = response as? HTTPURLResponse {
-                    print("Logout HTTP response: \(httpResponse.statusCode)")
-                    
-                    // Check if we received HTML instead of JSON (indicates wrong endpoint)
-                    if let contentType = httpResponse.value(forHTTPHeaderField: "Content-Type"),
-                       contentType.contains("text/html") {
-                        print("Received HTML response instead of JSON during logout - wrong endpoint or backend issue")
-                    }
-                }
-                
-                // Always clear local data regardless of server response
+        URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
+            guard let self = self else { return }
+            
+            if let error = error {
+                print("Logout request failed: \(error.localizedDescription)")
+                // Even if server logout fails, clear local data
                 self.clearAllAppData()
                 completion(true)
+                return
             }
+            
+            if let httpResponse = response as? HTTPURLResponse {
+                print("Logout HTTP response: \(httpResponse.statusCode)")
+                
+                // Check if we received HTML instead of JSON (indicates wrong endpoint)
+                if let contentType = httpResponse.value(forHTTPHeaderField: "Content-Type"),
+                   contentType.contains("text/html") {
+                    print("Received HTML response instead of JSON during logout - wrong endpoint or backend issue")
+                }
+            }
+            
+            // Always clear local data regardless of server response
+            self.clearAllAppData()
+            completion(true)
         }.resume()
     }
     
     /// Comprehensive method to clear all app data, caches, and user preferences
-    func clearAllAppData() {
-        // Already on MainActor, no need for DispatchQueue
-        // Clear authentication data
-        self.currentUser = nil
-        self.isAuthenticated = false
+    nonisolated func clearAllAppData() {
+        // Clear authentication data on main actor
+        Task { @MainActor in
+            self.currentUser = nil
+            self.isAuthenticated = false
+        }
+        
+        // Clear tokens (nonisolated properties)
         self.csrfToken = nil
         self.sessionId = nil
         
@@ -409,7 +419,7 @@ class AuthManager: ObservableObject, AuthManagerProtocol {
     }
     
     /// Clear all UserDefaults values
-    private func clearAllUserDefaults() {
+    nonisolated private func clearAllUserDefaults() {
         let domain = Bundle.main.bundleIdentifier!
         UserDefaults.standard.removePersistentDomain(forName: domain)
         UserDefaults.standard.synchronize()
@@ -417,7 +427,7 @@ class AuthManager: ObservableObject, AuthManagerProtocol {
     }
     
     /// Clear all @AppStorage values
-    private func clearAllAppStorage() {
+    nonisolated private func clearAllAppStorage() {
         // Clear saved locations
         UserDefaults.standard.removeObject(forKey: "savedLocations")
         
@@ -429,7 +439,7 @@ class AuthManager: ObservableObject, AuthManagerProtocol {
     }
     
     /// Clear all caches
-    private func clearAllCaches() {
+    nonisolated private func clearAllCaches() {
         // Clear URL cache
         URLCache.shared.removeAllCachedResponses()
         
@@ -440,10 +450,10 @@ class AuthManager: ObservableObject, AuthManagerProtocol {
     }
     
     /// Reset all stores to initial state
-    private func resetAllStores() {
+    nonisolated private func resetAllStores() {
         // Reset DataStore
         Task { @MainActor in
-            await DataStore.shared.resetToInitialState()
+            DataStore.shared.resetToInitialState()
         }
         
         // Reset LocationStore
@@ -460,7 +470,7 @@ class AuthManager: ObservableObject, AuthManagerProtocol {
     }
     
     /// Sign out from Google
-    private func signOutFromGoogle() {
+    nonisolated private func signOutFromGoogle() {
         GIDSignIn.sharedInstance.signOut()
         print("Signed out from Google")
     }
@@ -490,67 +500,67 @@ class AuthManager: ObservableObject, AuthManagerProtocol {
         let body = ["email": email]
         request.httpBody = try? JSONSerialization.data(withJSONObject: body)
         
-        URLSession.shared.dataTask(with: request) { data, response, error in
-            Task { @MainActor in
-                if let error = error {
-                    print("Dev session creation failed: \(error.localizedDescription)")
+        URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
+            guard let self = self else { return }
+            
+            if let error = error {
+                print("Dev session creation failed: \(error.localizedDescription)")
+                completion(false)
+                return
+            }
+            
+            if let httpResponse = response as? HTTPURLResponse {
+                print("Dev session HTTP response: \(httpResponse.statusCode)")
+                print("Dev session response headers: \(httpResponse.allHeaderFields)")
+                
+                // Check if we received HTML instead of JSON (indicates wrong endpoint)
+                if let contentType = httpResponse.value(forHTTPHeaderField: "Content-Type"),
+                   contentType.contains("text/html") {
+                    print("Received HTML response instead of JSON during dev session creation - wrong endpoint or backend issue")
                     completion(false)
                     return
                 }
                 
-                if let httpResponse = response as? HTTPURLResponse {
-                    print("Dev session HTTP response: \(httpResponse.statusCode)")
-                    print("Dev session response headers: \(httpResponse.allHeaderFields)")
-                    
-                    // Check if we received HTML instead of JSON (indicates wrong endpoint)
-                    if let contentType = httpResponse.value(forHTTPHeaderField: "Content-Type"),
-                       contentType.contains("text/html") {
-                        print("Received HTML response instead of JSON during dev session creation - wrong endpoint or backend issue")
-                        completion(false)
-                        return
-                    }
-                    
-                    // Extract CSRF token from response headers
-                    if let csrfToken = httpResponse.value(forHTTPHeaderField: "X-CSRF-Token") {
-                        self.csrfToken = csrfToken
-                        print("CSRF token extracted: \(csrfToken)")
-                    }
-                    
-                    // Extract session ID from cookies
-                    if let cookies = httpResponse.allHeaderFields["Set-Cookie"] as? String {
-                        self.extractSessionId(from: cookies)
-                    } else {
-                        print("No Set-Cookie header found in response")
-                        print("Available headers: \(httpResponse.allHeaderFields.keys)")
-                    }
-                    
-                    if httpResponse.statusCode == 200 {
-                        // Create a mock user for development
-                        let devUser = User(
-                            email: email,
-                            name: "Development User",
-                            picture: "https://via.placeholder.com/150",
-                            familyName: "User",
-                            givenName: "Development",
-                            createdAt: nil, // Optional field
-                            lastLogin: nil, // Optional field
-                            theme: "dark"
-                        )
-                        
-                        Task { @MainActor in
-                            self.currentUser = devUser
-                            self.isAuthenticated = true
-                        }
-                        print("Development session created successfully for: \(email)")
-                        completion(true)
-                    } else {
-                        print("Dev session creation failed with status: \(httpResponse.statusCode)")
-                        completion(false)
-                    }
+                // Extract CSRF token from response headers
+                if let csrfToken = httpResponse.value(forHTTPHeaderField: "X-CSRF-Token") {
+                    self.csrfToken = csrfToken
+                    print("CSRF token extracted: \(csrfToken)")
+                }
+                
+                // Extract session ID from cookies
+                if let cookies = httpResponse.allHeaderFields["Set-Cookie"] as? String {
+                    self.extractSessionId(from: cookies)
                 } else {
-                    print("No HTTP response received")
+                    print("No Set-Cookie header found in response")
+                    print("Available headers: \(httpResponse.allHeaderFields.keys)")
+                }
+                
+                if httpResponse.statusCode == 200 {
+                    // Create a mock user for development
+                    let devUser = User(
+                        email: email,
+                        name: "Development User",
+                        picture: "https://via.placeholder.com/150",
+                        familyName: "User",
+                        givenName: "Development",
+                        createdAt: nil, // Optional field
+                        lastLogin: nil, // Optional field
+                        theme: "dark"
+                    )
+                    
+                    Task { @MainActor in
+                        self.currentUser = devUser
+                        self.isAuthenticated = true
+                    }
+                    print("Development session created successfully for: \(email)")
+                    completion(true)
+                } else {
+                    print("Dev session creation failed with status: \(httpResponse.statusCode)")
                     completion(false)
                 }
+            } else {
+                print("No HTTP response received")
+                completion(false)
             }
         }.resume()
     }

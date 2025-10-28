@@ -28,7 +28,7 @@ enum ThemeMode: String, CaseIterable, Identifiable {
 
 @MainActor
 class SettingsStore: ObservableObject, SettingsStoreProtocol {
-    static let shared = SettingsStore()
+    nonisolated static let shared = SettingsStore()
     
     @Published var selectedTheme: ThemeMode = .system {
         didSet {
@@ -51,9 +51,11 @@ class SettingsStore: ObservableObject, SettingsStoreProtocol {
     
     private var cancellables = Set<AnyCancellable>()
     
-    private init() {
-        loadSettings()
-        setupThemeObserver()
+    nonisolated private init() {
+        Task { @MainActor in
+            self.loadSettings()
+            self.setupThemeObserver()
+        }
     }
     
     private func loadSettings() {
