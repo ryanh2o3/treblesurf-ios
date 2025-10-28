@@ -847,10 +847,6 @@ extension APIClient {
                         } else {
                             completion(.failure(APIClientError.noDataReceived))
                         }
-                    } else if let jsonObject = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-                              let dynamoDBData = jsonObject as? [String: DynamoDBAttributeValue] {
-                        // Try to parse as DynamoDB format (legacy)
-                        completion(.success(dynamoDBData))
                     } else {
                         // Fallback to single response format
                         let response = try JSONDecoder().decode(SwellPredictionResponse.self, from: data)

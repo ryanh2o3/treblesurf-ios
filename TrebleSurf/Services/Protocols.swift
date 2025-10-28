@@ -51,13 +51,14 @@ protocol APIClientProtocol {
 
 // MARK: - AuthManager Protocol
 
+@MainActor
 protocol AuthManagerProtocol: ObservableObject {
     var isAuthenticated: Bool { get }
     var currentUser: User? { get }
     
     func validateSession(completion: @escaping (Bool, User?) -> Void)
     func logout(completion: @escaping (Bool) -> Void)
-    func hasStoredAuthData() -> Bool
+    nonisolated func hasStoredAuthData() -> Bool
     func authenticateWithBackend(user: GIDGoogleUser, completion: @escaping (Bool, User?) -> Void)
 }
 

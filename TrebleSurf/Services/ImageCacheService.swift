@@ -363,8 +363,6 @@ class ImageCacheService: ObservableObject, ImageCacheProtocol {
             
             for fileURL in fileURLs {
                 if fileURL.pathExtension == "cache" {
-                    let sanitizedKey = fileURL.deletingPathExtension().lastPathComponent
-                    
                     // Try to load the cached data using the sanitized filename
                     do {
                         let data = try Data(contentsOf: fileURL)
@@ -416,7 +414,9 @@ class ImageCacheService: ObservableObject, ImageCacheProtocol {
             
             // Check if expired
             if cachedData.isExpired {
-                removeImageFromDisk(for: key)
+                // Remove expired file using the sanitized key
+                let expiredFileURL = cacheDirectory.appendingPathComponent("\(sanitizedKey).cache")
+                try? fileManager.removeItem(at: expiredFileURL)
                 return nil
             }
             
@@ -479,7 +479,7 @@ class ImageCacheService: ObservableObject, ImageCacheProtocol {
     @objc private func handleAppWillTerminate() {
         print("📱 App terminating, ensuring cache is saved to disk")
         // Force save all cached data to disk
-        for (key, cachedData) in imageCache {
+        for (_, cachedData) in imageCache {
             saveImageToDisk(cachedData)
         }
     }
