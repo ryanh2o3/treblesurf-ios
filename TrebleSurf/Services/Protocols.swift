@@ -12,6 +12,7 @@ import CoreLocation
 
 // MARK: - DataStore Protocol
 
+@MainActor
 protocol DataStoreProtocol: ObservableObject {
     var currentConditions: ConditionData { get }
     var currentConditionsTimestamp: String { get }
@@ -87,6 +88,7 @@ protocol SettingsStoreProtocol: ObservableObject {
 
 // MARK: - LocationStore Protocol
 
+@MainActor
 protocol LocationStoreProtocol: ObservableObject {
     var country: String { get }
     var region: String { get }

@@ -35,7 +35,7 @@ class LocationStore: NSObject, ObservableObject, LocationStoreProtocol {
     @Published var savedLocations: [LocationData] = []
     
     private let locationManager = CLLocationManager()
-    private let geocoder = CLGeocoder()
+    nonisolated private let geocoder = CLGeocoder()
     
     nonisolated private override init() {
         super.init()
