@@ -4,13 +4,11 @@ import Combine
 import SwiftUI
 
 @MainActor
-class MapViewModel: ObservableObject {
+class MapViewModel: BaseViewModel {
     @Published var surfSpots: [SpotData] = []
     @Published var buoys: [BuoyLocation] = []
     @Published var selectedSpot: SpotData?
     @Published var selectedBuoy: BuoyLocation?
-    @Published var isLoading: Bool = false
-    @Published var errorMessage: String?
     @Published var selectedSpotConditions: ConditionData?
     @Published var isLoadingConditions: Bool = false
     @Published var showingSpotDetails: Bool = false
@@ -19,27 +17,17 @@ class MapViewModel: ObservableObject {
     private var cancellables = Set<AnyCancellable>()
     private let dataStore = DataStore.shared
     
-    init() {
+    override init(errorHandler: ErrorHandlerProtocol? = nil, logger: ErrorLoggerProtocol? = nil) {
+        super.init(errorHandler: errorHandler, logger: logger)
         loadMapData()
     }
     
     func loadMapData() {
-        isLoading = true
-        errorMessage = nil
-        
-        // Load spots and buoys concurrently
-        let spotsTask = Task { await loadSurfSpots() }
-        let buoysTask = Task { await loadBuoys() }
-        
-        // Wait for both to complete
-        Task {
+        executeTask(context: "Load Map Data") {
+            // Load spots and buoys concurrently
             await withTaskGroup(of: Void.self) { group in
-                group.addTask { await spotsTask.value }
-                group.addTask { await buoysTask.value }
-            }
-            
-            await MainActor.run {
-                self.isLoading = false
+                group.addTask { await self.loadSurfSpots() }
+                group.addTask { await self.loadBuoys() }
             }
         }
     }
@@ -47,30 +35,31 @@ class MapViewModel: ObservableObject {
     @MainActor
     private func loadSurfSpots() async {
         do {
+            logger.info("Loading surf spots for region: Donegal", category: .general)
             try await withCheckedThrowingContinuation { continuation in
                 dataStore.fetchRegionSpots(region: "Donegal") { [weak self] result in
                     switch result {
                     case .success(let spots):
                         Task { @MainActor in
                             self?.surfSpots = spots
+                            self?.logger.info("Loaded \(spots.count) surf spots", category: .general)
                         }
                         continuation.resume()
                     case .failure(let error):
-                        Task { @MainActor in
-                            self?.errorMessage = "Failed to load spots: \(error.localizedDescription)"
-                        }
                         continuation.resume(throwing: error)
                     }
                 }
             }
         } catch {
-            print("Error loading surf spots: \(error)")
+            // Error is handled by executeTask in loadMapData
+            throw TrebleSurfError.from(error)
         }
     }
     
     @MainActor
     private func loadBuoys() async {
         do {
+            logger.info("Loading buoys for region: NorthAtlantic", category: .general)
             let buoyResponses = try await withCheckedThrowingContinuation { continuation in
                 APIClient.shared.fetchBuoys(region: "NorthAtlantic") { result in
                     continuation.resume(with: result)
@@ -78,9 +67,10 @@ class MapViewModel: ObservableObject {
             }
             
             self.buoys = buoyResponses
+            logger.info("Loaded \(buoyResponses.count) buoys", category: .general)
         } catch {
-            print("Error loading buoys: \(error)")
-            self.errorMessage = "Failed to load buoys: \(error.localizedDescription)"
+            // Error is handled by executeTask in loadMapData
+            throw TrebleSurfError.from(error)
         }
     }
     

@@ -13,6 +13,18 @@ import SwiftUI
 class AppDependencies {
     nonisolated static let shared = AppDependencies()
     
+    // MARK: - Error Handling Infrastructure
+    
+    lazy var errorLogger: ErrorLoggerProtocol = {
+        #if DEBUG
+        return ErrorLogger(minimumLogLevel: .debug, enableConsoleOutput: true, enableOSLog: true)
+        #else
+        return ErrorLogger(minimumLogLevel: .info, enableConsoleOutput: false, enableOSLog: true)
+        #endif
+    }()
+    
+    lazy var errorHandler: ErrorHandlerProtocol = ErrorHandler(logger: errorLogger)
+    
     // MARK: - Lazy Dependencies
     
     lazy var dataStore: any DataStoreProtocol = DataStore.shared

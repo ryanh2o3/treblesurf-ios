@@ -1,8 +1,18 @@
 import Foundation
 import SwiftUI
 
-// MARK: - API Error Handler
+// ⚠️ DEPRECATED: This file is deprecated and will be removed in a future update.
+// Use the new error handling system instead:
+// - TrebleSurfError (Utilities/Errors/TrebleSurfError.swift)
+// - ErrorHandler (Utilities/Errors/ErrorHandler.swift)
+// - ErrorPresentation (Utilities/Errors/ErrorHandler.swift)
+// - BaseViewModel (ViewModels/BaseViewModel.swift)
+//
+// See ERROR_HANDLING_MIGRATION.md for migration guide
 
+// MARK: - API Error Handler (DEPRECATED)
+
+@available(*, deprecated, message: "Use ErrorHandler with TrebleSurfError instead. See ERROR_HANDLING_MIGRATION.md")
 class APIErrorHandler: ObservableObject {
     static let shared = APIErrorHandler()
     
