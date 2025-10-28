@@ -25,12 +25,12 @@ struct ImageUploadView: View {
         .padding()
         .photosPicker(isPresented: $showingPhotoPicker, selection: $viewModel.imageSelection, matching: .images)
         .photosPicker(isPresented: $showingVideoPicker, selection: $viewModel.videoSelection, matching: .videos)
-        .onChange(of: viewModel.shouldShowPhotoPicker) { shouldShow in
+        .onChange(of: viewModel.shouldShowPhotoPicker) { _, shouldShow in
             if shouldShow {
                 showingPhotoPicker = true
             }
         }
-        .onChange(of: showingPhotoPicker) { isShowing in
+        .onChange(of: showingPhotoPicker) { _, isShowing in
             if isShowing {
                 viewModel.shouldShowPhotoPicker = false
             }

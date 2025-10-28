@@ -29,7 +29,7 @@ struct SurfReportSubmissionView: View {
             .onAppear {
                 viewModel.setSpotId(spotId)
             }
-            .onChange(of: viewModel.currentStep) { step in
+            .onChange(of: viewModel.currentStep) { _, step in
                 // If we're on the image step and should show photo picker, trigger it
                 if step == 6 && viewModel.shouldShowPhotoPicker {
                     // Small delay to ensure the view is fully loaded

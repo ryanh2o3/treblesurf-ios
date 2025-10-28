@@ -72,7 +72,7 @@ struct SpotForecastView: View {
         .onAppear {
             loadForecastData()
         }
-        .onChange(of: viewModel.filteredEntries) { entries in
+        .onChange(of: viewModel.filteredEntries) { _, entries in
             handleEntriesChange(entries)
         }
     }
@@ -236,7 +236,7 @@ struct SpotForecastView: View {
             .onAppear {
                 selectFirstCard()
             }
-            .onChange(of: selectedCardIndex) { newIndex in
+            .onChange(of: selectedCardIndex) { _, newIndex in
                 // Only handle manual selection changes, not auto-selection changes
                 if !isUserScrolling {
                     handleSelectionChange(newIndex)

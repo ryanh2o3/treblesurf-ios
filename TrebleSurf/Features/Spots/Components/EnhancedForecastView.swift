@@ -57,14 +57,14 @@ struct EnhancedForecastView: View {
                 loadSwellPredictionData()
             }
         }
-        .onChange(of: settingsStore.showSwellPredictions) { showPredictions in
+        .onChange(of: settingsStore.showSwellPredictions) { _, showPredictions in
             if showPredictions {
                 loadSwellPredictionData()
             } else {
                 swellPredictionService.clearCache(for: spot.id)
             }
         }
-        .onChange(of: forecastViewModel.filteredEntries) { entries in
+        .onChange(of: forecastViewModel.filteredEntries) { _, entries in
             handleEntriesChange(entries)
         }
     }
@@ -268,7 +268,7 @@ struct EnhancedForecastView: View {
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 8)
-        } else if let error = swellPredictionError {
+        } else if swellPredictionError != nil {
             HStack {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .foregroundColor(.orange)
