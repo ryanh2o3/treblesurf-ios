@@ -106,15 +106,26 @@ class ImageValidationService {
     
     /// Extracts frames from a video for analysis
     private func extractVideoFrames(from videoURL: URL, maxFrames: Int, completion: @escaping (Result<[UIImage], Error>) -> Void) {
-        let asset = AVAsset(url: videoURL)
+        let asset = AVURLAsset(url: videoURL)
         let imageGenerator = AVAssetImageGenerator(asset: asset)
         imageGenerator.appliesPreferredTrackTransform = true
         imageGenerator.requestedTimeToleranceAfter = .zero
         imageGenerator.requestedTimeToleranceBefore = .zero
         
         // Calculate time points to sample
-        let duration = asset.duration
-        let durationSeconds = CMTimeGetSeconds(duration)
+        Task {
+            do {
+                let duration = try await asset.load(.duration)
+                let durationSeconds = CMTimeGetSeconds(duration)
+                await self.extractFrames(from: imageGenerator, duration: duration, durationSeconds: durationSeconds, maxFrames: maxFrames, completion: completion)
+            } catch {
+                completion(.failure(error))
+            }
+        }
+    }
+    
+    /// Helper method to extract frames after loading duration
+    private func extractFrames(from imageGenerator: AVAssetImageGenerator, duration: CMTime, durationSeconds: Double, maxFrames: Int, completion: @escaping (Result<[UIImage], Error>) -> Void) async {
         let frameInterval = durationSeconds / Double(maxFrames)
         
         var timePoints: [CMTime] = []

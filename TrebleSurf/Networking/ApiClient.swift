@@ -686,9 +686,7 @@ extension APIClient {
                 // Add debugging to see what the actual response looks like
                 if let nsError = error as NSError? {
                     print("Error domain: \(nsError.domain), code: \(nsError.code)")
-                    if let userInfo = nsError.userInfo as? [String: Any] {
-                        print("Error user info: \(userInfo)")
-                    }
+                    print("Error user info: \(nsError.userInfo)")
                 }
                 
                 completion(.failure(error))

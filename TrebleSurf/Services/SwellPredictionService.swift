@@ -54,7 +54,7 @@ class SwellPredictionService: ObservableObject {
                         self?.predictions[spot.id] = firstEntry
                     }
                     completion(.success(entries))
-                case .failure(let error):
+                case .failure:
                     // Fallback to DynamoDB format
                     self?.apiClient.fetchSwellPredictionDynamoDB(country: country, region: region, spot: spotName) { [weak self] fallbackResult in
                         DispatchQueue.main.async {
