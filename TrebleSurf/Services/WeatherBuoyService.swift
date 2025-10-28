@@ -156,10 +156,8 @@ class WeatherBuoyService: ObservableObject {
         
         // Handle direction fields (should be 0-360 for degrees)
         let meanWaveDirection = response.MeanWaveDirection ?? 0
-        let windDirection = response.WindDirection ?? 0
         
         let validWaveDirection = DataFormatter.validateDirection(meanWaveDirection)
-        let validWindDirection = DataFormatter.validateDirection(windDirection)
         
         let buoy = Buoy(
             id: response.name,

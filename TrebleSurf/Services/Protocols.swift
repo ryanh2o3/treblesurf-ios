@@ -75,6 +75,7 @@ protocol ImageCacheProtocol {
 
 // MARK: - SettingsStore Protocol
 
+@MainActor
 protocol SettingsStoreProtocol: ObservableObject {
     var selectedTheme: ThemeMode { get set }
     var isDarkMode: Bool { get }

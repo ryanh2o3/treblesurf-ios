@@ -73,7 +73,7 @@ class LiveSpotViewModel: ObservableObject {
                         // Extract just the spot name
                         let spotName = response.countryRegionSpot.components(separatedBy: "_").last ?? response.countryRegionSpot
                         
-                        var report = SurfReport(
+                        let report = SurfReport(
                             consistency: response.consistency,
                             imageKey: response.imageKey,
                             videoKey: response.videoKey,
@@ -116,7 +116,7 @@ class LiveSpotViewModel: ObservableObject {
                         // The images will be cached when they're first accessed
                     }
                     
-                case .failure(let error):
+                case .failure:
                     self?.errorMessage = "Failed to load surf reports"
                 }
             }

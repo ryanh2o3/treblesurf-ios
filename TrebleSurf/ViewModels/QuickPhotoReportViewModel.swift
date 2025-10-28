@@ -156,7 +156,7 @@ class QuickPhotoReportViewModel: ObservableObject {
                             // Could show error to user here if needed
                         }
                     }
-                } else if let spotId = self.spotId {
+                } else if self.spotId != nil {
                     // No presigned URL yet, but spotId available - upload will start when URL is ready
                 } else {
                     // Neither presigned URL nor spotId available
@@ -340,7 +340,7 @@ class QuickPhotoReportViewModel: ObservableObject {
     }
     
     private func generateVideoThumbnail(from videoURL: URL) async -> UIImage? {
-        let asset = AVAsset(url: videoURL)
+        let asset = AVURLAsset(url: videoURL)
         let imageGenerator = AVAssetImageGenerator(asset: asset)
         imageGenerator.appliesPreferredTrackTransform = true
         imageGenerator.maximumSize = CGSize(width: 300, height: 300)
@@ -758,8 +758,6 @@ class QuickPhotoReportViewModel: ObservableObject {
             isUploadingImage = true
             uploadProgress = 0.0
         }
-        
-        let startTime = Date()
         
         do {
             // Step 1: Generate presigned upload URL

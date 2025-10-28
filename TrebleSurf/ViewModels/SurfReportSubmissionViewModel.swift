@@ -543,7 +543,7 @@ class SurfReportSubmissionViewModel: ObservableObject {
         // Try to extract timestamp from image metadata
         var timestampFound = false
         if let imageSource = CGImageSourceCreateWithData(data as CFData, nil),
-           let properties = CGImageSourceCopyPropertiesAtIndex(imageSource, 0, nil) as? [String: Any] {
+           let properties = (CGImageSourceCopyPropertiesAtIndex(imageSource, 0, nil) as? NSDictionary) as? [String: Any] {
             
             // Check for EXIF date
             if let exif = properties["{Exif}"] as? [String: Any],
@@ -831,7 +831,7 @@ class SurfReportSubmissionViewModel: ObservableObject {
     }
     
     private func generateVideoThumbnail(from videoURL: URL) async -> UIImage? {
-        let asset = AVAsset(url: videoURL)
+        let asset = AVURLAsset(url: videoURL)
         let imageGenerator = AVAssetImageGenerator(asset: asset)
         imageGenerator.appliesPreferredTrackTransform = true
         
@@ -957,7 +957,7 @@ class SurfReportSubmissionViewModel: ObservableObject {
             if let data = try await imageSelection.loadTransferable(type: Data.self) {
                 // Try to get file creation date from the data itself
                 if let imageSource = CGImageSourceCreateWithData(data as CFData, nil) {
-                    if let properties = CGImageSourceCopyPropertiesAtIndex(imageSource, 0, nil) as? [String: Any] {
+                    if let properties = (CGImageSourceCopyPropertiesAtIndex(imageSource, 0, nil) as? NSDictionary) as? [String: Any] {
                         print("📸 [IMAGE_TIMESTAMP] Image source properties available")
                         
                         // Check for file creation date in properties
@@ -1161,9 +1161,7 @@ class SurfReportSubmissionViewModel: ObservableObject {
                 print("   - Domain: \(nsError.domain)")
                 print("   - Code: \(nsError.code)")
                 print("   - Description: \(nsError.localizedDescription)")
-                if let userInfo = nsError.userInfo as? [String: Any] {
-                    print("   - User Info: \(userInfo)")
-                }
+                print("   - User Info: \(nsError.userInfo)")
             }
             
             await MainActor.run {
@@ -1230,9 +1228,7 @@ class SurfReportSubmissionViewModel: ObservableObject {
                 print("   - Domain: \(nsError.domain)")
                 print("   - Code: \(nsError.code)")
                 print("   - Description: \(nsError.localizedDescription)")
-                if let userInfo = nsError.userInfo as? [String: Any] {
-                    print("   - User Info: \(userInfo)")
-                }
+                print("   - User Info: \(nsError.userInfo)")
             }
             
             await MainActor.run {
@@ -1283,9 +1279,7 @@ class SurfReportSubmissionViewModel: ObservableObject {
                         print("   - Domain: \(nsError.domain)")
                         print("   - Code: \(nsError.code)")
                         print("   - Description: \(nsError.localizedDescription)")
-                        if let userInfo = nsError.userInfo as? [String: Any] {
-                            print("   - User Info: \(userInfo)")
-                        }
+                        print("   - User Info: \(nsError.userInfo)")
                     }
                     continuation.resume(throwing: error)
                 }
@@ -1385,9 +1379,7 @@ class SurfReportSubmissionViewModel: ObservableObject {
                         print("   - Domain: \(nsError.domain)")
                         print("   - Code: \(nsError.code)")
                         print("   - Description: \(nsError.localizedDescription)")
-                        if let userInfo = nsError.userInfo as? [String: Any] {
-                            print("   - User Info: \(userInfo)")
-                        }
+                        print("   - User Info: \(nsError.userInfo)")
                     }
                     continuation.resume(throwing: error)
                 }
@@ -1623,9 +1615,7 @@ class SurfReportSubmissionViewModel: ObservableObject {
                 print("   - Domain: \(nsError.domain)")
                 print("   - Code: \(nsError.code)")
                 print("   - Description: \(nsError.localizedDescription)")
-                if let userInfo = nsError.userInfo as? [String: Any] {
-                    print("   - User Info: \(userInfo)")
-                }
+                print("   - User Info: \(nsError.userInfo)")
             }
             // Use the new error handling system
             handleError(error)
@@ -1644,11 +1634,11 @@ class SurfReportSubmissionViewModel: ObservableObject {
         var finalReportData = reportData
         finalReportData["iosValidated"] = true
         
-        if imageKey != nil {
-            print("📷 [SURF_REPORT] Using S3 image key: \(imageKey!)")
+        if let imageKey = imageKey {
+            print("📷 [SURF_REPORT] Using S3 image key: \(imageKey)")
         }
-        if videoKey != nil {
-            print("🎥 [SURF_REPORT] Using S3 video key: \(videoKey!)")
+        if let videoKey = videoKey {
+            print("🎥 [SURF_REPORT] Using S3 video key: \(videoKey)")
         }
         if imageKey == nil && videoKey == nil {
             print("📷 [SURF_REPORT] No media data to include")
@@ -1697,9 +1687,7 @@ class SurfReportSubmissionViewModel: ObservableObject {
                         print("   - Domain: \(nsError.domain)")
                         print("   - Code: \(nsError.code)")
                         print("   - Description: \(nsError.localizedDescription)")
-                        if let userInfo = nsError.userInfo as? [String: Any] {
-                            print("   - User Info: \(userInfo)")
-                        }
+                        print("   - User Info: \(nsError.userInfo)")
                     }
                     
                     // If it's a 403 error, try refreshing the CSRF token and retry once
@@ -1722,9 +1710,7 @@ class SurfReportSubmissionViewModel: ObservableObject {
                                                 print("   - Domain: \(nsError.domain)")
                                                 print("   - Code: \(nsError.code)")
                                                 print("   - Description: \(nsError.localizedDescription)")
-                                                if let userInfo = nsError.userInfo as? [String: Any] {
-                                                    print("   - User Info: \(userInfo)")
-                                                }
+                                                print("   - User Info: \(nsError.userInfo)")
                                             }
                                             continuation.resume(throwing: error)
                                         }
