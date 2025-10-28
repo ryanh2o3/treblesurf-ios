@@ -10,15 +10,18 @@ enum ForecastViewMode: String, CaseIterable, Identifiable {
 }
 
 @MainActor
-class SpotForecastViewModel: ObservableObject {
+class SpotForecastViewModel: BaseViewModel {
     @Published var selectedMode: ForecastViewMode = .hourly
     @Published var filteredEntries: [ForecastEntry] = []
     
     private var dataStore: DataStore
     private var cancellables = Set<AnyCancellable>()
     
-    init(dataStore: DataStore) {
+    init(dataStore: DataStore, 
+         errorHandler: ErrorHandlerProtocol? = nil,
+         logger: ErrorLoggerProtocol? = nil) {
         self.dataStore = dataStore
+        super.init(errorHandler: errorHandler, logger: logger)
         
         // Observe changes to currentForecastEntries
         dataStore.$currentForecastEntries
@@ -29,6 +32,7 @@ class SpotForecastViewModel: ObservableObject {
     }
     
     func setViewMode(_ mode: ForecastViewMode) {
+        logger.info("Setting forecast view mode: \(mode.rawValue)", category: .ui)
         selectedMode = mode
         updateFilteredEntries(entries: dataStore.currentForecastEntries)
     }
@@ -38,6 +42,7 @@ class SpotForecastViewModel: ObservableObject {
         case .hourly:
             // Show all hourly data
             filteredEntries = entries
+            logger.debug("Filtered to \(entries.count) hourly entries", category: .dataProcessing)
             
         case .multiHour:
             // Show data every 3 hours
@@ -46,6 +51,7 @@ class SpotForecastViewModel: ObservableObject {
                 let hour = calendar.component(.hour, from: entry.dateForecastedFor)
                 return hour % 3 == 0
             }
+            logger.debug("Filtered to \(filteredEntries.count) 3-hour entries", category: .dataProcessing)
             
         case .daily:
             // Show one entry per day (at noon)
@@ -70,15 +76,18 @@ class SpotForecastViewModel: ObservableObject {
             }
             
             filteredEntries = dailyEntries.values.sorted { $0.dateForecastedFor < $1.dateForecastedFor }
+            logger.debug("Filtered to \(filteredEntries.count) daily entries", category: .dataProcessing)
         }
     }
     
     func fetchForecast(for spotId: String, completion: @escaping (Bool) -> Void) {
+        logger.info("Fetching forecast for spot: \(spotId)", category: .api)
         dataStore.fetchForecast(for: spotId, completion: completion)
     }
     
     // Refresh forecast data by clearing cache and refetching
     func refreshForecast(for spotId: String, completion: @escaping (Bool) -> Void) {
+        logger.info("Refreshing forecast for spot: \(spotId)", category: .api)
         // Clear the specific spot's forecast cache
         dataStore.clearSpotCache(for: spotId)
         // Refetch the forecast

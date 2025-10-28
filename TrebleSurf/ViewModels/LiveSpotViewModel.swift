@@ -13,22 +13,18 @@ struct CurrentConditions {
 }
 
 @MainActor
-class LiveSpotViewModel: ObservableObject {
+class LiveSpotViewModel: BaseViewModel {
     @Published var currentConditions = CurrentConditions()
     @Published var recentReports: [SurfReport] = []
     @Published var showReportForm = false
     @Published var showQuickForm = false
-    @Published var isLoading = false
-    @Published var errorMessage: String?
     
     func loadSpotData(spotId: String) async {
-        // Placeholder implementation
-        isLoading = true
+        logger.info("Loading spot data for: \(spotId)", category: .general)
         
-        // Simulate network delay
+        // Placeholder implementation - simulate network delay
         try? await Task.sleep(nanoseconds: 1_000_000_000)
         
-        // Already on MainActor, no need for MainActor.run
         self.currentConditions = CurrentConditions(
             waveHeight: "4-6 ft",
             windDirection: "NW",
@@ -36,13 +32,15 @@ class LiveSpotViewModel: ObservableObject {
             temperature: "68°F",
             quality: "Good"
         )
-        self.isLoading = false
+        
+        logger.info("Spot data loaded successfully", category: .general)
     }
     
     func fetchSurfReports(for spotId: String) {
         // Convert spotId back to country/region/spot format
         let components = spotId.split(separator: "#")
         guard components.count >= 3 else {
+            logger.warning("Invalid spotId format: \(spotId)", category: .general)
             return
         }
         
@@ -50,84 +48,77 @@ class LiveSpotViewModel: ObservableObject {
         let region = String(components[1])
         let spot = String(components[2])
         
-        // Clear existing reports before fetching new ones (already on MainActor)
-        self.recentReports = []
-        self.isLoading = true
-        self.errorMessage = nil
+        logger.info("Fetching surf reports for \(spot)", category: .api)
         
-        APIClient.shared.fetchSurfReports(country: country, region: region, spot: spot) { [weak self] result in
-            Task { @MainActor [weak self] in
-                self?.isLoading = false
-                
-                switch result {
-                case .success(let responses):
-                    let outputDateFormatter = DateFormatter()
-                    outputDateFormatter.dateFormat = "d MMM, h:mma"
-                    outputDateFormatter.locale = Locale(identifier: "en_US_POSIX")
-
-                    let reports = responses.map { [weak self] response in
-                        // Parse the timestamp with multiple format support
-                        let date = self?.parseTimestamp(response.time)
-                        let formattedTime = date != nil ? outputDateFormatter.string(from: date!) : "Invalid Date"
-                        
-                        // Extract just the spot name
-                        let spotName = response.countryRegionSpot.components(separatedBy: "_").last ?? response.countryRegionSpot
-                        
-                        let report = SurfReport(
-                            consistency: response.consistency,
-                            imageKey: response.imageKey,
-                            videoKey: response.videoKey,
-                            messiness: response.messiness,
-                            quality: response.quality,
-                            reporter: response.reporter,
-                            surfSize: response.surfSize,
-                            time: formattedTime,
-                            userEmail: response.userEmail,
-                            windAmount: response.windAmount,
-                            windDirection: response.windDirection,
-                            countryRegionSpot: spotName,
-                            dateReported: response.dateReported,
-                            mediaType: response.mediaType,
-                            iosValidated: response.iosValidated
-                        )
-                        
-                        if let imageKey = response.imageKey, !imageKey.isEmpty {
-                            self?.fetchImage(for: imageKey) { imageData in
-                                Task { @MainActor [weak self] in
-                                    report.imageData = imageData?.imageData
-                                    self?.objectWillChange.send()
-                                }
-                            }
-                        }
-                        
-                        // Video handling is now done via presigned URLs in the detail view
-                        // No need to fetch video data here
-                        
-                        return report
-                    }
-                    
-                    self?.recentReports = reports
-                    
-                    // Preload surf report images for better user experience
-                    let imageKeys = reports.compactMap { $0.imageKey }.filter { !$0.isEmpty }
-                    if !imageKeys.isEmpty {
-                        print("📱 Preloading \(imageKeys.count) surf report images")
-                        // Note: We can't preload without the actual image data
-                        // The images will be cached when they're first accessed
-                    }
-                    
-                case .failure:
-                    self?.errorMessage = "Failed to load surf reports"
+        // Clear existing reports before fetching new ones
+        self.recentReports = []
+        
+        executeTask(context: "Fetch surf reports") {
+            let responses = try await withCheckedThrowingContinuation { continuation in
+                APIClient.shared.fetchSurfReports(country: country, region: region, spot: spot) { result in
+                    continuation.resume(with: result)
                 }
+            }
+            
+            let outputDateFormatter = DateFormatter()
+            outputDateFormatter.dateFormat = "d MMM, h:mma"
+            outputDateFormatter.locale = Locale(identifier: "en_US_POSIX")
+
+            let reports = responses.map { [weak self] response in
+                // Parse the timestamp with multiple format support
+                let date = self?.parseTimestamp(response.time)
+                let formattedTime = date != nil ? outputDateFormatter.string(from: date!) : "Invalid Date"
+                
+                // Extract just the spot name
+                let spotName = response.countryRegionSpot.components(separatedBy: "_").last ?? response.countryRegionSpot
+                
+                let report = SurfReport(
+                    consistency: response.consistency,
+                    imageKey: response.imageKey,
+                    videoKey: response.videoKey,
+                    messiness: response.messiness,
+                    quality: response.quality,
+                    reporter: response.reporter,
+                    surfSize: response.surfSize,
+                    time: formattedTime,
+                    userEmail: response.userEmail,
+                    windAmount: response.windAmount,
+                    windDirection: response.windDirection,
+                    countryRegionSpot: spotName,
+                    dateReported: response.dateReported,
+                    mediaType: response.mediaType,
+                    iosValidated: response.iosValidated
+                )
+                
+                if let imageKey = response.imageKey, !imageKey.isEmpty {
+                    self?.fetchImage(for: imageKey) { imageData in
+                        Task { @MainActor [weak self] in
+                            report.imageData = imageData?.imageData
+                            self?.objectWillChange.send()
+                        }
+                    }
+                }
+                
+                return report
+            }
+            
+            self.recentReports = reports
+            
+            // Log image preloading info
+            let imageCount = reports.compactMap { $0.imageKey }.filter { !$0.isEmpty }.count
+            if imageCount > 0 {
+                self.logger.info("Loaded \(reports.count) reports with \(imageCount) images", category: .media)
+            } else {
+                self.logger.info("Loaded \(reports.count) reports", category: .api)
             }
         }
     }
     
     private func fetchImage(for key: String, completion: @escaping (SurfReportImageResponse?) -> Void) {
         // First, check the dedicated image cache
-        ImageCacheService.shared.getCachedSurfReportImageData(for: key) { cachedImageData in
+        ImageCacheService.shared.getCachedSurfReportImageData(for: key) { [weak self] cachedImageData in
             if let cachedImageData = cachedImageData {
-                print("✅ Using cached surf report image for key: \(key)")
+                self?.logger.debug("Using cached image for key: \(key)", category: .cache)
                 // Create a mock response with the cached image data
                 let mockResponse = SurfReportImageResponse(imageData: cachedImageData.base64EncodedString(), contentType: "image/jpeg")
                 completion(mockResponse)
@@ -135,7 +126,7 @@ class LiveSpotViewModel: ObservableObject {
             }
             
             // If not cached, fetch from API
-            APIClient.shared.getReportImage(key: key) { result in
+            APIClient.shared.getReportImage(key: key) { [weak self] result in
                 switch result {
                 case .success(let imageData):
                     // Check if imageData is actually present
@@ -145,15 +136,16 @@ class LiveSpotViewModel: ObservableObject {
                            let uiImage = UIImage(data: decodedImageData) {
                             if let pngData = uiImage.pngData() {
                                 ImageCacheService.shared.cacheSurfReportImage(pngData, for: key)
+                                self?.logger.debug("Cached fetched image for key: \(key)", category: .cache)
                             }
                         }
                         completion(imageData)
                     } else {
-                        print("⚠️ [LIVE_SPOT_VIEWMODEL] Image key \(key) exists but no image data returned - likely missing from S3")
+                        self?.logger.warning("Image key \(key) exists but no data returned - likely missing from S3", category: .media)
                         completion(nil)
                     }
                 case .failure(let error):
-                    print("❌ [LIVE_SPOT_VIEWMODEL] Failed to fetch image for key \(key): \(error.localizedDescription)")
+                    self?.logger.error("Failed to fetch image for key \(key): \(error.localizedDescription)", category: .media)
                     completion(nil)
                 }
             }
@@ -171,9 +163,11 @@ class LiveSpotViewModel: ObservableObject {
     
     // Force refresh surf reports by clearing cache and fetching fresh data
     func refreshSurfReports(for spotId: String) {
-        // Clear existing data (already on MainActor)
+        logger.info("Refreshing surf reports for spotId: \(spotId)", category: .general)
+        
+        // Clear existing data and error state
         self.recentReports = []
-        self.errorMessage = nil
+        clearError()
         
         // Fetch fresh data
         fetchSurfReports(for: spotId)
@@ -222,8 +216,8 @@ class LiveSpotViewModel: ObservableObject {
             return date
         }
         
-        // Format 4: Try parsing as a Date object directly (for debugging)
-        print("Failed to parse timestamp: \(timestamp)")
+        // Format 4: Unable to parse timestamp
+        logger.warning("Failed to parse timestamp: \(timestamp)", category: .dataProcessing)
         return nil
     }
 }
