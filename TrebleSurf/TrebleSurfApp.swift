@@ -85,22 +85,28 @@ struct TrebleSurfApp: App {
                 print("Restored previous Google Sign-In for user: \(user.profile?.name ?? "Unknown")")
                 
                 // Now authenticate with backend
-                AuthManager.shared.authenticateWithBackend(user: user) { success, _ in
-                    DispatchQueue.main.async {
-                        if success {
-                            print("Successfully restored authentication")
-                        } else {
-                            print("Failed to restore backend authentication")
+                Task { @MainActor in
+                    AuthManager.shared.authenticateWithBackend(user: user) { success, _ in
+                        DispatchQueue.main.async {
+                            if success {
+                                print("Successfully restored authentication")
+                            } else {
+                                print("Failed to restore backend authentication")
+                            }
+                            self.isLoading = false
                         }
-                        self.isLoading = false
                     }
                 }
             } else if let error = error {
                 print("Failed to restore previous sign-in: \(error.localizedDescription)")
-                self.isLoading = false
+                DispatchQueue.main.async {
+                    self.isLoading = false
+                }
             } else {
                 print("No previous sign-in found")
-                self.isLoading = false
+                DispatchQueue.main.async {
+                    self.isLoading = false
+                }
             }
         }
     }

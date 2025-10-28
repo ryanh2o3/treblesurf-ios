@@ -543,7 +543,7 @@ class SurfReportSubmissionViewModel: ObservableObject {
         // Try to extract timestamp from image metadata
         var timestampFound = false
         if let imageSource = CGImageSourceCreateWithData(data as CFData, nil),
-           let properties = (CGImageSourceCopyPropertiesAtIndex(imageSource, 0, nil) as? NSDictionary) as? [String: Any] {
+           let properties = CGImageSourceCopyPropertiesAtIndex(imageSource, 0, nil) as? [String: Any] {
             
             // Check for EXIF date
             if let exif = properties["{Exif}"] as? [String: Any],
@@ -957,7 +957,7 @@ class SurfReportSubmissionViewModel: ObservableObject {
             if let data = try await imageSelection.loadTransferable(type: Data.self) {
                 // Try to get file creation date from the data itself
                 if let imageSource = CGImageSourceCreateWithData(data as CFData, nil) {
-                    if let properties = (CGImageSourceCopyPropertiesAtIndex(imageSource, 0, nil) as? NSDictionary) as? [String: Any] {
+                    if let properties = CGImageSourceCopyPropertiesAtIndex(imageSource, 0, nil) as? [String: Any] {
                         print("📸 [IMAGE_TIMESTAMP] Image source properties available")
                         
                         // Check for file creation date in properties
