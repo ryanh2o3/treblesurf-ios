@@ -263,7 +263,6 @@ class HomeViewModel: ObservableObject {
         // Validate numeric values using DataFormatter
         let validWaveHeight = DataFormatter.validateNumericValue(waveHeight)
         let validWavePeriod = DataFormatter.validateNumericValue(wavePeriod)
-        let validWindDirection = DataFormatter.validateDirection(windDirection)
         let validWaveDirection = DataFormatter.validateDirection(waveDirection)
         let validTemperature = DataFormatter.validateNumericValue(temperature)
         let validWaterTemperature = DataFormatter.validateNumericValue(waterTemperature)
@@ -271,7 +270,7 @@ class HomeViewModel: ObservableObject {
         // Format strings with validation
         let waveHeightString = validWaveHeight > 0 ? DataFormatter.formatWaveHeight(validWaveHeight) : "N/A"
         let wavePeriodString = validWavePeriod > 0 ? DataFormatter.formatWavePeriod(validWavePeriod) : "N/A"
-        let windDirectionString = DataFormatter.formatWindDirection(validWindDirection)
+        let windDirectionString = DataFormatter.formatWindDirection(DataFormatter.validateDirection(windDirection))
         let waveDirectionString = DataFormatter.formatWindDirection(validWaveDirection)
         let temperatureString = validTemperature != 0 ? DataFormatter.formatTemperature(validTemperature) : "N/A"
         let waterTemperatureString = validWaterTemperature != 0 ? DataFormatter.formatTemperature(validWaterTemperature) : "N/A"

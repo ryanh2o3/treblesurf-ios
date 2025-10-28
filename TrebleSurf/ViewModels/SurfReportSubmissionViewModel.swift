@@ -616,7 +616,7 @@ class SurfReportSubmissionViewModel: ObservableObject {
                 print("🔍 [UPLOAD_CHECK] isUploadingImage: \(isUploadingImage)")
                 
                 // If we have an image but no upload started, try to start it now
-                if selectedImage != nil && imageKey == nil && !isUploadingImage && spotId != nil {
+                if selectedImage != nil && imageKey == nil && !isUploadingImage {
                     print("✅ [UPLOAD_CHECK] Starting new image upload process...")
                     await startImageUploadProcess(spotId: spotId)
                 } else {
@@ -1584,8 +1584,20 @@ class SurfReportSubmissionViewModel: ObservableObject {
         print("   - Wind Amount: \(selectedOptions[3] ?? "nil")")
         print("   - Consistency: \(selectedOptions[4] ?? "nil")")
         print("   - Quality: \(selectedOptions[5] ?? "nil")")
-        print("   - Image Key: \((!imageUploadFailed && imageKey != nil) ? imageKey! : "none (upload failed)")")
-        print("   - Video Key: \((!videoUploadFailed && videoKey != nil) ? videoKey! : "none (upload failed)")")
+        
+        // Log image and video keys separately for clarity
+        if !imageUploadFailed, let key = imageKey {
+            print("   - Image Key: \(key)")
+        } else {
+            print("   - Image Key: none (upload failed)")
+        }
+        
+        if !videoUploadFailed, let key = videoKey {
+            print("   - Video Key: \(key)")
+        } else {
+            print("   - Video Key: none (upload failed)")
+        }
+        
         print("   - Date: \(formattedDate)")
         
         do {
