@@ -11,8 +11,8 @@ import SwiftUI
 class DataStore: ObservableObject, DataStoreProtocol {
     nonisolated static let shared = DataStore()
     
-    private let config: any AppConfigurationProtocol
-    private let apiClient: any APIClientProtocol
+    nonisolated(unsafe) private let config: any AppConfigurationProtocol
+    nonisolated(unsafe) private let apiClient: any APIClientProtocol
     
     nonisolated init(
         config: any AppConfigurationProtocol = AppConfiguration.shared,

@@ -590,7 +590,7 @@ class SurfReportSubmissionViewModel: ObservableObject {
             print("🔍 [UPLOAD_CHECK] imageKey: \(self.imageKey ?? "nil")")
             print("🔍 [UPLOAD_CHECK] spotId: \(self.spotId ?? "nil")")
             
-            if let uploadUrl = self.uploadUrl, let imageKey = self.imageKey {
+            if let uploadUrl = self.uploadUrl, let _ = self.imageKey {
                 print("✅ [UPLOAD_CHECK] Found presigned URL, starting S3 upload...")
                 do {
                     try await uploadImageToS3(uploadURL: uploadUrl, image: image)

@@ -148,7 +148,7 @@ class QuickPhotoReportViewModel: ObservableObject {
                 }
                 
                 // If we already have a presigned URL, start upload immediately
-                if let uploadUrl = self.uploadUrl, let imageKey = self.imageKey {
+                if let uploadUrl = self.uploadUrl, let _ = self.imageKey {
                     Task {
                         do {
                             try await uploadImageToS3(uploadURL: uploadUrl, image: image)
