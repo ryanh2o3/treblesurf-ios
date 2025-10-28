@@ -131,11 +131,13 @@ class LocationStore: NSObject, ObservableObject, LocationStoreProtocol {
 }
 
 extension LocationStore: CLLocationManagerDelegate {
-    func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
-        checkLocationAuthorization()
+    nonisolated func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+        Task { @MainActor in
+            checkLocationAuthorization()
+        }
     }
     
-    func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
+    nonisolated func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
         guard let location = locations.last else { return }
         
         // Reverse geocode to get location details
@@ -158,12 +160,16 @@ extension LocationStore: CLLocationManagerDelegate {
         }
         
         // Stop updating location after getting it once
-        locationManager.stopUpdatingLocation()
+        Task { @MainActor in
+            locationManager.stopUpdatingLocation()
+        }
     }
     
-    func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
+    nonisolated func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
         print("Location manager error: \(error.localizedDescription)")
-        isLocationServiceEnabled = false
+        Task { @MainActor in
+            isLocationServiceEnabled = false
+        }
     }
     
     /// Reset the store to its initial state - clears all location data

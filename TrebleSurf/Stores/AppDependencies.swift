@@ -15,13 +15,13 @@ class AppDependencies {
     
     // MARK: - Lazy Dependencies
     
-    lazy var dataStore: DataStoreProtocol = DataStore.shared
-    lazy var authManager: AuthManagerProtocol = AuthManager.shared
-    lazy var apiClient: APIClientProtocol = APIClient.shared
-    lazy var settingsStore: SettingsStoreProtocol = SettingsStore.shared
-    lazy var locationStore: LocationStoreProtocol = LocationStore.shared
-    lazy var imageCache: ImageCacheProtocol = ImageCacheService.shared
-    lazy var config: AppConfigurationProtocol = AppConfiguration.shared
+    lazy var dataStore: any DataStoreProtocol = DataStore.shared
+    lazy var authManager: any AuthManagerProtocol = AuthManager.shared
+    lazy var apiClient: any APIClientProtocol = APIClient.shared
+    lazy var settingsStore: any SettingsStoreProtocol = SettingsStore.shared
+    lazy var locationStore: any LocationStoreProtocol = LocationStore.shared
+    lazy var imageCache: any ImageCacheProtocol = ImageCacheService.shared
+    lazy var config: any AppConfigurationProtocol = AppConfiguration.shared
     lazy var buoyCacheService = BuoyCacheService.shared
     
     // MARK: - Initialization
