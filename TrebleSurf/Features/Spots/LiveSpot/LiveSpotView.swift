@@ -91,11 +91,11 @@ struct LiveSpotView: View {
                                 // If the report has a video key, we'll handle video playback in the detail view
                                 // The detail view will fetch the presigned URL for video viewing
                             }
-                    } else if let errorMessage = viewModel.errorMessage {
+                    } else if let errorPresentation = viewModel.errorPresentation {
                         HStack {
                             Image(systemName: "exclamationmark.triangle")
                                 .foregroundColor(.orange)
-                            Text(errorMessage)
+                            Text(errorPresentation.message)
                                 .font(.subheadline)
                                 .foregroundColor(.secondary)
                             Spacer()

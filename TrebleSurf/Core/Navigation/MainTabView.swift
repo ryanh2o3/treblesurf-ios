@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct MainTabView: View {
-    @State private var selectedTab = 1 // Default to Map tab
+    @State private var selectedTab = 0 // Default to Map tab
 
     var body: some View {
         TabView(selection: $selectedTab) {

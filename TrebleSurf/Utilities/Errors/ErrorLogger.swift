@@ -60,6 +60,22 @@ protocol ErrorLoggerProtocol {
     func logEvent(_ event: String, metadata: [String: Any]?, category: LogCategory, file: String, function: String, line: Int)
 }
 
+// MARK: - Protocol Extension with Default Parameters
+
+extension ErrorLoggerProtocol {
+    func log(_ message: String, level: LogLevel, category: LogCategory, file: String = #file, function: String = #function, line: Int = #line) {
+        log(message, level: level, category: category, file: file, function: function, line: line)
+    }
+    
+    func logError(_ error: TrebleSurfError, context: String? = nil, file: String = #file, function: String = #function, line: Int = #line) {
+        logError(error, context: context, file: file, function: function, line: line)
+    }
+    
+    func logEvent(_ event: String, metadata: [String: Any]? = nil, category: LogCategory, file: String = #file, function: String = #function, line: Int = #line) {
+        logEvent(event, metadata: metadata, category: category, file: file, function: function, line: line)
+    }
+}
+
 // MARK: - Error Logger Implementation
 
 final class ErrorLogger: ErrorLoggerProtocol {

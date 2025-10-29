@@ -14,9 +14,9 @@ class SpotsViewModel: BaseViewModel {
     }
     
     func loadSpots() async {
-        logger.info("Loading spots for region: Donegal", category: .api)
+        logger.log("Loading spots for region: Donegal", level: .info, category: .api)
         
-        executeTask(context: "Load spots") {
+        await executeTask(context: "Load spots") {
             let spots = try await withCheckedThrowingContinuation { continuation in
                 self.dataStore.fetchRegionSpots(region: "Donegal") { result in
                     continuation.resume(with: result)
@@ -24,7 +24,7 @@ class SpotsViewModel: BaseViewModel {
             }
             
             self.spots = spots
-            self.logger.info("Loaded \(spots.count) spots", category: .general)
+            self.logger.log("Loaded \(spots.count) spots", level: .info, category: .general)
         }
     }
     
@@ -35,7 +35,7 @@ class SpotsViewModel: BaseViewModel {
     
     // Refresh spots data by clearing cache and reloading
     func refreshSpots() async {
-        logger.info("Refreshing spots data", category: .general)
+        logger.log("Refreshing spots data", level: .info, category: .general)
         isRefreshing = true
         clearError()
         
@@ -46,12 +46,12 @@ class SpotsViewModel: BaseViewModel {
         await loadSpots()
         
         isRefreshing = false
-        logger.info("Spots refresh complete", category: .general)
+        logger.log("Spots refresh complete", level: .info, category: .general)
     }
     
     // Refresh individual spot data
     func refreshSpotData(for spotId: String) async {
-        logger.info("Refreshing spot data for: \(spotId)", category: .general)
+        logger.log("Refreshing spot data for: \(spotId)", level: .info, category: .general)
         isRefreshing = true
         
         // Clear the specific spot's cache and refresh data
@@ -61,12 +61,12 @@ class SpotsViewModel: BaseViewModel {
         try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
         
         isRefreshing = false
-        logger.debug("Spot data refreshed for: \(spotId)", category: .general)
+        logger.log("Spot data refreshed for: \(spotId)", level: .debug, category: .general)
     }
     
     // Refresh surf reports for all spots
     func refreshSurfReports() async {
-        logger.info("Refreshing surf reports for all spots", category: .general)
+        logger.log("Refreshing surf reports for all spots", level: .info, category: .general)
         isRefreshing = true
         
         // Refresh surf reports for each spot
@@ -75,7 +75,7 @@ class SpotsViewModel: BaseViewModel {
         }
         
         isRefreshing = false
-        logger.info("Surf reports refresh complete for all spots", category: .general)
+        logger.log("Surf reports refresh complete for all spots", level: .info, category: .general)
     }
     
     // Refresh surf reports for a specific spot
@@ -85,7 +85,7 @@ class SpotsViewModel: BaseViewModel {
         // Convert spot data to country/region/spot format
         let components = spot.countryRegionSpot.split(separator: "/")
         guard components.count >= 3 else {
-            logger.warning("Invalid spot format: \(spot.countryRegionSpot)", category: .dataProcessing)
+            logger.log("Invalid spot format: \(spot.countryRegionSpot)", level: .warning, category: .dataProcessing)
             return
         }
         
@@ -93,16 +93,16 @@ class SpotsViewModel: BaseViewModel {
         let region = String(components[1])
         let spotName = String(components[2])
         
-        logger.debug("Refreshing surf reports for spot: \(spotName)", category: .api)
+        logger.log("Refreshing surf reports for spot: \(spotName)", level: .debug, category: .api)
         
         // Fetch fresh surf reports for this spot
         await withCheckedContinuation { continuation in
             APIClient.shared.fetchSurfReports(country: country, region: region, spot: spotName) { result in
                 switch result {
                 case .success:
-                    self.logger.debug("Successfully refreshed reports for \(spotName)", category: .api)
+                    self.logger.log("Successfully refreshed reports for \(spotName)", level: .debug, category: .api)
                 case .failure(let error):
-                    self.logger.error("Failed to refresh reports for \(spotName): \(error.localizedDescription)", category: .api)
+                    self.logger.log("Failed to refresh reports for \(spotName): \(error.localizedDescription)", level: .error, category: .api)
                 }
                 continuation.resume()
             }

@@ -25,53 +25,43 @@ class MapViewModel: BaseViewModel {
     func loadMapData() {
         executeTask(context: "Load Map Data") {
             // Load spots and buoys concurrently
-            await withTaskGroup(of: Void.self) { group in
-                group.addTask { await self.loadSurfSpots() }
-                group.addTask { await self.loadBuoys() }
+            try await withThrowingTaskGroup(of: Void.self) { group in
+                group.addTask { try await self.loadSurfSpots() }
+                group.addTask { try await self.loadBuoys() }
             }
         }
     }
     
     @MainActor
-    private func loadSurfSpots() async {
-        do {
-            logger.info("Loading surf spots for region: Donegal", category: .general)
-            try await withCheckedThrowingContinuation { continuation in
-                dataStore.fetchRegionSpots(region: "Donegal") { [weak self] result in
-                    switch result {
-                    case .success(let spots):
-                        Task { @MainActor in
-                            self?.surfSpots = spots
-                            self?.logger.info("Loaded \(spots.count) surf spots", category: .general)
-                        }
-                        continuation.resume()
-                    case .failure(let error):
-                        continuation.resume(throwing: error)
+    private func loadSurfSpots() async throws {
+        logger.log("Loading surf spots for region: Donegal", level: .info, category: .general)
+        try await withCheckedThrowingContinuation { continuation in
+            dataStore.fetchRegionSpots(region: "Donegal") { [weak self] result in
+                switch result {
+                case .success(let spots):
+                    Task { @MainActor in
+                        self?.surfSpots = spots
+                        self?.logger.log("Loaded \(spots.count) surf spots", level: .info, category: .general)
                     }
+                    continuation.resume()
+                case .failure(let error):
+                    continuation.resume(throwing: error)
                 }
             }
-        } catch {
-            // Error is handled by executeTask in loadMapData
-            throw TrebleSurfError.from(error)
         }
     }
     
     @MainActor
-    private func loadBuoys() async {
-        do {
-            logger.info("Loading buoys for region: NorthAtlantic", category: .general)
-            let buoyResponses = try await withCheckedThrowingContinuation { continuation in
-                APIClient.shared.fetchBuoys(region: "NorthAtlantic") { result in
-                    continuation.resume(with: result)
-                }
+    private func loadBuoys() async throws {
+        logger.log("Loading buoys for region: NorthAtlantic", level: .info, category: .general)
+        let buoyResponses = try await withCheckedThrowingContinuation { continuation in
+            APIClient.shared.fetchBuoys(region: "NorthAtlantic") { result in
+                continuation.resume(with: result)
             }
-            
-            self.buoys = buoyResponses
-            logger.info("Loaded \(buoyResponses.count) buoys", category: .general)
-        } catch {
-            // Error is handled by executeTask in loadMapData
-            throw TrebleSurfError.from(error)
         }
+        
+        self.buoys = buoyResponses
+        logger.log("Loaded \(buoyResponses.count) buoys", level: .info, category: .general)
     }
     
     func selectSpot(_ spot: SpotData) {

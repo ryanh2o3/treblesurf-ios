@@ -20,7 +20,7 @@ class LiveSpotViewModel: BaseViewModel {
     @Published var showQuickForm = false
     
     func loadSpotData(spotId: String) async {
-        logger.info("Loading spot data for: \(spotId)", category: .general)
+        logger.log("Loading spot data for: \(spotId)", level: .info, category: .general)
         
         // Placeholder implementation - simulate network delay
         try? await Task.sleep(nanoseconds: 1_000_000_000)
@@ -33,14 +33,14 @@ class LiveSpotViewModel: BaseViewModel {
             quality: "Good"
         )
         
-        logger.info("Spot data loaded successfully", category: .general)
+        logger.log("Spot data loaded successfully", level: .info, category: .general)
     }
     
     func fetchSurfReports(for spotId: String) {
         // Convert spotId back to country/region/spot format
         let components = spotId.split(separator: "#")
         guard components.count >= 3 else {
-            logger.warning("Invalid spotId format: \(spotId)", category: .general)
+            logger.log("Invalid spotId format: \(spotId)", level: .warning, category: .general)
             return
         }
         
@@ -48,7 +48,7 @@ class LiveSpotViewModel: BaseViewModel {
         let region = String(components[1])
         let spot = String(components[2])
         
-        logger.info("Fetching surf reports for \(spot)", category: .api)
+        logger.log("Fetching surf reports for \(spot)", level: .info, category: .api)
         
         // Clear existing reports before fetching new ones
         self.recentReports = []
@@ -107,9 +107,9 @@ class LiveSpotViewModel: BaseViewModel {
             // Log image preloading info
             let imageCount = reports.compactMap { $0.imageKey }.filter { !$0.isEmpty }.count
             if imageCount > 0 {
-                self.logger.info("Loaded \(reports.count) reports with \(imageCount) images", category: .media)
+                self.logger.log("Loaded \(reports.count) reports with \(imageCount) images", level: .info, category: .media)
             } else {
-                self.logger.info("Loaded \(reports.count) reports", category: .api)
+                self.logger.log("Loaded \(reports.count) reports", level: .info, category: .api)
             }
         }
     }
@@ -118,7 +118,7 @@ class LiveSpotViewModel: BaseViewModel {
         // First, check the dedicated image cache
         ImageCacheService.shared.getCachedSurfReportImageData(for: key) { [weak self] cachedImageData in
             if let cachedImageData = cachedImageData {
-                self?.logger.debug("Using cached image for key: \(key)", category: .cache)
+                self?.logger.log("Using cached image for key: \(key)", level: .debug, category: .cache)
                 // Create a mock response with the cached image data
                 let mockResponse = SurfReportImageResponse(imageData: cachedImageData.base64EncodedString(), contentType: "image/jpeg")
                 completion(mockResponse)
@@ -136,16 +136,16 @@ class LiveSpotViewModel: BaseViewModel {
                            let uiImage = UIImage(data: decodedImageData) {
                             if let pngData = uiImage.pngData() {
                                 ImageCacheService.shared.cacheSurfReportImage(pngData, for: key)
-                                self?.logger.debug("Cached fetched image for key: \(key)", category: .cache)
+                                self?.logger.log("Cached fetched image for key: \(key)", level: .debug, category: .cache)
                             }
                         }
                         completion(imageData)
                     } else {
-                        self?.logger.warning("Image key \(key) exists but no data returned - likely missing from S3", category: .media)
+                        self?.logger.log("Image key \(key) exists but no data returned - likely missing from S3", level: .warning, category: .media)
                         completion(nil)
                     }
                 case .failure(let error):
-                    self?.logger.error("Failed to fetch image for key \(key): \(error.localizedDescription)", category: .media)
+                    self?.logger.log("Failed to fetch image for key \(key): \(error.localizedDescription)", level: .error, category: .media)
                     completion(nil)
                 }
             }
@@ -163,7 +163,7 @@ class LiveSpotViewModel: BaseViewModel {
     
     // Force refresh surf reports by clearing cache and fetching fresh data
     func refreshSurfReports(for spotId: String) {
-        logger.info("Refreshing surf reports for spotId: \(spotId)", category: .general)
+        logger.log("Refreshing surf reports for spotId: \(spotId)", level: .info, category: .general)
         
         // Clear existing data and error state
         self.recentReports = []
@@ -217,7 +217,7 @@ class LiveSpotViewModel: BaseViewModel {
         }
         
         // Format 4: Unable to parse timestamp
-        logger.warning("Failed to parse timestamp: \(timestamp)", category: .dataProcessing)
+        logger.log("Failed to parse timestamp: \(timestamp)", level: .warning, category: .dataProcessing)
         return nil
     }
 }

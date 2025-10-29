@@ -54,7 +54,7 @@ class BuoysViewModel: BaseViewModel {
     
     @MainActor
     func loadBuoys() async {
-        logger.info("Loading buoys from NorthAtlantic region", category: .api)
+        logger.log("Loading buoys from NorthAtlantic region", level: .info, category: .api)
         
         var buoyNames = ["M4", "M6"]
         var buoyLocations: [BuoyLocation] = []
@@ -71,14 +71,14 @@ class BuoysViewModel: BaseViewModel {
             buoyNames = buoyResponses.map { $0.name }
             buoyLocations = buoyResponses
             
-            logger.debug("Fetched \(buoyNames.count) buoy locations", category: .api)
+            logger.log("Fetched \(buoyNames.count) buoy locations", level: .debug, category: .api)
             
             let spacedNames = buoyNames.filter { $0.contains(" ") }
             if !spacedNames.isEmpty {
-                logger.debug("Buoy names with spaces: \(spacedNames)", category: .dataProcessing)
+                logger.log("Buoy names with spaces: \(spacedNames)", level: .debug, category: .dataProcessing)
             }
         } catch {
-            logger.error("Error fetching buoy locations: \(error.localizedDescription)", category: .api)
+            logger.log("Error fetching buoy locations: \(error.localizedDescription)", level: .error, category: .api)
             // Continue with default buoy names if location fetch fails
         }
         
@@ -90,50 +90,50 @@ class BuoysViewModel: BaseViewModel {
                 }
             }
             
-            logger.debug("API returned \(buoyResponses.count) buoy responses", category: .api)
+            logger.log("API returned \(buoyResponses.count) buoy responses", level: .debug, category: .api)
             
             let returnedNames = buoyResponses.map { $0.name }
             let missingBuoys = Set(buoyNames).subtracting(Set(returnedNames))
             if !missingBuoys.isEmpty {
-                logger.warning("Missing buoy data for: \(Array(missingBuoys))", category: .api)
+                logger.log("Missing buoy data for: \(Array(missingBuoys))", level: .warning, category: .api)
             }
             
             // Convert responses to buoys
             let buoys = buoyResponses.compactMap { response in
-                logger.debug("Processing buoy: \(response.name)", category: .dataProcessing)
+                logger.log("Processing buoy: \(response.name)", level: .debug, category: .dataProcessing)
                 let locationData = buoyLocations.first { $0.name == response.name }
                 let convertedBuoy = self.weatherBuoyService.convertToBuoy(response: response, historicalData: [], locationData: locationData)
                 if convertedBuoy == nil {
-                    logger.warning("Failed to convert buoy: \(response.name)", category: .dataProcessing)
+                    logger.log("Failed to convert buoy: \(response.name)", level: .warning, category: .dataProcessing)
                 }
                 return convertedBuoy
             }
             
             if buoys.isEmpty {
-                logger.warning("No valid buoy data could be processed", category: .dataProcessing)
+                logger.log("No valid buoy data could be processed", level: .warning, category: .dataProcessing)
             } else {
-                logger.info("Successfully processed \(buoys.count) of \(buoyResponses.count) buoys", category: .general)
+                logger.log("Successfully processed \(buoys.count) of \(buoyResponses.count) buoys", level: .info, category: .general)
             }
             
             self.buoys = buoys
             filterBuoys(by: selectedFilter)
             
         } catch {
-            logger.error("Error fetching buoy data", category: .api)
+            logger.log("Error fetching buoy data", level: .error, category: .api)
             
             // Log detailed error information for decoding errors
             if let decodingError = error as? DecodingError {
                 switch decodingError {
                 case .typeMismatch(let type, let context):
-                    logger.error("Type mismatch: Expected \(type) at \(context.codingPath)", category: .dataProcessing)
+                    logger.log("Type mismatch: Expected \(type) at \(context.codingPath)", level: .error, category: .dataProcessing)
                 case .keyNotFound(let key, let context):
-                    logger.error("Key not found: \(key) at \(context.codingPath)", category: .dataProcessing)
+                    logger.log("Key not found: \(key) at \(context.codingPath)", level: .error, category: .dataProcessing)
                 case .valueNotFound(let type, let context):
-                    logger.error("Value not found: \(type) at \(context.codingPath)", category: .dataProcessing)
+                    logger.log("Value not found: \(type) at \(context.codingPath)", level: .error, category: .dataProcessing)
                 case .dataCorrupted(let context):
-                    logger.error("Data corrupted: \(context)", category: .dataProcessing)
+                    logger.log("Data corrupted: \(context)", level: .error, category: .dataProcessing)
                 @unknown default:
-                    logger.error("Unknown decoding error: \(decodingError)", category: .dataProcessing)
+                    logger.log("Unknown decoding error: \(decodingError)", level: .error, category: .dataProcessing)
                 }
             }
             
@@ -150,11 +150,11 @@ class BuoysViewModel: BaseViewModel {
     func loadHistoricalDataForBuoy(id: String, updateSelectedBuoy: @escaping (Buoy?) -> Void) async {
         // Skip if already loaded
         if loadedHistoricalDataBuoyIds.contains(id) {
-            logger.debug("Historical data already loaded for buoy: \(id)", category: .cache)
+            logger.log("Historical data already loaded for buoy: \(id)", level: .debug, category: .cache)
             return
         }
         
-        logger.info("Loading historical data for buoy: \(id)", category: .api)
+        logger.log("Loading historical data for buoy: \(id)", level: .info, category: .api)
         
         do {
             let historicalData = try await withCheckedThrowingContinuation { continuation in
@@ -181,12 +181,12 @@ class BuoysViewModel: BaseViewModel {
                 
                 updateSelectedBuoy(updatedBuoys[index])
                 
-                logger.info("Historical data loaded for buoy \(id): \(formattedData.count) data points", category: .general)
+                logger.log("Historical data loaded for buoy \(id): \(formattedData.count) data points", level: .info, category: .general)
             } else {
-                logger.warning("Buoy not found: \(id)", category: .general)
+                logger.log("Buoy not found: \(id)", level: .warning, category: .general)
             }
         } catch {
-            logger.error("Error fetching historical data for buoy \(id)", category: .api)
+            logger.log("Error fetching historical data for buoy \(id)", level: .error, category: .api)
             handleError(error, context: "Load historical buoy data")
         }
     }
@@ -194,7 +194,7 @@ class BuoysViewModel: BaseViewModel {
     // Refresh buoys data by clearing cache and reloading
     @MainActor
     func refreshBuoys() async {
-        logger.info("Refreshing buoys data", category: .general)
+        logger.log("Refreshing buoys data", level: .info, category: .general)
         isRefreshing = true
         
         // Clear all cached data to force complete refresh
@@ -207,7 +207,7 @@ class BuoysViewModel: BaseViewModel {
         await loadBuoys()
         
         isRefreshing = false
-        logger.info("Buoys refresh complete", category: .general)
+        logger.log("Buoys refresh complete", level: .info, category: .general)
     }
     
     private func updateBuoysFromCache() {
@@ -230,14 +230,14 @@ class BuoysViewModel: BaseViewModel {
     }
     
     private func createBuoysFromResponses(_ responses: [BuoyResponse], buoyLocations: [BuoyLocation]) async {
-        logger.debug("Creating buoys from \(responses.count) responses", category: .dataProcessing)
+        logger.log("Creating buoys from \(responses.count) responses", level: .debug, category: .dataProcessing)
         
         let buoys = responses.compactMap { response in
-            logger.debug("Processing buoy: \(response.name)", category: .dataProcessing)
+            logger.log("Processing buoy: \(response.name)", level: .debug, category: .dataProcessing)
             let locationData = buoyLocations.first { $0.name == response.name }
             let convertedBuoy = self.weatherBuoyService.convertToBuoy(response: response, historicalData: [], locationData: locationData)
             if convertedBuoy == nil {
-                logger.warning("Failed to convert buoy: \(response.name)", category: .dataProcessing)
+                logger.log("Failed to convert buoy: \(response.name)", level: .warning, category: .dataProcessing)
             }
             return convertedBuoy
         }
@@ -245,7 +245,7 @@ class BuoysViewModel: BaseViewModel {
         await MainActor.run {
             self.buoys = buoys
             self.filterBuoys(by: self.selectedFilter)
-            self.logger.info("Created \(buoys.count) buoys from cache", category: .cache)
+            self.logger.log("Created \(buoys.count) buoys from cache", level: .info, category: .cache)
         }
     }
     

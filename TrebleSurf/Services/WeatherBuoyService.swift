@@ -20,11 +20,16 @@ class WeatherBuoyService: ObservableObject {
     init(
         apiClient: APIClientProtocol = APIClient.shared,
         buoyCacheService: BuoyCacheService = BuoyCacheService.shared,
-        logger: ErrorLoggerProtocol = AppDependencies.shared.errorLogger
+        logger: ErrorLoggerProtocol? = nil
     ) {
         self.apiClient = apiClient
         self.buoyCacheService = buoyCacheService
-        self.logger = logger
+        // Initialize logger synchronously to avoid actor isolation issues
+        if let logger = logger {
+            self.logger = logger
+        } else {
+            self.logger = ErrorLogger(minimumLogLevel: .info, enableConsoleOutput: true, enableOSLog: true)
+        }
     }
     
     // MARK: - Public Methods
@@ -48,15 +53,15 @@ class WeatherBuoyService: ObservableObject {
             self.apiClient.fetchBuoyData(buoyNames: buoyNames) { [weak self] result in
                 switch result {
                 case .success(let buoyResponses):
-                    self?.logger.info("Fetched \(buoyResponses.count) buoy data responses", category: .api)
+                    self?.logger.log("Fetched \(buoyResponses.count) buoy data responses", level: .info, category: .api)
                     // Cache the data for future use (on main actor)
                     Task { @MainActor in
                         self?.buoyCacheService.cacheBuoyData(buoyResponses)
-                        self?.logger.debug("Cached buoy data", category: .cache)
+                        self?.logger.log("Cached buoy data", level: .debug, category: .cache)
                     }
                     completion(.success(buoyResponses))
                 case .failure(let error):
-                    self?.logger.error("Failed to fetch buoy data: \(error.localizedDescription)", category: .api)
+                    self?.logger.log("Failed to fetch buoy data: \(error.localizedDescription)", level: .error, category: .api)
                     completion(.failure(error))
                 }
             }
@@ -98,21 +103,21 @@ class WeatherBuoyService: ObservableObject {
         historicalData: [WaveDataPoint] = [],
         locationData: BuoyLocation? = nil
     ) -> Buoy? {
-        logger.debug("Converting buoy response: \(response.name)", category: .dataProcessing)
+        logger.log("Converting buoy response: \(response.name)", level: .debug, category: .dataProcessing)
         
         // Validate that we have the minimum required data
         guard !response.name.isEmpty else {
-            logger.warning("Buoy response missing name, skipping", category: .dataProcessing)
+            logger.log("Buoy response missing name, skipping", level: .warning, category: .dataProcessing)
             return nil
         }
         
         // Log any unusual values for debugging
         if let maxPeriod = response.MaxPeriod, !maxPeriod.isFinite {
-            logger.warning("Buoy \(response.name) has invalid MaxPeriod: \(maxPeriod)", category: .dataProcessing)
+            logger.log("Buoy \(response.name) has invalid MaxPeriod: \(maxPeriod)", level: .warning, category: .dataProcessing)
         }
         
         if let maxHeight = response.MaxHeight, !maxHeight.isFinite {
-            logger.warning("Buoy \(response.name) has invalid MaxHeight: \(maxHeight)", category: .dataProcessing)
+            logger.log("Buoy \(response.name) has invalid MaxHeight: \(maxHeight)", level: .warning, category: .dataProcessing)
         }
         
         // Extract region from region_buoy
@@ -132,7 +137,7 @@ class WeatherBuoyService: ObservableObject {
         } else {
             date = Date()
             lastUpdated = "Unknown"
-            logger.warning("Buoy \(response.name) has invalid date format: \(response.dataDateTime ?? "nil")", category: .dataProcessing)
+            logger.log("Buoy \(response.name) has invalid date format: \(response.dataDateTime ?? "nil")", level: .warning, category: .dataProcessing)
         }
         
         // Get wave height with fallback to 0, handle invalid values
@@ -185,7 +190,7 @@ class WeatherBuoyService: ObservableObject {
             maxPeriod: String(format: "%.1f", validMaxPeriod)
         )
         
-        logger.debug("Successfully created Buoy: \(response.name) (org: \(organization))", category: .dataProcessing)
+        logger.log("Successfully created Buoy: \(response.name) (org: \(organization))", level: .debug, category: .dataProcessing)
         return buoy
     }
     
@@ -208,7 +213,7 @@ class WeatherBuoyService: ObservableObject {
                 date = parsedDate
             } else {
                 // Skip entries with invalid dates
-                self.logger.warning("Skipping historical data entry with invalid date: \(response.dataDateTime ?? "nil")", category: .dataProcessing)
+                self.logger.log("Skipping historical data entry with invalid date: \(response.dataDateTime ?? "nil")", level: .warning, category: .dataProcessing)
                 return nil
             }
             

@@ -32,7 +32,7 @@ class SpotForecastViewModel: BaseViewModel {
     }
     
     func setViewMode(_ mode: ForecastViewMode) {
-        logger.info("Setting forecast view mode: \(mode.rawValue)", category: .ui)
+        logger.log("Setting forecast view mode: \(mode.rawValue)", level: .info, category: .ui)
         selectedMode = mode
         updateFilteredEntries(entries: dataStore.currentForecastEntries)
     }
@@ -42,7 +42,7 @@ class SpotForecastViewModel: BaseViewModel {
         case .hourly:
             // Show all hourly data
             filteredEntries = entries
-            logger.debug("Filtered to \(entries.count) hourly entries", category: .dataProcessing)
+            logger.log("Filtered to \(entries.count) hourly entries", level: .debug, category: .dataProcessing)
             
         case .multiHour:
             // Show data every 3 hours
@@ -51,7 +51,7 @@ class SpotForecastViewModel: BaseViewModel {
                 let hour = calendar.component(.hour, from: entry.dateForecastedFor)
                 return hour % 3 == 0
             }
-            logger.debug("Filtered to \(filteredEntries.count) 3-hour entries", category: .dataProcessing)
+            logger.log("Filtered to \(filteredEntries.count) 3-hour entries", level: .debug, category: .dataProcessing)
             
         case .daily:
             // Show one entry per day (at noon)
@@ -76,18 +76,18 @@ class SpotForecastViewModel: BaseViewModel {
             }
             
             filteredEntries = dailyEntries.values.sorted { $0.dateForecastedFor < $1.dateForecastedFor }
-            logger.debug("Filtered to \(filteredEntries.count) daily entries", category: .dataProcessing)
+            logger.log("Filtered to \(filteredEntries.count) daily entries", level: .debug, category: .dataProcessing)
         }
     }
     
     func fetchForecast(for spotId: String, completion: @escaping (Bool) -> Void) {
-        logger.info("Fetching forecast for spot: \(spotId)", category: .api)
+        logger.log("Fetching forecast for spot: \(spotId)", level: .info, category: .api)
         dataStore.fetchForecast(for: spotId, completion: completion)
     }
     
     // Refresh forecast data by clearing cache and refetching
     func refreshForecast(for spotId: String, completion: @escaping (Bool) -> Void) {
-        logger.info("Refreshing forecast for spot: \(spotId)", category: .api)
+        logger.log("Refreshing forecast for spot: \(spotId)", level: .info, category: .api)
         // Clear the specific spot's forecast cache
         dataStore.clearSpotCache(for: spotId)
         // Refetch the forecast

@@ -28,6 +28,7 @@ class BaseViewModel: ObservableObject, BaseViewModelProtocol {
     
     @Published var errorPresentation: ErrorPresentation?
     @Published var isLoading: Bool = false
+    @Published var fieldErrors: [String: String] = [:]
     
     // MARK: - Dependencies
     
@@ -45,7 +46,7 @@ class BaseViewModel: ObservableObject, BaseViewModelProtocol {
     // MARK: - Error Handling
     
     func handleError(_ error: Error, context: String? = nil) {
-        logger.debug("Handling error in \(type(of: self))", category: .general)
+        logger.log("Handling error in \(type(of: self))", level: .debug, category: .general)
         
         let trebleError = TrebleSurfError.from(error)
         logger.logError(trebleError, context: context)
@@ -117,12 +118,9 @@ class BaseViewModel: ObservableObject, BaseViewModelProtocol {
 
 extension BaseViewModel {
     
-    /// Field-specific errors for forms
-    @Published var fieldErrors: [String: String] = [:]
-    
     /// Handle validation error with field-specific messages
     func handleValidationError(_ error: TrebleSurfError) {
-        logger.debug("Handling validation error", category: .validation)
+        logger.log("Handling validation error", level: .debug, category: .validation)
         
         // Extract field errors
         fieldErrors = error.fieldErrors
@@ -158,7 +156,7 @@ extension BaseViewModel {
     
     /// Retry the last failed operation
     func retry(operation: @escaping () async throws -> Void) {
-        logger.info("Retrying operation", category: .general)
+        logger.log("Retrying operation", level: .info, category: .general)
         clearError()
         executeTask(operation: operation)
     }
@@ -198,7 +196,7 @@ class ExampleViewModel: BaseViewModel {
             // Submit
             try await Task.sleep(nanoseconds: 500_000_000)
             
-            self.logger.info("Form submitted successfully", category: .general)
+            self.logger.log("Form submitted successfully", level: .info, category: .general)
         }
     }
 }
