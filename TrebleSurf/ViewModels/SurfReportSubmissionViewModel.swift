@@ -22,7 +22,7 @@ struct SurfReportStep {
 }
 
 @MainActor
-class SurfReportSubmissionViewModel: ObservableObject {
+class SurfReportSubmissionViewModel: BaseViewModel {
     let instanceId = UUID()
     
     @Published var currentStep = 0
@@ -57,7 +57,7 @@ class SurfReportSubmissionViewModel: ObservableObject {
     @Published var showErrorAlert = false
     @Published var errorMessage: String?
     @Published var currentError: APIErrorHandler.ErrorDisplay?
-    @Published var fieldErrors: [String: String] = [:]
+    // fieldErrors inherited from BaseViewModel
     @Published var shouldShowPhotoPicker = false
     
     // Track submission success to avoid cleanup after successful submission
@@ -355,23 +355,20 @@ class SurfReportSubmissionViewModel: ObservableObject {
     // MARK: - Error Handling
     
     @MainActor
-    func handleError(_ error: Error) {
-        print("🚨 [ERROR_HANDLER] Handling error in SurfReportSubmissionViewModel")
-        print("🚨 [ERROR_HANDLER] Error: \(error)")
+    override func handleError(_ error: Error, context: String? = nil) {
+        logger.log("Handling error in SurfReportSubmissionViewModel", level: .info, category: .general)
         
+        let trebleError = TrebleSurfError.from(error)
+        logger.logError(trebleError, context: context)
+        
+        // Use BaseViewModel's error handling
+        super.handleError(error, context: context)
+        
+        // Also maintain compatibility with the old error display system
         let errorDisplay = APIErrorHandler.shared.handleAPIError(error)
         
         if let errorDisplay = errorDisplay {
-            print("🚨 [ERROR_HANDLER] Error display created:")
-            print("   - Title: \(errorDisplay.title)")
-            print("   - Message: \(errorDisplay.message)")
-            print("   - Help: \(errorDisplay.help)")
-            print("   - Field Name: \(errorDisplay.fieldName ?? "nil")")
-            print("   - Is Retryable: \(errorDisplay.isRetryable)")
-            print("   - Requires Auth: \(errorDisplay.requiresAuthentication)")
-            print("   - Requires Image Retry: \(errorDisplay.requiresImageRetry)")
-        } else {
-            print("⚠️ [ERROR_HANDLER] No error display created - using generic error handling")
+            logger.log("Error display created: \(errorDisplay.title) - \(errorDisplay.message)", level: .debug, category: .general)
         }
         
         self.currentError = errorDisplay
@@ -382,12 +379,11 @@ class SurfReportSubmissionViewModel: ObservableObject {
         
         // Set field-specific errors if applicable
         if let errorDisplay = errorDisplay, let fieldName = errorDisplay.fieldName {
-            print("🏷️ [ERROR_HANDLER] Setting field error for: \(fieldName)")
+            logger.log("Setting field error for: \(fieldName)", level: .debug, category: .validation)
             self.fieldErrors[fieldName] = errorDisplay.help
         }
         
         // Show error alert
-        print("🚨 [ERROR_HANDLER] Showing error alert to user")
         self.showErrorAlert = true
     }
     
@@ -464,17 +460,12 @@ class SurfReportSubmissionViewModel: ObservableObject {
     /// Handles image-specific errors and provides user guidance
     @MainActor
     func handleImageError(_ error: Error) {
-        print("📷 [IMAGE_ERROR] Handling image-specific error")
-        print("📷 [IMAGE_ERROR] Error: \(error)")
+        logger.log("Handling image-specific error", level: .info, category: .media)
         
         let errorDisplay = APIErrorHandler.shared.handleAPIError(error)
         
         if let errorDisplay = errorDisplay, errorDisplay.requiresImageRetry {
-            print("📷 [IMAGE_ERROR] Image retry required - clearing image and showing guidance")
-            print("📷 [IMAGE_ERROR] Error display:")
-            print("   - Title: \(errorDisplay.title)")
-            print("   - Message: \(errorDisplay.message)")
-            print("   - Help: \(errorDisplay.help)")
+            logger.log("Image retry required - clearing image and showing guidance", level: .warning, category: .media)
             
             // For image validation errors, clear the image and show guidance
             clearImage()
@@ -489,9 +480,9 @@ class SurfReportSubmissionViewModel: ObservableObject {
             // Show error alert
             self.showErrorAlert = true
         } else {
-            print("📷 [IMAGE_ERROR] Not an image retry error - using standard error handling")
+            logger.log("Not an image retry error - using standard error handling", level: .debug, category: .media)
             // Handle other types of errors normally
-            handleError(error)
+            handleError(error, context: "Image error")
         }
     }
     
@@ -1490,10 +1481,10 @@ class SurfReportSubmissionViewModel: ObservableObject {
     
     @MainActor
     func submitReport(spotId: String) async {
-        print("🏄‍♂️ [SURF_REPORT] Starting surf report submission for spotId: \(spotId)")
+        logger.log("Starting surf report submission", level: .info, category: .api)
         
         guard canSubmit else { 
-            print("❌ [SURF_REPORT] Cannot submit - missing required fields")
+            logger.log("Cannot submit - missing required fields", level: .warning, category: .validation)
             return 
         }
         
@@ -1509,7 +1500,7 @@ class SurfReportSubmissionViewModel: ObservableObject {
         // Convert spotId back to country/region/spot format
         let components = spotId.split(separator: "#")
         guard components.count >= 3 else {
-            print("❌ [SURF_REPORT] Invalid spot format: \(spotId)")
+            logger.log("Invalid spot format", level: .error, category: .validation)
             errorMessage = "Invalid spot format"
             showErrorAlert = true
             isSubmitting = false
@@ -1519,7 +1510,7 @@ class SurfReportSubmissionViewModel: ObservableObject {
         let country = String(components[0])
         let region = String(components[1])
         let spot = String(components[2])
-        print("📍 [SURF_REPORT] Parsed location - Country: \(country), Region: \(region), Spot: \(spot)")
+        logger.log("Parsed location - Country: \(country), Region: \(region), Spot: \(spot)", level: .debug, category: .dataProcessing)
         
         // Convert local time to UTC before sending to backend
         let dateFormatter = DateFormatter()
@@ -1621,16 +1612,10 @@ class SurfReportSubmissionViewModel: ObservableObject {
                 }
             }
         } catch {
-            print("❌ [SURF_REPORT] Error during submission: \(error)")
-            print("❌ [SURF_REPORT] Error details:")
-            if let nsError = error as NSError? {
-                print("   - Domain: \(nsError.domain)")
-                print("   - Code: \(nsError.code)")
-                print("   - Description: \(nsError.localizedDescription)")
-                print("   - User Info: \(nsError.userInfo)")
-            }
-            // Use the new error handling system
-            handleError(error)
+            let trebleError = TrebleSurfError.from(error)
+            logger.logError(trebleError, context: "Surf report submission")
+            // Use the error handling system
+            handleError(error, context: "Surf report submission")
         }
         
         isSubmitting = false

@@ -29,7 +29,7 @@ struct WeatherBuoy: Identifiable {
 }
 
 @MainActor
-class HomeViewModel: ObservableObject {
+class HomeViewModel: BaseViewModel {
     @Published var currentCondition: CurrentCondition?
     @Published var featuredSpots: [FeaturedSpot] = []
     @Published var recentReports: [SurfReport] = []
@@ -58,6 +58,8 @@ class HomeViewModel: ObservableObject {
         self.apiClient = apiClient
         self.surfReportService = surfReportService
         self.weatherBuoyService = weatherBuoyService
+        
+        super.init()
         
         // Initial setup
         setupWeatherBuoys()
@@ -108,15 +110,21 @@ class HomeViewModel: ObservableObject {
     
     // MARK: - Private Methods
     private func fetchSpots() {
+        logger.log("Fetching spots for \(config.defaultCountry)/\(config.defaultRegion)", level: .info, category: .api)
+        
         apiClient.fetchSpots(country: config.defaultCountry, region: config.defaultRegion) { [weak self] result in
             switch result {
             case .success(let spots):
                 Task { @MainActor [weak self] in
-                    self?.spots = spots
-                    self?.updateCurrentConditionsFromBallyhiernan()
+                    guard let self = self else { return }
+                    self.logger.log("Successfully fetched \(spots.count) spots", level: .info, category: .api)
+                    self.spots = spots
+                    self.updateCurrentConditionsFromBallyhiernan()
                 }
             case .failure(let error):
-                print("Failed to fetch spots: \(error.localizedDescription)")
+                Task { @MainActor [weak self] in
+                    self?.logger.log("Failed to fetch spots: \(error.localizedDescription)", level: .error, category: .api)
+                }
             }
         }
     }
@@ -124,6 +132,8 @@ class HomeViewModel: ObservableObject {
     private func updateCurrentConditionsFromBallyhiernan() {
         // Always use Ballyhiernan Spot for current conditions
         let ballyhiernanSpot = "Ballyhiernan"
+        
+        logger.log("Fetching current conditions for \(ballyhiernanSpot)", level: .info, category: .api)
         
         // Set loading state
         isLoadingConditions = true
@@ -137,9 +147,11 @@ class HomeViewModel: ObservableObject {
                 switch result {
                 case .success(let conditionsResponses):
                     if let firstCondition = conditionsResponses.first {
+                        self.logger.log("Successfully fetched conditions for \(ballyhiernanSpot)", level: .debug, category: .api)
                         let condition = self.createCurrentCondition(from: firstCondition.data, spotName: ballyhiernanSpot)
                         self.currentCondition = condition
                     } else {
+                        self.logger.log("No conditions available for \(ballyhiernanSpot)", level: .warning, category: .api)
                         // Fallback to mock data if no conditions available
                         self.currentCondition = CurrentCondition(
                             waveHeight: "1.5m",
@@ -150,7 +162,7 @@ class HomeViewModel: ObservableObject {
                         )
                     }
                 case .failure(let error):
-                    print("Failed to fetch current conditions for Ballyhiernan: \(error.localizedDescription)")
+                    self.logger.log("Failed to fetch current conditions for \(ballyhiernanSpot): \(error.localizedDescription)", level: .error, category: .api)
                     // Fallback to mock data on error
                     self.currentCondition = CurrentCondition(
                         waveHeight: "1.5m",
@@ -193,8 +205,11 @@ class HomeViewModel: ObservableObject {
         let buoyNames = config.defaultBuoys
         isLoadingBuoys = true
         
+        logger.log("Fetching weather buoy data for \(buoyNames.count) buoys", level: .info, category: .api)
+        
         // Check cache first
         if let cachedData = buoyCacheService.getCachedBuoyData(for: buoyNames) {
+            logger.log("Using cached buoy data", level: .debug, category: .cache)
             updateWeatherBuoys(with: cachedData)
             isLoadingBuoys = false
             return
@@ -206,17 +221,19 @@ class HomeViewModel: ObservableObject {
             case .success(let buoyResponses):
                 Task { @MainActor [weak self] in
                     guard let self = self else { return }
+                    self.logger.log("Successfully fetched buoy data for \(buoyResponses.count) buoys", level: .info, category: .api)
                     // Cache the data for future use
                     self.buoyCacheService.cacheBuoyData(buoyResponses)
                     self.updateWeatherBuoys(with: buoyResponses)
                     self.isLoadingBuoys = false
                 }
             case .failure(let error):
-                print("Failed to fetch buoy data: \(error.localizedDescription)")
-                // Update buoys with error state
                 Task { @MainActor [weak self] in
-                    self?.updateWeatherBuoysWithError()
-                    self?.isLoadingBuoys = false
+                    guard let self = self else { return }
+                    self.logger.log("Failed to fetch buoy data: \(error.localizedDescription)", level: .error, category: .api)
+                    // Update buoys with error state
+                    self.updateWeatherBuoysWithError()
+                    self.isLoadingBuoys = false
                 }
             }
         }
@@ -290,6 +307,8 @@ class HomeViewModel: ObservableObject {
     private func fetchSurfReports() {
         isLoadingReports = true
         
+        logger.log("Fetching surf reports for \(config.defaultCountry)/\(config.defaultRegion)", level: .info, category: .api)
+        
         // Use SurfReportService to fetch and cache reports
         surfReportService.fetchSurfReports(
             country: config.defaultCountry,
@@ -300,10 +319,11 @@ class HomeViewModel: ObservableObject {
                 
                 switch result {
                 case .success(let reports):
+                    self.logger.log("Successfully fetched \(reports.count) surf reports", level: .info, category: .api)
                     self.recentReports = reports
                     self.isLoadingReports = false
                 case .failure(let error):
-                    print("Failed to fetch surf reports: \(error.localizedDescription)")
+                    self.logger.log("Failed to fetch surf reports: \(error.localizedDescription)", level: .error, category: .api)
                     self.isLoadingReports = false
                 }
             }

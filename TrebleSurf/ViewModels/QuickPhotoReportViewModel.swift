@@ -10,7 +10,7 @@ import AVFoundation
 // MARK: - Quick Photo Report View Model
 
 @MainActor
-class QuickPhotoReportViewModel: ObservableObject {
+class QuickPhotoReportViewModel: BaseViewModel {
     @Published var selectedImage: UIImage? = nil
     @Published var imageSelection: PhotosPickerItem? = nil {
         didSet {
@@ -21,7 +21,7 @@ class QuickPhotoReportViewModel: ObservableObject {
     }
     @Published var selectedVideo: PhotosPickerItem? = nil {
         didSet {
-            print("🎬 [QUICK_VIDEO] Video selection changed: \(selectedVideo != nil ? "Selected" : "Nil")")
+            logger.log("Video selection changed: \(selectedVideo != nil ? "Selected" : "Nil")", level: .debug, category: .media)
             Task {
                 await loadVideo()
             }
@@ -45,7 +45,10 @@ class QuickPhotoReportViewModel: ObservableObject {
     @Published var showErrorAlert = false
     @Published var errorMessage: String?
     @Published var currentError: APIErrorHandler.ErrorDisplay?
-    @Published var fieldErrors: [String: String] = [:]
+    override var fieldErrors: [String: String] {
+        get { super.fieldErrors }
+        set { super.fieldErrors = newValue }
+    }
     
     // Track submission success to avoid cleanup after successful submission
     @Published var submissionSuccessful = false
@@ -113,7 +116,7 @@ class QuickPhotoReportViewModel: ObservableObject {
                         if let extractedDate = parseImageDate(dateTimeOriginal) {
                             selectedDateTime = extractedDate
                             timestampFound = true
-                            print("📸 [QUICK_REPORT] Found EXIF timestamp: \(extractedDate)")
+                            logger.log("Found EXIF timestamp: \(extractedDate)", level: .debug, category: .media)
                         }
                     }
                     // Check for TIFF date
@@ -122,7 +125,7 @@ class QuickPhotoReportViewModel: ObservableObject {
                         if let extractedDate = parseImageDate(dateTime) {
                             selectedDateTime = extractedDate
                             timestampFound = true
-                            print("📸 [QUICK_REPORT] Found TIFF timestamp: \(extractedDate)")
+                            logger.log("Found TIFF timestamp: \(extractedDate)", level: .debug, category: .media)
                         }
                     }
                 }
@@ -132,7 +135,7 @@ class QuickPhotoReportViewModel: ObservableObject {
                     if let fileCreationDate = await getFileCreationDate(from: imageSelection) {
                         selectedDateTime = fileCreationDate
                         timestampFound = true
-                        print("📸 [QUICK_REPORT] Using file creation date as fallback: \(fileCreationDate)")
+                        logger.log("Using file creation date as fallback: \(fileCreationDate)", level: .debug, category: .media)
                     }
                 }
                 
@@ -141,7 +144,7 @@ class QuickPhotoReportViewModel: ObservableObject {
                 
                 // Log final timestamp status and show timestamp selector if needed
                 if !timestampFound {
-                    print("📸 [QUICK_REPORT] No timestamp found - will show timestamp selector")
+                    logger.log("No timestamp found - will show timestamp selector", level: .warning, category: .media)
                     showTimestampSelector = true
                 } else {
                     showTimestampSelector = false
@@ -174,18 +177,19 @@ class QuickPhotoReportViewModel: ObservableObject {
         imageValidationPassed = false
         
         ImageValidationService.shared.validateSurfImage(image) { [weak self] result in
-            Task { @MainActor in
-                self?.isValidatingImage = false
+            Task { @MainActor [weak self] in
+                guard let self = self else { return }
+                self.isValidatingImage = false
                 
                 switch result {
                 case .success(let isValid):
-                    self?.imageValidationPassed = isValid
+                    self.imageValidationPassed = isValid
                     if !isValid {
-                        self?.imageValidationError = "This image doesn't appear to contain surf-related content. Please select a photo that shows waves, surfers, or the ocean."
+                        self.imageValidationError = "This image doesn't appear to contain surf-related content. Please select a photo that shows waves, surfers, or the ocean."
                     }
                 case .failure(let error):
-                    self?.imageValidationPassed = false
-                    self?.imageValidationError = "Failed to validate image: \(error.localizedDescription)"
+                    self.imageValidationPassed = false
+                    self.imageValidationError = "Failed to validate image: \(error.localizedDescription)"
                 }
             }
         }
@@ -193,18 +197,18 @@ class QuickPhotoReportViewModel: ObservableObject {
     
     @MainActor
     private func loadVideo() async {
-        print("🎬 [QUICK_VIDEO] Starting video load process")
+        logger.log("Starting video load process", level: .info, category: .media)
         guard let videoSelection = selectedVideo else {
-            print("❌ [QUICK_VIDEO] No video selection found")
+            logger.log("No video selection found", level: .warning, category: .media)
             return
         }
         
-        print("🎬 [QUICK_VIDEO] Video selection found, loading transferable...")
+        logger.log("Video selection found, loading transferable...", level: .debug, category: .media)
         do {
             // Try loading as Data first, then convert to URL
-            print("🎬 [QUICK_VIDEO] Attempting to load video as Data...")
+            logger.log("Attempting to load video as Data...", level: .debug, category: .media)
             if let videoData = try await videoSelection.loadTransferable(type: Data.self) {
-                print("✅ [QUICK_VIDEO] Video data loaded successfully, size: \(videoData.count) bytes")
+                logger.log("Video data loaded successfully, size: \(videoData.count) bytes", level: .info, category: .media)
                 
                 // Create a temporary file URL
                 let tempDirectory = FileManager.default.temporaryDirectory
@@ -213,16 +217,16 @@ class QuickPhotoReportViewModel: ObservableObject {
                 
                 do {
                     try videoData.write(to: tempURL)
-                    print("✅ [QUICK_VIDEO] Video data written to temporary file: \(tempURL)")
+                    logger.log("Video data written to temporary file: \(tempURL)", level: .debug, category: .media)
                     selectedVideoURL = tempURL
                     
                     // Generate thumbnail
-                    print("🎬 [QUICK_VIDEO] Generating video thumbnail...")
+                    logger.log("Generating video thumbnail...", level: .debug, category: .media)
                     if let thumbnail = await generateVideoThumbnail(from: tempURL) {
-                        print("✅ [QUICK_VIDEO] Video thumbnail generated successfully")
+                        logger.log("Video thumbnail generated successfully", level: .info, category: .media)
                         selectedVideoThumbnail = thumbnail
                     } else {
-                        print("❌ [QUICK_VIDEO] Failed to generate video thumbnail")
+                        logger.log("Failed to generate video thumbnail", level: .warning, category: .media)
                     }
                     
                     // Try to extract timestamp from video metadata
@@ -231,45 +235,45 @@ class QuickPhotoReportViewModel: ObservableObject {
                         selectedDateTime = fileCreationDate
                         timestampFound = true
                         photoTimestampExtracted = true
-                        print("🎥 [QUICK_VIDEO] Using video creation date: \(fileCreationDate)")
+                        logger.log("Using video creation date: \(fileCreationDate)", level: .debug, category: .media)
                     }
                     
                     // Update timestamp selector visibility
                     if !timestampFound {
-                        print("🎥 [QUICK_VIDEO] No video timestamp found - will show timestamp selector")
+                        logger.log("No video timestamp found - will show timestamp selector", level: .warning, category: .media)
                         showTimestampSelector = true
                     } else {
                         showTimestampSelector = false
                     }
                     
                     // Validate video using iOS ML
-                    print("🎬 [QUICK_VIDEO] Starting video validation...")
+                    logger.log("Starting video validation...", level: .debug, category: .media)
                     await validateVideo(tempURL)
                     
                     // Start video upload process
                     if let spotId = self.spotId {
-                        print("🎬 [QUICK_VIDEO] Starting video upload process for spotId: \(spotId)")
+                        logger.log("Starting video upload process for spotId", level: .info, category: .media)
                         await startVideoUploadProcess(spotId: spotId, videoURL: tempURL)
                     } else {
-                        print("❌ [QUICK_VIDEO] No spotId available for video upload")
+                        logger.log("No spotId available for video upload", level: .warning, category: .media)
                     }
                 } catch {
-                    print("❌ [QUICK_VIDEO] Failed to write video data to temporary file: \(error)")
+                    logger.log("Failed to write video data to temporary file: \(error.localizedDescription)", level: .error, category: .media)
                 }
             } else {
-                print("❌ [QUICK_VIDEO] Failed to load video data from selection, trying URL approach...")
+                logger.log("Failed to load video data from selection, trying URL approach...", level: .warning, category: .media)
                 // Fallback: try loading as URL directly
                 if let videoURL = try await videoSelection.loadTransferable(type: URL.self) {
-                    print("✅ [QUICK_VIDEO] Video URL loaded successfully via fallback: \(videoURL)")
+                    logger.log("Video URL loaded successfully via fallback", level: .info, category: .media)
                     selectedVideoURL = videoURL
                     
                     // Generate thumbnail
-                    print("🎬 [QUICK_VIDEO] Generating video thumbnail...")
+                    logger.log("Generating video thumbnail...", level: .debug, category: .media)
                     if let thumbnail = await generateVideoThumbnail(from: videoURL) {
-                        print("✅ [QUICK_VIDEO] Video thumbnail generated successfully")
+                        logger.log("Video thumbnail generated successfully", level: .info, category: .media)
                         selectedVideoThumbnail = thumbnail
                     } else {
-                        print("❌ [QUICK_VIDEO] Failed to generate video thumbnail")
+                        logger.log("Failed to generate video thumbnail", level: .warning, category: .media)
                     }
                     
                     // Try to extract timestamp from video metadata
@@ -278,62 +282,63 @@ class QuickPhotoReportViewModel: ObservableObject {
                         selectedDateTime = fileCreationDate
                         timestampFound = true
                         photoTimestampExtracted = true
-                        print("🎥 [QUICK_VIDEO] Using video creation date: \(fileCreationDate)")
+                        logger.log("Using video creation date: \(fileCreationDate)", level: .debug, category: .media)
                     }
                     
                     // Update timestamp selector visibility
                     if !timestampFound {
-                        print("🎥 [QUICK_VIDEO] No video timestamp found - will show timestamp selector")
+                        logger.log("No video timestamp found - will show timestamp selector", level: .warning, category: .media)
                         showTimestampSelector = true
                     } else {
                         showTimestampSelector = false
                     }
                     
                     // Validate video using iOS ML
-                    print("🎬 [QUICK_VIDEO] Starting video validation...")
+                    logger.log("Starting video validation...", level: .debug, category: .media)
                     await validateVideo(videoURL)
                     
                     // Start video upload process
                     if let spotId = self.spotId {
-                        print("🎬 [QUICK_VIDEO] Starting video upload process for spotId: \(spotId)")
+                        logger.log("Starting video upload process for spotId", level: .info, category: .media)
                         await startVideoUploadProcess(spotId: spotId, videoURL: videoURL)
                     } else {
-                        print("❌ [QUICK_VIDEO] No spotId available for video upload")
+                        logger.log("No spotId available for video upload", level: .warning, category: .media)
                     }
                 } else {
-                    print("❌ [QUICK_VIDEO] Failed to load video URL from selection via fallback")
+                    logger.log("Failed to load video URL from selection via fallback", level: .error, category: .media)
                 }
             }
         } catch {
-            print("❌ [QUICK_VIDEO] Failed to load video: \(error)")
+            logger.log("Failed to load video: \(error.localizedDescription)", level: .error, category: .media)
         }
     }
     
     @MainActor
     private func validateVideo(_ videoURL: URL) async {
-        print("🎬 [QUICK_VIDEO] Starting video validation for: \(videoURL)")
+        logger.log("Starting video validation for URL", level: .debug, category: .media)
         isValidatingVideo = true
         videoValidationError = nil
         videoValidationPassed = false
         
         ImageValidationService.shared.validateSurfVideo(videoURL) { [weak self] result in
-            Task { @MainActor in
-                self?.isValidatingVideo = false
+            Task { @MainActor [weak self] in
+                guard let self = self else { return }
+                self.isValidatingVideo = false
                 
                 switch result {
                 case .success(let isValid):
-                    print("🎬 [QUICK_VIDEO] Video validation completed. Valid: \(isValid)")
-                    self?.videoValidationPassed = isValid
+                    self.logger.log("Video validation completed. Valid: \(isValid)", level: .info, category: .media)
+                    self.videoValidationPassed = isValid
                     if !isValid {
-                        print("❌ [QUICK_VIDEO] Video validation failed - not surf-related content")
-                        self?.videoValidationError = "This video doesn't appear to contain surf-related content. Please select a video that shows waves, surfers, or the ocean."
+                        self.logger.log("Video validation failed - not surf-related content", level: .warning, category: .media)
+                        self.videoValidationError = "This video doesn't appear to contain surf-related content. Please select a video that shows waves, surfers, or the ocean."
                     } else {
-                        print("✅ [QUICK_VIDEO] Video validation passed")
+                        self.logger.log("Video validation passed", level: .info, category: .media)
                     }
                 case .failure(let error):
-                    print("❌ [QUICK_VIDEO] Video validation error: \(error)")
-                    self?.videoValidationPassed = false
-                    self?.videoValidationError = "Failed to validate video: \(error.localizedDescription)"
+                    self.logger.log("Video validation error: \(error.localizedDescription)", level: .error, category: .media)
+                    self.videoValidationPassed = false
+                    self.videoValidationError = "Failed to validate video: \(error.localizedDescription)"
                 }
             }
         }
@@ -356,42 +361,42 @@ class QuickPhotoReportViewModel: ObservableObject {
                 return UIImage(cgImage: cgImage)
             }
         } catch {
-            print("Failed to generate video thumbnail: \(error)")
+            logger.log("Failed to generate video thumbnail: \(error.localizedDescription)", level: .error, category: .media)
             return nil
         }
     }
     
     private func startVideoUploadProcess(spotId: String, videoURL: URL) async {
-        print("🎬 [QUICK_VIDEO] Starting video upload process for spotId: \(spotId)")
+        logger.log("Starting video upload process for spotId", level: .info, category: .media)
         do {
             // First, upload the video thumbnail as an image
             if let thumbnail = selectedVideoThumbnail {
-                print("🎬 [QUICK_VIDEO] Uploading video thumbnail as image...")
+                logger.log("Uploading video thumbnail as image...", level: .debug, category: .media)
                 await uploadVideoThumbnail(spotId: spotId, thumbnail: thumbnail)
             }
             
             // Then upload the video
-            print("🎬 [QUICK_VIDEO] Generating presigned upload URL for video...")
+            logger.log("Generating presigned upload URL for video...", level: .debug, category: .media)
             let videoUploadResponse = try await generateVideoUploadURL(spotId: spotId)
             videoUploadUrl = videoUploadResponse.uploadUrl
             videoKey = videoUploadResponse.videoKey
-            print("✅ [QUICK_VIDEO] Presigned URL generated. Key: \(videoUploadResponse.videoKey)")
+            logger.log("Presigned URL generated. Key: \(videoUploadResponse.videoKey)", level: .info, category: .media)
             
             // Start video upload
-            print("🎬 [QUICK_VIDEO] Starting S3 video upload...")
+            logger.log("Starting S3 video upload...", level: .info, category: .media)
             try await uploadVideoToS3(uploadURL: videoUploadResponse.uploadUrl, videoURL: videoURL)
-            print("✅ [QUICK_VIDEO] Video upload completed successfully")
+            logger.log("Video upload completed successfully", level: .info, category: .media)
         } catch {
-            print("❌ [QUICK_VIDEO] Failed to start video upload process: \(error)")
+            logger.log("Failed to start video upload process: \(error.localizedDescription)", level: .error, category: .media)
         }
     }
     
     private func generateVideoUploadURL(spotId: String) async throws -> PresignedVideoUploadResponse {
-        print("🔗 [VIDEO_UPLOAD] Generating presigned upload URL for spotId: \(spotId)")
+        logger.log("Generating presigned upload URL for video", level: .debug, category: .media)
         
         let components = spotId.split(separator: "#")
         guard components.count >= 3 else {
-            print("❌ [VIDEO_UPLOAD] Invalid spot format: \(spotId)")
+            logger.log("Invalid spot format", level: .error, category: .media)
             throw NSError(domain: "SurfReport", code: 400, userInfo: [NSLocalizedDescriptionKey: "Invalid spot format"])
         }
         
@@ -400,16 +405,16 @@ class QuickPhotoReportViewModel: ObservableObject {
         let spot = String(components[2])
         
         let endpoint = "/api/generateVideoUploadURL?country=\(country)&region=\(region)&spot=\(spot)"
-        print("🌐 [VIDEO_UPLOAD] Requesting presigned URL from: \(endpoint)")
+        logger.log("Requesting presigned URL for video upload", level: .debug, category: .api)
         
         return try await withCheckedThrowingContinuation { continuation in
             APIClient.shared.request(endpoint) { (result: Result<PresignedVideoUploadResponse, Error>) in
                 switch result {
                 case .success(let response):
-                    print("✅ [VIDEO_UPLOAD] Presigned URL generated successfully")
+                    self.logger.log("Presigned URL generated successfully", level: .info, category: .api)
                     continuation.resume(returning: response)
                 case .failure(let error):
-                    print("❌ [VIDEO_UPLOAD] Failed to generate presigned URL: \(error)")
+                    self.logger.log("Failed to generate presigned URL: \(error.localizedDescription)", level: .error, category: .api)
                     continuation.resume(throwing: error)
                 }
             }
@@ -778,8 +783,8 @@ class QuickPhotoReportViewModel: ObservableObject {
         } catch {
             await MainActor.run {
                 self.isUploadingImage = false
-                // Use the new error handling system
-                self.handleError(error)
+                // Use the error handling system
+                self.handleSubmissionError(error)
             }
         }
     }
@@ -1022,11 +1027,11 @@ class QuickPhotoReportViewModel: ObservableObject {
                 }
             } else {
                 // Handle submission failure
-                handleError(NSError(domain: "SurfReport", code: 500, userInfo: [NSLocalizedDescriptionKey: "Failed to submit report"]))
+                handleSubmissionError(NSError(domain: "SurfReport", code: 500, userInfo: [NSLocalizedDescriptionKey: "Failed to submit report"]))
             }
         } catch {
-            // Use the new error handling system
-            handleError(error)
+            // Use the error handling system
+            handleSubmissionError(error)
         }
         
         isSubmitting = false
@@ -1113,14 +1118,14 @@ class QuickPhotoReportViewModel: ObservableObject {
     // MARK: - Error Handling
     
     @MainActor
-    func handleError(_ error: Error) {
-        let errorDisplay = APIErrorHandler.shared.handleAPIError(error)
+    func handleSubmissionError(_ error: Error) {
+        // Use BaseViewModel's error handling
+        handleError(error, context: "Quick photo report submission")
         
+        // Also maintain compatibility with the old error display system
+        let errorDisplay = APIErrorHandler.shared.handleAPIError(error)
         self.currentError = errorDisplay
         self.errorMessage = errorDisplay?.message
-        
-        // Clear previous field errors
-        self.fieldErrors.removeAll()
         
         // Set field-specific errors if applicable
         if let errorDisplay = errorDisplay, let fieldName = errorDisplay.fieldName {
@@ -1131,9 +1136,8 @@ class QuickPhotoReportViewModel: ObservableObject {
         self.showErrorAlert = true
     }
     
-    func clearFieldError(for fieldName: String) {
-        fieldErrors.removeValue(forKey: fieldName)
-    }
+    // Note: clearFieldError is available from BaseViewModel extension, no need to override
+    // Keeping this method for any custom logic if needed in the future
     
     func clearAllErrors() {
         currentError = nil
