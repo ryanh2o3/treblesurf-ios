@@ -752,6 +752,53 @@ extension APIClient {
         }
     }
     
+    func fetchSurfReportsWithSimilarBuoyData(
+        waveHeight: Double,
+        waveDirection: Double,
+        period: Double,
+        buoyName: String,
+        country: String? = nil,
+        region: String? = nil,
+        spot: String? = nil,
+        daysBack: Int = 365,
+        maxResults: Int = 20,
+        completion: @escaping (Result<[SurfReportResponse], Error>) -> Void
+    ) {
+        var queryParams = [
+            "waveHeight=\(waveHeight)",
+            "waveDirection=\(waveDirection)",
+            "period=\(period)",
+            "buoyName=\(buoyName.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? buoyName)",
+            "daysBack=\(daysBack)",
+            "maxResults=\(maxResults)"
+        ]
+        
+        if let country = country {
+            queryParams.append("country=\(country.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? country)")
+        }
+        if let region = region {
+            queryParams.append("region=\(region.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? region)")
+        }
+        if let spot = spot {
+            queryParams.append("spot=\(spot.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? spot)")
+        }
+        
+        let endpoint = "\(Endpoints.surfReportsWithSimilarBuoyData)?\(queryParams.joined(separator: "&"))"
+        
+        print("🌊 [API_CLIENT] Fetching surf reports with similar buoy data: \(buoyName)")
+        
+        makeFlexibleRequest(to: endpoint, requiresAuth: true) { (result: Result<[SurfReportResponse], Error>) in
+            switch result {
+            case .success(let reports):
+                print("✅ [API_CLIENT] Successfully fetched \(reports.count) similar surf reports")
+                completion(.success(reports))
+            case .failure(let error):
+                print("❌ [API_CLIENT] Failed to fetch similar surf reports: \(error.localizedDescription)")
+                completion(.failure(error))
+            }
+        }
+    }
+    
 }
 
 // MARK: - Current Conditions & Forecast API Extensions

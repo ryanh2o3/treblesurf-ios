@@ -7,6 +7,9 @@ struct BuoyDetailView: View {
     let showBackButton: Bool
     
     @StateObject private var viewModel = BuoysViewModel()
+    @State private var similarReports: [SurfReport] = []
+    @State private var isLoadingSimilarReports = false
+    @State private var selectedReport: SurfReport?
     
     init(buoy: BuoyLocation, onBack: @escaping () -> Void, showBackButton: Bool = true) {
         self.buoy = buoy
@@ -185,6 +188,49 @@ struct BuoyDetailView: View {
                         Text("Depth: \(currentBuoy.depth)")
                     }
                 }
+                
+                // Similar surf reports section
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Surf Reports on Similar Conditions")
+                        .font(.headline)
+                    
+                    if isLoadingSimilarReports {
+                        HStack {
+                            ProgressView()
+                                .scaleEffect(0.8)
+                            Text("Loading similar reports...")
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                            Spacer()
+                        }
+                        .padding()
+                        .background(Color.gray.opacity(0.1))
+                        .cornerRadius(12)
+                    } else if similarReports.isEmpty {
+                        HStack {
+                            Image(systemName: "doc.text.magnifyingglass")
+                                .foregroundColor(.secondary)
+                            Text("No similar surf reports found")
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                            Spacer()
+                        }
+                        .padding()
+                        .background(Color.gray.opacity(0.1))
+                        .cornerRadius(12)
+                    } else {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(alignment: .top, spacing: 15) {
+                                ForEach(similarReports) { report in
+                                    SurfReportCard(report: report)
+                                        .onTapGesture {
+                                            selectedReport = report
+                                        }
+                                }
+                            }
+                        }
+                    }
+                }
             }
             .padding()
         }
@@ -201,8 +247,14 @@ struct BuoyDetailView: View {
                     await viewModel.loadHistoricalDataForBuoy(id: currentBuoy.id) { updatedBuoy in
                         print("Historical data loaded for buoy: \(buoy.name)")
                     }
+                    
+                    // Load similar surf reports
+                    loadSimilarSurfReports(for: currentBuoy)
                 }
             }
+        }
+        .sheet(item: $selectedReport) { report in
+            SurfReportDetailView(report: report, backButtonText: "Back to Buoy")
         }
         .padding(.horizontal, showBackButton ? 0 : 16)
         .padding(.bottom, showBackButton ? 0 : 20)
@@ -225,6 +277,71 @@ struct BuoyDetailView: View {
         let paddedMax = dataMax * 1.2
         
         return max(paddedMax, 3.0)
+    }
+    
+    /// Loads surf reports with similar buoy conditions
+    private func loadSimilarSurfReports(for buoy: Buoy) {
+        isLoadingSimilarReports = true
+        
+        // Parse buoy data
+        guard let waveHeight = Double(buoy.waveHeight),
+              let waveDirection = Double(buoy.waveDirection),
+              let period = Double(buoy.maxPeriod) else {
+            print("❌ Failed to parse buoy data for similar reports")
+            isLoadingSimilarReports = false
+            return
+        }
+        
+        print("🌊 Fetching similar surf reports for buoy: \(buoy.name)")
+        print("   - Wave Height: \(waveHeight)m")
+        print("   - Wave Direction: \(waveDirection)°")
+        print("   - Period: \(period)s")
+        
+        APIClient.shared.fetchSurfReportsWithSimilarBuoyData(
+            waveHeight: waveHeight,
+            waveDirection: waveDirection,
+            period: period,
+            buoyName: buoy.name,
+            maxResults: 10
+        ) { result in
+            DispatchQueue.main.async {
+                isLoadingSimilarReports = false
+                
+                switch result {
+                case .success(let responses):
+                    print("✅ Found \(responses.count) similar surf reports")
+                    
+                    // Convert responses to SurfReport objects
+                    similarReports = responses.map { SurfReport(from: $0) }
+                    
+                    // Fetch images for the reports
+                    for report in similarReports {
+                        if let imageKey = report.imageKey, !imageKey.isEmpty {
+                            fetchReportImage(for: report, imageKey: imageKey)
+                        }
+                    }
+                    
+                case .failure(let error):
+                    print("❌ Failed to fetch similar surf reports: \(error.localizedDescription)")
+                }
+            }
+        }
+    }
+    
+    /// Fetches the image for a surf report
+    private func fetchReportImage(for report: SurfReport, imageKey: String) {
+        APIClient.shared.getReportImage(key: imageKey) { result in
+            DispatchQueue.main.async {
+                switch result {
+                case .success(let imageResponse):
+                    if let imageData = imageResponse.imageData {
+                        report.imageData = imageData
+                    }
+                case .failure(let error):
+                    print("❌ Failed to fetch image for report: \(error.localizedDescription)")
+                }
+            }
+        }
     }
 }
 

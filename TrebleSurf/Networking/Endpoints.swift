@@ -35,6 +35,7 @@ enum Endpoints {
     static let generateImageUploadURL = "/api/generateImageUploadURL"
     static let generateVideoUploadURL = "/api/generateVideoUploadURL"
     static let generateVideoViewURL = "/api/generateVideoViewURL"
+    static let surfReportsWithSimilarBuoyData = "/api/getSurfReportsWithSimilarBuoyData"
     
     // MARK: - Swell Predictions
     static let swellPrediction = "/api/swellPrediction"
