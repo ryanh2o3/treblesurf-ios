@@ -634,6 +634,80 @@ struct SurfReportDetailView: View {
                         .padding(.horizontal)
                     }
                     
+                    // Matching Condition Data (if available)
+                    if let combinedSimilarity = report.combinedSimilarity,
+                       let matchedBuoy = report.matchedBuoy {
+                        VStack(alignment: .leading, spacing: 12) {
+                            HStack {
+                                Text("Matching Conditions at Report Time")
+                                    .font(.headline)
+                                Spacer()
+                                HStack(spacing: 4) {
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .foregroundColor(.green)
+                                        .font(.caption)
+                                    Text("\(Int(combinedSimilarity * 100))% match")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+                            }
+                            .padding(.horizontal)
+                            
+                            Text("Based on \(matchedBuoy) buoy data")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                                .padding(.horizontal)
+                            
+                            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 16) {
+                                if let waveHeight = report.historicalBuoyWaveHeight {
+                                    ConditionCard(title: "Buoy Wave Height", value: String(format: "%.1fm", waveHeight), icon: "water.waves", color: .blue)
+                                }
+                                if let waveDir = report.historicalBuoyWaveDirection {
+                                    ConditionCard(title: "Buoy Wave Dir", value: String(format: "%.0f°", waveDir), icon: "arrow.up.right", color: .blue)
+                                }
+                                if let period = report.historicalBuoyPeriod {
+                                    ConditionCard(title: "Buoy Period", value: String(format: "%.0fs", period), icon: "timer", color: .blue)
+                                }
+                                if let windSpeed = report.historicalWindSpeed {
+                                    ConditionCard(title: "Wind Speed", value: String(format: "%.1f km/h", windSpeed), icon: "wind", color: .cyan)
+                                }
+                                if let windDir = report.historicalWindDirection {
+                                    ConditionCard(title: "Wind Dir", value: String(format: "%.0f°", windDir), icon: "arrow.up.right", color: .orange)
+                                }
+                                if let travelTime = report.travelTimeHours {
+                                    ConditionCard(title: "Swell Travel Time", value: String(format: "%.1fh", travelTime), icon: "clock", color: .purple)
+                                }
+                            }
+                            .padding(.horizontal)
+                            
+                            if let buoySim = report.buoySimilarity, let windSim = report.windSimilarity {
+                                HStack(spacing: 16) {
+                                    VStack {
+                                        Text("Buoy Match")
+                                            .font(.caption)
+                                            .foregroundColor(.secondary)
+                                        Text("\(Int(buoySim * 100))%")
+                                            .font(.headline)
+                                            .foregroundColor(.blue)
+                                    }
+                                    Divider()
+                                    VStack {
+                                        Text("Wind Match")
+                                            .font(.caption)
+                                            .foregroundColor(.secondary)
+                                        Text("\(Int(windSim * 100))%")
+                                            .font(.headline)
+                                            .foregroundColor(.cyan)
+                                    }
+                                }
+                                .padding()
+                                .background(Color.gray.opacity(0.1))
+                                .cornerRadius(12)
+                                .padding(.horizontal)
+                            }
+                        }
+                    }
+                    
                     // Additional details
                     VStack(alignment: .leading, spacing: 12) {
                         Text("Report Details")

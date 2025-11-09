@@ -198,7 +198,17 @@ class SurfReportService: ObservableObject {
                             countryRegionSpot: spotName,
                             dateReported: response.dateReported,
                             mediaType: response.mediaType,
-                            iosValidated: response.iosValidated
+                            iosValidated: response.iosValidated,
+                            buoySimilarity: response.buoySimilarity,
+                            windSimilarity: response.windSimilarity,
+                            combinedSimilarity: response.combinedSimilarity,
+                            matchedBuoy: response.matchedBuoy,
+                            historicalBuoyWaveHeight: response.historicalBuoyWaveHeight,
+                            historicalBuoyWaveDirection: response.historicalBuoyWaveDirection,
+                            historicalBuoyPeriod: response.historicalBuoyPeriod,
+                            historicalWindSpeed: response.historicalWindSpeed,
+                            historicalWindDirection: response.historicalWindDirection,
+                            travelTimeHours: response.travelTimeHours
                         )
                         
                         if let imageKey = response.imageKey, !imageKey.isEmpty {

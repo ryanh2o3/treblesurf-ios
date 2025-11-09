@@ -157,7 +157,17 @@ class APIClient: APIClientProtocol {
                     countryRegionSpot: "Ireland/Donegal/Ballymastocker",
                     dateReported: "2025-01-19",
                     mediaType: "image",
-                    iosValidated: false
+                    iosValidated: false,
+                    buoySimilarity: nil,
+                    windSimilarity: nil,
+                    combinedSimilarity: nil,
+                    matchedBuoy: nil,
+                    historicalBuoyWaveHeight: nil,
+                    historicalBuoyWaveDirection: nil,
+                    historicalBuoyPeriod: nil,
+                    historicalWindSpeed: nil,
+                    historicalWindDirection: nil,
+                    travelTimeHours: nil
                 )
             ]
             
@@ -794,6 +804,38 @@ extension APIClient {
                 completion(.success(reports))
             case .failure(let error):
                 print("❌ [API_CLIENT] Failed to fetch similar surf reports: \(error.localizedDescription)")
+                completion(.failure(error))
+            }
+        }
+    }
+    
+    func fetchSurfReportsWithMatchingConditions(
+        country: String,
+        region: String,
+        spot: String,
+        daysBack: Int = 365,
+        maxResults: Int = 20,
+        completion: @escaping (Result<[SurfReportResponse], Error>) -> Void
+    ) {
+        let queryParams = [
+            "country=\(country.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? country)",
+            "region=\(region.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? region)",
+            "spot=\(spot.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? spot)",
+            "daysBack=\(daysBack)",
+            "maxResults=\(maxResults)"
+        ]
+        
+        let endpoint = "/api/getSurfReportsWithMatchingConditions?\(queryParams.joined(separator: "&"))"
+        
+        print("🎯 [API_CLIENT] Fetching surf reports with matching conditions for: \(spot)")
+        
+        makeFlexibleRequest(to: endpoint, requiresAuth: true) { (result: Result<[SurfReportResponse], Error>) in
+            switch result {
+            case .success(let reports):
+                print("✅ [API_CLIENT] Successfully fetched \(reports.count) matching condition reports")
+                completion(.success(reports))
+            case .failure(let error):
+                print("❌ [API_CLIENT] Failed to fetch matching condition reports: \(error.localizedDescription)")
                 completion(.failure(error))
             }
         }

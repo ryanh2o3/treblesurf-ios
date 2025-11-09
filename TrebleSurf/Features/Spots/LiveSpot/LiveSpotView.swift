@@ -120,6 +120,66 @@ struct LiveSpotView: View {
                     }
                 }
                 
+                // Past matching condition reports section
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Past Matching Condition Reports")
+                        .font(.headline)
+                        .padding(.horizontal, 6)
+                    
+                    if viewModel.isLoadingMatchingReports {
+                        HStack {
+                            ProgressView()
+                                .scaleEffect(0.8)
+                            Text("Loading matching reports...")
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                            Spacer()
+                        }
+                        .padding()
+                        .background(Color.gray.opacity(0.1))
+                        .cornerRadius(12)
+                        .padding(.horizontal, 6)
+                    } else if !viewModel.matchingConditionReports.isEmpty {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 12) {
+                                ForEach(viewModel.matchingConditionReports.prefix(5), id: \.id) { report in
+                                    matchingReportCard(report)
+                                        .onTapGesture {
+                                            selectedReport = report
+                                        }
+                                }
+                            }
+                            .padding(.horizontal, 6)
+                        }
+                    } else if let errorPresentation = viewModel.errorPresentation {
+                        HStack {
+                            Image(systemName: "exclamationmark.triangle")
+                                .foregroundColor(.orange)
+                            Text(errorPresentation.message)
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                            Spacer()
+                        }
+                        .padding()
+                        .background(Color.orange.opacity(0.1))
+                        .cornerRadius(12)
+                        .padding(.horizontal, 6)
+                    } else {
+                        HStack {
+                            Image(systemName: "clock")
+                                .foregroundColor(.secondary)
+                            Text("No matching reports from the past")
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                            Spacer()
+                        }
+                        .padding()
+                        .background(Color.gray.opacity(0.1))
+                        .cornerRadius(12)
+                        .padding(.horizontal, 6)
+                    }
+                }
+                
                 // Surf conditions grid
                 VStack(alignment: .leading, spacing: 6) {
                     HStack {
@@ -291,6 +351,9 @@ struct LiveSpotView: View {
             
             // Refresh surf reports
             viewModel.refreshSurfReports(for: spotId)
+            
+            // Refresh matching condition reports
+            viewModel.refreshMatchingConditionReports(for: spotId)
         }
         .task {
             // Trigger data fetch when view appears
@@ -302,11 +365,15 @@ struct LiveSpotView: View {
             
             // Fetch surf reports for this spot
             viewModel.fetchSurfReports(for: spotId)
+            
+            // Fetch matching condition reports for this spot
+            viewModel.fetchMatchingConditionReports(for: spotId)
         }
         .onChange(of: refreshTrigger) { _, newValue in
             // Refresh data when refresh trigger changes
             dataStore.fetchConditions(for: spotId) { _ in }
             viewModel.refreshSurfReports(for: spotId)
+            viewModel.refreshMatchingConditionReports(for: spotId)
         }
         .sheet(item: $selectedReport) { report in
             SurfReportDetailView(report: report, backButtonText: "Back to \(viewModel.getSpotName(from: spotId))")
@@ -415,6 +482,108 @@ struct LiveSpotView: View {
         .padding()
         .background(Color.gray.opacity(0.1))
         .cornerRadius(12)
+    }
+    
+    private func matchingReportCard(_ report: SurfReport) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            // Media preview - show image, video thumbnail, or placeholder
+            ZStack(alignment: .topTrailing) {
+                Group {
+                    if let imageData = report.imageData,
+                       let data = Data(base64Encoded: imageData),
+                       let uiImage = UIImage(data: data) {
+                        // Show image or video thumbnail
+                        ZStack {
+                            Image(uiImage: uiImage)
+                                .resizable()
+                                .aspectRatio(contentMode: .fill)
+                                .frame(width: 140, height: 140)
+                                .clipped()
+                                .cornerRadius(8)
+                            
+                            // Show play button if this report has a meaningful video key
+                            if let videoKey = report.videoKey, !videoKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                                Image(systemName: "play.circle.fill")
+                                    .font(.system(size: 30))
+                                    .foregroundColor(.white)
+                                    .background(Color.black.opacity(0.3))
+                                    .clipShape(Circle())
+                            }
+                        }
+                    } else if let videoThumbnail = report.videoThumbnail {
+                        // Show video thumbnail with play button
+                        ZStack {
+                            Image(uiImage: videoThumbnail)
+                                .resizable()
+                                .aspectRatio(contentMode: .fill)
+                                .frame(width: 140, height: 140)
+                                .clipped()
+                                .cornerRadius(8)
+                            
+                            // Play button overlay
+                            Image(systemName: "play.circle.fill")
+                                .font(.system(size: 30))
+                                .foregroundColor(.white)
+                                .background(Color.black.opacity(0.3))
+                                .clipShape(Circle())
+                        }
+                    } else {
+                        // Show placeholder based on media type
+                        Rectangle()
+                            .fill(Color.gray.opacity(0.3))
+                            .frame(width: 140, height: 140)
+                            .cornerRadius(8)
+                            .overlay(
+                                VStack(spacing: 4) {
+                                    Image(systemName: mediaTypeIcon(for: report.mediaType))
+                                        .font(.system(size: 24))
+                                        .foregroundColor(.secondary)
+                                    Text(mediaTypeText(for: report.mediaType))
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+                            )
+                    }
+                }
+                
+                // Show similarity badge if available
+                if let similarity = report.combinedSimilarity {
+                    HStack(spacing: 2) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 8))
+                        Text("\(Int(similarity * 100))%")
+                            .font(.system(size: 10))
+                            .fontWeight(.semibold)
+                    }
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 3)
+                    .background(Color.green)
+                    .cornerRadius(8)
+                    .padding(6)
+                }
+            }
+            
+            VStack(alignment: .leading, spacing: 2) {
+                HStack {
+                    Text(report.surfSize)
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                    Text("•")
+                    Text(report.quality)
+                        .font(.subheadline)
+                }
+                .foregroundColor(.primary)
+                
+                Text(report.time)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+        }
+        .padding(8)
+        .background(Color.gray.opacity(0.1))
+        .cornerRadius(12)
+        .frame(width: 156)
     }
     
     // MARK: - Helper Functions

@@ -16,6 +16,8 @@ struct CurrentConditions {
 class LiveSpotViewModel: BaseViewModel {
     @Published var currentConditions = CurrentConditions()
     @Published var recentReports: [SurfReport] = []
+    @Published var matchingConditionReports: [SurfReport] = []
+    @Published var isLoadingMatchingReports = false
     @Published var showReportForm = false
     @Published var showQuickForm = false
     
@@ -87,7 +89,17 @@ class LiveSpotViewModel: BaseViewModel {
                     countryRegionSpot: spotName,
                     dateReported: response.dateReported,
                     mediaType: response.mediaType,
-                    iosValidated: response.iosValidated
+                    iosValidated: response.iosValidated,
+                    buoySimilarity: response.buoySimilarity,
+                    windSimilarity: response.windSimilarity,
+                    combinedSimilarity: response.combinedSimilarity,
+                    matchedBuoy: response.matchedBuoy,
+                    historicalBuoyWaveHeight: response.historicalBuoyWaveHeight,
+                    historicalBuoyWaveDirection: response.historicalBuoyWaveDirection,
+                    historicalBuoyPeriod: response.historicalBuoyPeriod,
+                    historicalWindSpeed: response.historicalWindSpeed,
+                    historicalWindDirection: response.historicalWindDirection,
+                    travelTimeHours: response.travelTimeHours
                 )
                 
                 if let imageKey = response.imageKey, !imageKey.isEmpty {
@@ -171,6 +183,108 @@ class LiveSpotViewModel: BaseViewModel {
         
         // Fetch fresh data
         fetchSurfReports(for: spotId)
+    }
+    
+    func fetchMatchingConditionReports(for spotId: String) {
+        // Convert spotId back to country/region/spot format
+        let components = spotId.split(separator: "#")
+        guard components.count >= 3 else {
+            logger.log("Invalid spotId format: \(spotId)", level: .warning, category: .general)
+            return
+        }
+        
+        let country = String(components[0])
+        let region = String(components[1])
+        let spot = String(components[2])
+        
+        logger.log("Fetching matching condition reports for \(spot)", level: .info, category: .api)
+        
+        // Clear existing reports and set loading state
+        self.matchingConditionReports = []
+        self.isLoadingMatchingReports = true
+        
+        executeTask(context: "Fetch matching condition reports") {
+            let responses = try await withCheckedThrowingContinuation { continuation in
+                APIClient.shared.fetchSurfReportsWithMatchingConditions(country: country, region: region, spot: spot) { result in
+                    continuation.resume(with: result)
+                }
+            }
+            
+            let outputDateFormatter = DateFormatter()
+            outputDateFormatter.dateFormat = "d MMM, h:mma"
+            outputDateFormatter.locale = Locale(identifier: "en_US_POSIX")
+
+            let reports = responses.map { [weak self] response in
+                // Parse the timestamp with multiple format support
+                let date = self?.parseTimestamp(response.time)
+                let formattedTime = date != nil ? outputDateFormatter.string(from: date!) : "Invalid Date"
+                
+                // Extract just the spot name
+                let spotName = response.countryRegionSpot.components(separatedBy: "_").last ?? response.countryRegionSpot
+                
+                let report = SurfReport(
+                    consistency: response.consistency,
+                    imageKey: response.imageKey,
+                    videoKey: response.videoKey,
+                    messiness: response.messiness,
+                    quality: response.quality,
+                    reporter: response.reporter,
+                    surfSize: response.surfSize,
+                    time: formattedTime,
+                    userEmail: response.userEmail,
+                    windAmount: response.windAmount,
+                    windDirection: response.windDirection,
+                    countryRegionSpot: spotName,
+                    dateReported: response.dateReported,
+                    mediaType: response.mediaType,
+                    iosValidated: response.iosValidated,
+                    buoySimilarity: response.buoySimilarity,
+                    windSimilarity: response.windSimilarity,
+                    combinedSimilarity: response.combinedSimilarity,
+                    matchedBuoy: response.matchedBuoy,
+                    historicalBuoyWaveHeight: response.historicalBuoyWaveHeight,
+                    historicalBuoyWaveDirection: response.historicalBuoyWaveDirection,
+                    historicalBuoyPeriod: response.historicalBuoyPeriod,
+                    historicalWindSpeed: response.historicalWindSpeed,
+                    historicalWindDirection: response.historicalWindDirection,
+                    travelTimeHours: response.travelTimeHours
+                )
+                
+                if let imageKey = response.imageKey, !imageKey.isEmpty {
+                    self?.fetchImage(for: imageKey) { imageData in
+                        Task { @MainActor [weak self] in
+                            report.imageData = imageData?.imageData
+                            self?.objectWillChange.send()
+                        }
+                    }
+                }
+                
+                return report
+            }
+            
+            self.matchingConditionReports = reports
+            self.isLoadingMatchingReports = false
+            
+            // Log matching reports info
+            let imageCount = reports.compactMap { $0.imageKey }.filter { !$0.isEmpty }.count
+            if imageCount > 0 {
+                self.logger.log("Loaded \(reports.count) matching reports with \(imageCount) images", level: .info, category: .media)
+            } else {
+                self.logger.log("Loaded \(reports.count) matching reports", level: .info, category: .api)
+            }
+        }
+    }
+    
+    // Force refresh matching condition reports
+    func refreshMatchingConditionReports(for spotId: String) {
+        logger.log("Refreshing matching condition reports for spotId: \(spotId)", level: .info, category: .general)
+        
+        // Clear existing data and error state
+        self.matchingConditionReports = []
+        clearError()
+        
+        // Fetch fresh data
+        fetchMatchingConditionReports(for: spotId)
     }
     
     // Parse timestamp with multiple format support

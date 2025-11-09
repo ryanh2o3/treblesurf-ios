@@ -16,6 +16,18 @@ struct SurfReportResponse: Decodable {
     let dateReported: String
     let mediaType: String?
     let iosValidated: Bool?
+    
+    // Matching condition fields (optional, only present for matching condition reports)
+    let buoySimilarity: Double?
+    let windSimilarity: Double?
+    let combinedSimilarity: Double?
+    let matchedBuoy: String?
+    let historicalBuoyWaveHeight: Double?
+    let historicalBuoyWaveDirection: Double?
+    let historicalBuoyPeriod: Double?
+    let historicalWindSpeed: Double?
+    let historicalWindDirection: Double?
+    let travelTimeHours: Double?
 
     enum CodingKeys: String, CodingKey {
         case consistency = "Consistency"
@@ -33,6 +45,16 @@ struct SurfReportResponse: Decodable {
         case dateReported = "dateReported"
         case mediaType = "MediaType"
         case iosValidated = "IOSValidated"
+        case buoySimilarity = "buoy_similarity"
+        case windSimilarity = "wind_similarity"
+        case combinedSimilarity = "combined_similarity"
+        case matchedBuoy = "matched_buoy"
+        case historicalBuoyWaveHeight = "historical_buoy_wave_height"
+        case historicalBuoyWaveDirection = "historical_buoy_wave_direction"
+        case historicalBuoyPeriod = "historical_buoy_period"
+        case historicalWindSpeed = "historical_wind_speed"
+        case historicalWindDirection = "historical_wind_direction"
+        case travelTimeHours = "travel_time_hours"
     }
 }
 
@@ -55,6 +77,18 @@ class SurfReport: ObservableObject, Identifiable {
     let mediaType: String?
     let iosValidated: Bool?
     
+    // Matching condition fields
+    let buoySimilarity: Double?
+    let windSimilarity: Double?
+    let combinedSimilarity: Double?
+    let matchedBuoy: String?
+    let historicalBuoyWaveHeight: Double?
+    let historicalBuoyWaveDirection: Double?
+    let historicalBuoyPeriod: Double?
+    let historicalWindSpeed: Double?
+    let historicalWindDirection: Double?
+    let travelTimeHours: Double?
+    
     @Published var imageData: String? // Make this observable
     @Published var videoData: String? // Make this observable
     @Published var videoThumbnail: UIImage? // Video thumbnail for preview
@@ -67,7 +101,7 @@ class SurfReport: ObservableObject, Identifiable {
         return dateReported // Fallback to original string if parsing fails
     }
     
-    init(consistency: String, imageKey: String?, videoKey: String?, messiness: String, quality: String, reporter: String, surfSize: String, time: String, userEmail: String?, windAmount: String, windDirection: String, countryRegionSpot: String, dateReported: String, mediaType: String? = nil, iosValidated: Bool? = nil, imageData: String? = nil, videoData: String? = nil) {
+    init(consistency: String, imageKey: String?, videoKey: String?, messiness: String, quality: String, reporter: String, surfSize: String, time: String, userEmail: String?, windAmount: String, windDirection: String, countryRegionSpot: String, dateReported: String, mediaType: String? = nil, iosValidated: Bool? = nil, buoySimilarity: Double? = nil, windSimilarity: Double? = nil, combinedSimilarity: Double? = nil, matchedBuoy: String? = nil, historicalBuoyWaveHeight: Double? = nil, historicalBuoyWaveDirection: Double? = nil, historicalBuoyPeriod: Double? = nil, historicalWindSpeed: Double? = nil, historicalWindDirection: Double? = nil, travelTimeHours: Double? = nil, imageData: String? = nil, videoData: String? = nil) {
         self.consistency = consistency
         self.imageKey = imageKey
         self.videoKey = videoKey
@@ -83,6 +117,16 @@ class SurfReport: ObservableObject, Identifiable {
         self.dateReported = dateReported
         self.mediaType = mediaType
         self.iosValidated = iosValidated
+        self.buoySimilarity = buoySimilarity
+        self.windSimilarity = windSimilarity
+        self.combinedSimilarity = combinedSimilarity
+        self.matchedBuoy = matchedBuoy
+        self.historicalBuoyWaveHeight = historicalBuoyWaveHeight
+        self.historicalBuoyWaveDirection = historicalBuoyWaveDirection
+        self.historicalBuoyPeriod = historicalBuoyPeriod
+        self.historicalWindSpeed = historicalWindSpeed
+        self.historicalWindDirection = historicalWindDirection
+        self.travelTimeHours = travelTimeHours
         self.imageData = imageData
         self.videoData = videoData
     }
@@ -105,7 +149,17 @@ extension SurfReport {
             countryRegionSpot: response.countryRegionSpot,
             dateReported: response.dateReported,
             mediaType: response.mediaType,
-            iosValidated: response.iosValidated
+            iosValidated: response.iosValidated,
+            buoySimilarity: response.buoySimilarity,
+            windSimilarity: response.windSimilarity,
+            combinedSimilarity: response.combinedSimilarity,
+            matchedBuoy: response.matchedBuoy,
+            historicalBuoyWaveHeight: response.historicalBuoyWaveHeight,
+            historicalBuoyWaveDirection: response.historicalBuoyWaveDirection,
+            historicalBuoyPeriod: response.historicalBuoyPeriod,
+            historicalWindSpeed: response.historicalWindSpeed,
+            historicalWindDirection: response.historicalWindDirection,
+            travelTimeHours: response.travelTimeHours
         )
     }
 }
