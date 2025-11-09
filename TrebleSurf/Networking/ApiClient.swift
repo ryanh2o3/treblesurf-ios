@@ -676,6 +676,36 @@ extension APIClient {
             completion(result)
         }
     }
+    
+    func fetchBuoyDataRange(buoyName: String, startDate: Date, endDate: Date, completion: @escaping (Result<[BuoyResponse], Error>) -> Void) {
+        // URL encode the buoy name to handle spaces and special characters
+        guard let encodedBuoyName = buoyName.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) else {
+            let error = NSError(domain: "APIClient", code: APIClientError.invalidURL.rawValue, userInfo: [NSLocalizedDescriptionKey: "Failed to URL encode buoy name: \(buoyName)"])
+            completion(.failure(error))
+            return
+        }
+        
+        // Format dates to ISO8601 format (2006-01-02T15:04:05Z)
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        let startTimeStr = formatter.string(from: startDate)
+        let endTimeStr = formatter.string(from: endDate)
+        
+        guard let encodedStartTime = startTimeStr.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
+              let encodedEndTime = endTimeStr.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) else {
+            let error = NSError(domain: "APIClient", code: APIClientError.invalidURL.rawValue, userInfo: [NSLocalizedDescriptionKey: "Failed to URL encode date parameters"])
+            completion(.failure(error))
+            return
+        }
+        
+        let endpoint = "/api/getBuoyDataRange?buoyName=\(encodedBuoyName)&startTime=\(encodedStartTime)&endTime=\(encodedEndTime)"
+        
+        print("Debug: Fetching buoy data range for: \(buoyName) from \(startTimeStr) to \(endTimeStr)")
+        
+        request(endpoint, method: "GET") { (result: Result<[BuoyResponse], Error>) in
+            completion(result)
+        }
+    }
 }
 
 // MARK: - Surf Reports API Extensions

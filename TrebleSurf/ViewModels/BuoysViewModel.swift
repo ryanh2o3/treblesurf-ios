@@ -171,6 +171,7 @@ class BuoysViewModel: BaseViewModel {
                 // Create a new array to force SwiftUI to detect the change
                 var updatedBuoys = self.buoys
                 updatedBuoys[index].historicalData = formattedData
+                updatedBuoys[index].historicalResponses = historicalData // Store raw responses
                 self.buoys = updatedBuoys
                 
                 // Mark as loaded
@@ -188,6 +189,43 @@ class BuoysViewModel: BaseViewModel {
         } catch {
             logger.log("Error fetching historical data for buoy \(id)", level: .error, category: .api)
             handleError(error, context: "Load historical buoy data")
+        }
+    }
+    
+    @MainActor
+    func loadHistoricalDataForBuoyDateRange(id: String, startDate: Date, endDate: Date, updateSelectedBuoy: @escaping (Buoy?) -> Void) async {
+        logger.log("Loading historical data for buoy: \(id) from \(startDate) to \(endDate)", level: .info, category: .api)
+        
+        do {
+            let historicalData = try await withCheckedThrowingContinuation { continuation in
+                APIClient.shared.fetchBuoyDataRange(buoyName: id, startDate: startDate, endDate: endDate) { result in
+                    continuation.resume(with: result)
+                }
+            }
+            
+            // Find the buoy to update
+            if let index = buoys.firstIndex(where: { $0.id == id }) {
+                // Format the historical data
+                let formattedData = formatHistoricalData(historicalData)
+                
+                // Create a new array to force SwiftUI to detect the change
+                var updatedBuoys = self.buoys
+                updatedBuoys[index].historicalData = formattedData
+                updatedBuoys[index].historicalResponses = historicalData // Store raw responses
+                self.buoys = updatedBuoys
+                
+                // Update filtered buoys
+                filterBuoys(by: selectedFilter)
+                
+                updateSelectedBuoy(updatedBuoys[index])
+                
+                logger.log("Historical data loaded for buoy \(id): \(formattedData.count) data points", level: .info, category: .general)
+            } else {
+                logger.log("Buoy not found: \(id)", level: .warning, category: .general)
+            }
+        } catch {
+            logger.log("Error fetching historical data for buoy \(id) with date range", level: .error, category: .api)
+            handleError(error, context: "Load historical buoy data for date range")
         }
     }
     
@@ -274,6 +312,7 @@ struct Buoy: Identifiable {
     let depth: String
     let maxWaveHeight: Double
     var historicalData: [WaveDataPoint]
+    var historicalResponses: [BuoyResponse] = [] // Store full response data
     let maxPeriod: String
 }
 

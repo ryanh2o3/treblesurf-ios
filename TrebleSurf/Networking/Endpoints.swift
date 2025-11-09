@@ -26,6 +26,7 @@ enum Endpoints {
     static let buoyData = "/api/getMultipleBuoyData"
     static let singleBuoyData = "/api/getSingleBuoyData"
     static let last24BuoyData = "/api/getLast24BuoyData"
+    static let buoyDataRange = "/api/getBuoyDataRange"
     
     // MARK: - Surf Reports
     static let surfReports = "/api/getTodaySpotReports"

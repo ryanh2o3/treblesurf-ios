@@ -10,6 +10,19 @@ struct BuoyDetailView: View {
     @State private var similarReports: [SurfReport] = []
     @State private var isLoadingSimilarReports = false
     @State private var selectedReport: SurfReport?
+    @State private var selectedDate = Date()
+    @State private var showDatePicker = false
+    @State private var isLoadingCustomData = false
+    @State private var dateRangeMode: DateRangeMode = .last24Hours
+    @State private var selectedTimePoint: Date?
+    @State private var selectedDataPoint: BuoyResponse?
+    @State private var isLoadingExtendedData = false
+    @State private var selectionDebounceTask: Task<Void, Never>?
+    
+    enum DateRangeMode {
+        case last24Hours
+        case customDate
+    }
     
     init(buoy: BuoyLocation, onBack: @escaping () -> Void, showBackButton: Bool = true) {
         self.buoy = buoy
@@ -48,28 +61,52 @@ struct BuoyDetailView: View {
                 
                 // Current readings
                 VStack(alignment: .leading, spacing: 12) {
-                    Text("Current Readings")
-                        .font(.headline)
+                    HStack {
+                        Text(readingsTitle)
+                            .font(.headline)
+                        
+                        if selectedTimePoint != nil {
+                            Spacer()
+                            Button(action: {
+                                selectedTimePoint = nil
+                                selectedDataPoint = nil
+                            }) {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "arrow.clockwise")
+                                        .font(.system(size: 12))
+                                    Text("Current")
+                                        .font(.caption)
+                                }
+                                .foregroundColor(.blue)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 6)
+                                        .fill(Color.blue.opacity(0.1))
+                                )
+                            }
+                        }
+                    }
                     
                     if let currentBuoy = viewModel.buoys.first(where: { $0.name == buoy.name }) {
                         LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 16) {
-                            if !currentBuoy.waveHeight.isEmpty {
-                                ReadingCard(title: "Wave Height", value: currentBuoy.waveHeight, unit: "m", icon: "water.waves")
+                            if let waveHeight = displayedWaveHeight(for: currentBuoy) {
+                                ReadingCard(title: "Wave Height", value: waveHeight, unit: "m", icon: "water.waves")
                             }
-                            if !currentBuoy.maxPeriod.isEmpty {
-                                ReadingCard(title: "Period", value: currentBuoy.maxPeriod, unit: "sec", icon: "timer")
+                            if let period = displayedPeriod(for: currentBuoy) {
+                                ReadingCard(title: "Period", value: period, unit: "sec", icon: "timer")
                             }
-                            if !currentBuoy.windSpeed.isEmpty {
-                                ReadingCard(title: "Wind Speed", value: currentBuoy.windSpeed, unit: "km/h", icon: "wind")
+                            if let windSpeed = displayedWindSpeed(for: currentBuoy) {
+                                ReadingCard(title: "Wind Speed", value: windSpeed, unit: "km/h", icon: "wind")
                             }
-                            if !currentBuoy.waveDirection.isEmpty {
-                                ReadingCard(title: "Direction", value: currentBuoy.waveDirection, unit: "°", icon: "arrow.up.right")
+                            if let waveDirection = displayedWaveDirection(for: currentBuoy) {
+                                ReadingCard(title: "Direction", value: waveDirection, unit: "°", icon: "arrow.up.right")
                             }
-                            if !currentBuoy.waterTemp.isEmpty {
-                                ReadingCard(title: "Water Temp", value: currentBuoy.waterTemp, unit: "°C", icon: "thermometer")
+                            if let waterTemp = displayedWaterTemp(for: currentBuoy) {
+                                ReadingCard(title: "Water Temp", value: waterTemp, unit: "°C", icon: "thermometer")
                             }
-                            if !currentBuoy.airTemp.isEmpty {
-                                ReadingCard(title: "Air Temp", value: currentBuoy.airTemp, unit: "°C", icon: "thermometer.sun")
+                            if let airTemp = displayedAirTemp(for: currentBuoy) {
+                                ReadingCard(title: "Air Temp", value: airTemp, unit: "°C", icon: "thermometer.sun")
                             }
                         }
                         .transition(.opacity.combined(with: .scale(scale: 0.95)))
@@ -104,10 +141,111 @@ struct BuoyDetailView: View {
                 }
                 .animation(.easeInOut(duration: 0.3), value: viewModel.buoys.isEmpty)
                 
+                // Date range selector
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Historical Data")
+                        .font(.headline)
+                    
+                    HStack(spacing: 12) {
+                        // Last 24 Hours button
+                        Button(action: {
+                            dateRangeMode = .last24Hours
+                            loadLast24HoursData()
+                        }) {
+                            HStack {
+                                Image(systemName: "clock")
+                                    .font(.system(size: 14))
+                                Text("Last 24h")
+                                    .font(.subheadline)
+                            }
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 10)
+                            .background(
+                                RoundedRectangle(cornerRadius: 10)
+                                    .fill(dateRangeMode == .last24Hours ? Color.blue : Color(.systemGray6))
+                            )
+                            .foregroundColor(dateRangeMode == .last24Hours ? .white : .primary)
+                        }
+                        
+                        // Custom date button
+                        Button(action: {
+                            showDatePicker.toggle()
+                        }) {
+                            HStack {
+                                Image(systemName: "calendar")
+                                    .font(.system(size: 14))
+                                Text(dateRangeMode == .customDate ? formatDateShort(selectedDate) : "Pick Date")
+                                    .font(.subheadline)
+                            }
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 10)
+                            .background(
+                                RoundedRectangle(cornerRadius: 10)
+                                    .fill(dateRangeMode == .customDate ? Color.blue : Color(.systemGray6))
+                            )
+                            .foregroundColor(dateRangeMode == .customDate ? .white : .primary)
+                        }
+                        
+                        if isLoadingCustomData {
+                            ProgressView()
+                                .scaleEffect(0.8)
+                        }
+                        
+                        Spacer()
+                    }
+                    
+                    // Date picker sheet
+                    if showDatePicker {
+                        VStack(spacing: 12) {
+                            DatePicker(
+                                "Select Date",
+                                selection: $selectedDate,
+                                in: ...Date(),
+                                displayedComponents: .date
+                            )
+                            .datePickerStyle(.graphical)
+                            .padding()
+                            .background(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .fill(.ultraThinMaterial)
+                            )
+                            
+                            Button(action: {
+                                dateRangeMode = .customDate
+                                showDatePicker = false
+                                loadCustomDateData()
+                            }) {
+                                Text("Load Data")
+                                    .font(.headline)
+                                    .foregroundColor(.white)
+                                    .frame(maxWidth: .infinity)
+                                    .padding()
+                                    .background(Color.blue)
+                                    .cornerRadius(10)
+                            }
+                        }
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                    }
+                }
+                .animation(.easeInOut(duration: 0.3), value: showDatePicker)
+                
                 // Wave height chart
                 VStack(alignment: .leading, spacing: 12) {
-                    Text("Wave Height (24h)")
-                        .font(.headline)
+                    HStack {
+                        Text(chartTitle)
+                            .font(.headline)
+                        
+                        if isLoadingExtendedData {
+                            Spacer()
+                            HStack(spacing: 6) {
+                                ProgressView()
+                                    .scaleEffect(0.7)
+                                Text("Loading...")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                    }
                     
                     if #available(iOS 16.0, *) {
                         if let currentBuoy = viewModel.buoys.first(where: { $0.name == buoy.name }) {
@@ -130,18 +268,60 @@ struct BuoyDetailView: View {
                                             endPoint: .bottom
                                         )
                                     )
+                                    
+                                    // Add selection line if a time point is selected
+                                    if let selectedTime = selectedTimePoint {
+                                        RuleMark(x: .value("Selected Time", selectedTime))
+                                            .foregroundStyle(Color.orange)
+                                            .lineStyle(StrokeStyle(lineWidth: 2, dash: [5, 3]))
+                                            .annotation(position: .top, alignment: .center) {
+                                                Text(formatTime(selectedTime))
+                                                    .font(.caption2)
+                                                    .fontWeight(.semibold)
+                                                    .foregroundColor(.white)
+                                                    .padding(.horizontal, 8)
+                                                    .padding(.vertical, 4)
+                                                    .background(
+                                                        RoundedRectangle(cornerRadius: 6)
+                                                            .fill(Color.orange)
+                                                    )
+                                            }
+                                    }
                                 }
                                 .frame(height: 200)
                                 .chartYScale(domain: 0...calculateChartMaxY(for: currentBuoy))
+                                .chartXSelection(value: $selectedTimePoint)
+                                .onChange(of: selectedTimePoint) { newValue in
+                                    if let newTime = newValue {
+                                        updateSelectedDataPoint(for: newTime, buoy: currentBuoy)
+                                        
+                                        // Cancel any existing debounce task
+                                        selectionDebounceTask?.cancel()
+                                        
+                                        // Check if selected time is outside loaded range
+                                        if isTimeOutsideLoadedRange(newTime, buoy: currentBuoy) {
+                                            // Debounce the data loading - wait 0.5 seconds after user stops
+                                            selectionDebounceTask = Task {
+                                                try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
+                                                
+                                                if !Task.isCancelled {
+                                                    await loadDataAroundTime(newTime, for: currentBuoy)
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
                                 .transition(.opacity.combined(with: .scale(scale: 0.95)))
                             } else {
                                 VStack(spacing: 8) {
                                     Image(systemName: "chart.line.uptrend.xyaxis")
                                         .font(.system(size: 32))
                                         .foregroundColor(.secondary)
-                                    Text("No historical data available")
+                                    Text(emptyStateMessage)
                                         .font(.subheadline)
                                         .foregroundColor(.secondary)
+                                        .multilineTextAlignment(.center)
+                                        .padding(.horizontal)
                                 }
                                 .frame(height: 200)
                                 .frame(maxWidth: .infinity)
@@ -256,6 +436,10 @@ struct BuoyDetailView: View {
         .sheet(item: $selectedReport) { report in
             SurfReportDetailView(report: report, backButtonText: "Back to Buoy")
         }
+        .onDisappear {
+            // Clean up any pending tasks
+            selectionDebounceTask?.cancel()
+        }
         .padding(.horizontal, showBackButton ? 0 : 16)
         .padding(.bottom, showBackButton ? 0 : 20)
     }
@@ -342,6 +526,241 @@ struct BuoyDetailView: View {
                 }
             }
         }
+    }
+    
+    /// Loads last 24 hours of buoy data
+    private func loadLast24HoursData() {
+        // Cancel any pending debounce task
+        selectionDebounceTask?.cancel()
+        
+        // Reset selection when loading new data
+        selectedTimePoint = nil
+        selectedDataPoint = nil
+        
+        Task {
+            if let currentBuoy = viewModel.buoys.first(where: { $0.name == buoy.name }) {
+                await viewModel.loadHistoricalDataForBuoy(id: currentBuoy.id) { updatedBuoy in
+                    print("Loaded last 24h data for buoy: \(buoy.name)")
+                }
+            }
+        }
+    }
+    
+    /// Loads buoy data for the selected custom date (24 hours from that date)
+    private func loadCustomDateData() {
+        // Cancel any pending debounce task
+        selectionDebounceTask?.cancel()
+        
+        isLoadingCustomData = true
+        
+        // Reset selection when loading new data
+        selectedTimePoint = nil
+        selectedDataPoint = nil
+        
+        Task {
+            if let currentBuoy = viewModel.buoys.first(where: { $0.name == buoy.name }) {
+                // Get the start of the selected date
+                let calendar = Calendar.current
+                let startOfDay = calendar.startOfDay(for: selectedDate)
+                
+                // Get 24 hours from that date
+                let endDate = calendar.date(byAdding: .day, value: 1, to: startOfDay) ?? startOfDay
+                
+                await viewModel.loadHistoricalDataForBuoyDateRange(
+                    id: currentBuoy.id,
+                    startDate: startOfDay,
+                    endDate: endDate
+                ) { updatedBuoy in
+                    print("Loaded custom date data for buoy: \(buoy.name)")
+                }
+            }
+            
+            isLoadingCustomData = false
+        }
+    }
+    
+    /// Formats a date to a short string (e.g., "Nov 9")
+    private func formatDateShort(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MMM d"
+        return formatter.string(from: date)
+    }
+    
+    /// Computed property for chart title based on date range mode
+    private var chartTitle: String {
+        switch dateRangeMode {
+        case .last24Hours:
+            return "Wave Height (Last 24h)"
+        case .customDate:
+            return "Wave Height (\(formatDateShort(selectedDate)))"
+        }
+    }
+    
+    /// Computed property for empty state message based on date range mode
+    private var emptyStateMessage: String {
+        switch dateRangeMode {
+        case .last24Hours:
+            return "No historical data available for the last 24 hours"
+        case .customDate:
+            return "No data available for \(formatDateShort(selectedDate))\nTry selecting a different date"
+        }
+    }
+    
+    /// Computed property for readings title
+    private var readingsTitle: String {
+        if selectedTimePoint != nil {
+            return "Selected Time Readings"
+        } else {
+            return "Current Readings"
+        }
+    }
+    
+    /// Formats a time to a short string (e.g., "10:30 AM")
+    private func formatTime(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "HH:mm"
+        return formatter.string(from: date)
+    }
+    
+    /// Updates the selected data point based on the selected time
+    private func updateSelectedDataPoint(for time: Date, buoy: Buoy) {
+        // Find the closest historical data point to the selected time
+        guard let closestDataPoint = findClosestDataPoint(to: time, in: buoy.historicalData) else {
+            return
+        }
+        
+        // Find the corresponding BuoyResponse from historicalResponses
+        // Match by finding the response with the closest timestamp
+        if let closestResponse = findClosestBuoyResponse(to: closestDataPoint.time, in: buoy.historicalResponses) {
+            selectedDataPoint = closestResponse
+            print("✅ Selected time: \(formatTime(time)), Wave Height: \(closestDataPoint.waveHeight)m")
+        } else {
+            selectedDataPoint = nil
+            print("⚠️ No matching BuoyResponse found for selected time")
+        }
+    }
+    
+    /// Finds the closest BuoyResponse to a given time
+    private func findClosestBuoyResponse(to targetTime: Date, in responses: [BuoyResponse]) -> BuoyResponse? {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        
+        return responses.min(by: { response1, response2 in
+            guard let dateStr1 = response1.dataDateTime,
+                  let dateStr2 = response2.dataDateTime,
+                  let date1 = formatter.date(from: dateStr1),
+                  let date2 = formatter.date(from: dateStr2) else {
+                return false
+            }
+            
+            return abs(date1.timeIntervalSince(targetTime)) < abs(date2.timeIntervalSince(targetTime))
+        })
+    }
+    
+    /// Finds the closest data point to a given time
+    private func findClosestDataPoint(to targetTime: Date, in dataPoints: [WaveDataPoint]) -> WaveDataPoint? {
+        return dataPoints.min(by: { abs($0.time.timeIntervalSince(targetTime)) < abs($1.time.timeIntervalSince(targetTime)) })
+    }
+    
+    // MARK: - Display Value Helpers
+    
+    /// Returns the wave height to display (either selected or current)
+    private func displayedWaveHeight(for buoy: Buoy) -> String? {
+        if let selected = selectedDataPoint, let height = selected.WaveHeight {
+            return String(format: "%.2f", height)
+        }
+        return buoy.waveHeight.isEmpty ? nil : buoy.waveHeight
+    }
+    
+    /// Returns the period to display (either selected or current)
+    private func displayedPeriod(for buoy: Buoy) -> String? {
+        if let selected = selectedDataPoint, let period = selected.MaxPeriod {
+            return String(format: "%.1f", period)
+        }
+        return buoy.maxPeriod.isEmpty ? nil : buoy.maxPeriod
+    }
+    
+    /// Returns the wind speed to display (either selected or current)
+    private func displayedWindSpeed(for buoy: Buoy) -> String? {
+        if let selected = selectedDataPoint, let speed = selected.WindSpeed {
+            return String(format: "%.1f", speed)
+        }
+        return buoy.windSpeed.isEmpty ? nil : buoy.windSpeed
+    }
+    
+    /// Returns the wave direction to display (either selected or current)
+    private func displayedWaveDirection(for buoy: Buoy) -> String? {
+        if let selected = selectedDataPoint, let direction = selected.MeanWaveDirection {
+            return String(direction)
+        }
+        return buoy.waveDirection.isEmpty ? nil : buoy.waveDirection
+    }
+    
+    /// Returns the water temp to display (either selected or current)
+    private func displayedWaterTemp(for buoy: Buoy) -> String? {
+        if let selected = selectedDataPoint, let temp = selected.SeaTemperature {
+            return String(format: "%.1f", temp)
+        }
+        return buoy.waterTemp.isEmpty ? nil : buoy.waterTemp
+    }
+    
+    /// Returns the air temp to display (either selected or current)
+    private func displayedAirTemp(for buoy: Buoy) -> String? {
+        if let selected = selectedDataPoint, let temp = selected.AirTemperature {
+            return String(format: "%.1f", temp)
+        }
+        return buoy.airTemp.isEmpty ? nil : buoy.airTemp
+    }
+    
+    // MARK: - Extended Data Loading
+    
+    /// Checks if the selected time is outside the currently loaded data range
+    private func isTimeOutsideLoadedRange(_ time: Date, buoy: Buoy) -> Bool {
+        guard !buoy.historicalData.isEmpty else { return true }
+        
+        // Get the min and max times in the loaded data
+        let times = buoy.historicalData.map { $0.time }
+        guard let minTime = times.min(), let maxTime = times.max() else { return true }
+        
+        // Add a small buffer (5 minutes) to avoid loading when just near the edge
+        let bufferSeconds: TimeInterval = 5 * 60
+        let bufferedMinTime = minTime.addingTimeInterval(-bufferSeconds)
+        let bufferedMaxTime = maxTime.addingTimeInterval(bufferSeconds)
+        
+        // Check if time is outside the range
+        return time < bufferedMinTime || time > bufferedMaxTime
+    }
+    
+    /// Loads 24 hours of data centered around the selected time
+    @MainActor
+    private func loadDataAroundTime(_ time: Date, for buoy: Buoy) async {
+        // Prevent multiple simultaneous loads
+        guard !isLoadingExtendedData else { return }
+        
+        isLoadingExtendedData = true
+        
+        print("📊 Loading data around time: \(formatTime(time))")
+        
+        // Calculate 24-hour range centered on selected time (±12 hours)
+        let startDate = time.addingTimeInterval(-12 * 60 * 60) // 12 hours before
+        let endDate = time.addingTimeInterval(12 * 60 * 60)    // 12 hours after
+        
+        await viewModel.loadHistoricalDataForBuoyDateRange(
+            id: buoy.id,
+            startDate: startDate,
+            endDate: endDate
+        ) { updatedBuoy in
+            print("✅ Extended data loaded for buoy: \(buoy.name)")
+            
+            // Re-select the time point to update the data point with new data
+            if let selectedTime = self.selectedTimePoint {
+                if let currentBuoy = self.viewModel.buoys.first(where: { $0.name == buoy.name }) {
+                    self.updateSelectedDataPoint(for: selectedTime, buoy: currentBuoy)
+                }
+            }
+        }
+        
+        isLoadingExtendedData = false
     }
 }
 
