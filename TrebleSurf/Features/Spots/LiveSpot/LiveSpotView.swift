@@ -12,6 +12,7 @@ struct LiveSpotView: View {
     @State private var selectedReport: SurfReport?
     @State private var showingVideoPlayer = false
     @State private var videoURL: URL?
+    @State private var showingAllReports = false
 
     var body: some View {
         ScrollView {
@@ -28,6 +29,19 @@ struct LiveSpotView: View {
                     HStack {
                         Text("Recent Report")
                             .font(.headline)
+                        
+                        // View All Reports button
+                        Button(action: {
+                            showingAllReports = true
+                        }) {
+                            HStack(spacing: 4) {
+                                Text("View All")
+                                    .font(.subheadline)
+                                Image(systemName: "chevron.right")
+                                    .font(.caption)
+                            }
+                            .foregroundColor(.blue)
+                        }
                         
                         Spacer()
                         
@@ -393,6 +407,9 @@ struct LiveSpotView: View {
                         try? FileManager.default.removeItem(at: videoURL)
                     }
             }
+        }
+        .sheet(isPresented: $showingAllReports) {
+            SpotReportsListView(spotId: spotId, spotName: viewModel.getSpotName(from: spotId))
         }
     }
     

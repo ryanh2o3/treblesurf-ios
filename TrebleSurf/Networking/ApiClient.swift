@@ -704,6 +704,31 @@ extension APIClient {
         }
     }
     
+    func fetchAllSpotReports(country: String, region: String, spot: String, limit: Int = 50, completion: @escaping (Result<[SurfReportResponse], Error>) -> Void) {
+        let endpoint = "/api/getAllSpotReports?country=\(country)&region=\(region)&spot=\(spot)&limit=\(limit)"
+        
+        print("📋 [API_CLIENT] Fetching all reports for spot: \(spot), limit: \(limit)")
+        
+        // Use flexible request method that can handle authentication gracefully
+        makeFlexibleRequest(to: endpoint, requiresAuth: true) { (result: Result<[SurfReportResponse], Error>) in
+            switch result {
+            case .success(let surfReports):
+                print("✅ [API_CLIENT] Successfully fetched \(surfReports.count) surf reports")
+                completion(.success(surfReports))
+            case .failure(let error):
+                print("❌ [API_CLIENT] Failed to fetch all surf reports: \(error.localizedDescription)")
+                
+                // Add debugging to see what the actual response looks like
+                if let nsError = error as NSError? {
+                    print("Error domain: \(nsError.domain), code: \(nsError.code)")
+                    print("Error user info: \(nsError.userInfo)")
+                }
+                
+                completion(.failure(error))
+            }
+        }
+    }
+    
     func getReportImage(key: String, completion: @escaping (Result<SurfReportImageResponse, Error>) -> Void) {
         let endpoint = "/api/getReportImage?key=\(key)"
         

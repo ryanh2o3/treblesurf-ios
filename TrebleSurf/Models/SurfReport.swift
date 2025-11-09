@@ -1,17 +1,44 @@
 import Foundation
 import UIKit
+
+// Helper type to decode either String or Double
+enum StringOrDouble: Decodable {
+    case string(String)
+    case double(Double)
+    
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        if let doubleValue = try? container.decode(Double.self) {
+            self = .double(doubleValue)
+        } else if let stringValue = try? container.decode(String.self) {
+            self = .string(stringValue)
+        } else {
+            throw DecodingError.typeMismatch(StringOrDouble.self, DecodingError.Context(codingPath: decoder.codingPath, debugDescription: "Expected String or Double"))
+        }
+    }
+    
+    var doubleValue: Double? {
+        switch self {
+        case .string(let str):
+            return Double(str)
+        case .double(let value):
+            return value
+        }
+    }
+}
+
 struct SurfReportResponse: Decodable {
-    let consistency: String
+    let consistency: String?
     let imageKey: String?
     let videoKey: String?
-    let messiness: String
-    let quality: String
-    let reporter: String
-    let surfSize: String
+    let messiness: String?
+    let quality: String?
+    let reporter: String?
+    let surfSize: String?
     let time: String
     let userEmail: String?
-    let windAmount: String
-    let windDirection: String
+    let windAmount: String?
+    let windDirection: String?
     let countryRegionSpot: String
     let dateReported: String
     let mediaType: String?
@@ -22,9 +49,9 @@ struct SurfReportResponse: Decodable {
     let windSimilarity: Double?
     let combinedSimilarity: Double?
     let matchedBuoy: String?
-    let historicalBuoyWaveHeight: Double?
-    let historicalBuoyWaveDirection: Double?
-    let historicalBuoyPeriod: Double?
+    let historicalBuoyWaveHeight: StringOrDouble?
+    let historicalBuoyWaveDirection: StringOrDouble?
+    let historicalBuoyPeriod: StringOrDouble?
     let historicalWindSpeed: Double?
     let historicalWindDirection: Double?
     let travelTimeHours: Double?
@@ -61,17 +88,17 @@ struct SurfReportResponse: Decodable {
 // Identifiable type for app usage
 class SurfReport: ObservableObject, Identifiable {
     let id = UUID()
-    let consistency: String
+    let consistency: String  // Stored with default empty string
     let imageKey: String?
     let videoKey: String?
-    let messiness: String
-    let quality: String
-    let reporter: String
-    let surfSize: String
+    let messiness: String  // Stored with default empty string
+    let quality: String  // Stored with default empty string
+    let reporter: String  // Stored with default "Anonymous"
+    let surfSize: String  // Stored with default empty string
     let time: String
     let userEmail: String?
-    let windAmount: String
-    let windDirection: String
+    let windAmount: String  // Stored with default empty string
+    let windDirection: String  // Stored with default empty string
     let countryRegionSpot: String
     let dateReported: String
     let mediaType: String?
@@ -134,18 +161,30 @@ class SurfReport: ObservableObject, Identifiable {
 
 extension SurfReport {
     convenience init(from response: SurfReportResponse) {
+        // Format the time for display
+        let formattedTime: String
+        if let date = Self.parseTime(response.time) {
+            let formatter = DateFormatter()
+            formatter.dateFormat = "d MMM, h:mma"
+            formatter.locale = Locale(identifier: "en_US")
+            formatter.timeZone = TimeZone.current
+            formattedTime = formatter.string(from: date)
+        } else {
+            formattedTime = "Invalid Date"
+        }
+        
         self.init(
-            consistency: response.consistency,
+            consistency: response.consistency ?? "",
             imageKey: response.imageKey,
             videoKey: response.videoKey,
-            messiness: response.messiness,
-            quality: response.quality,
-            reporter: response.reporter,
-            surfSize: response.surfSize,
-            time: response.time,
+            messiness: response.messiness ?? "",
+            quality: response.quality ?? "",
+            reporter: response.reporter ?? "Anonymous",
+            surfSize: response.surfSize ?? "",
+            time: formattedTime,
             userEmail: response.userEmail,
-            windAmount: response.windAmount,
-            windDirection: response.windDirection,
+            windAmount: response.windAmount ?? "",
+            windDirection: response.windDirection ?? "",
             countryRegionSpot: response.countryRegionSpot,
             dateReported: response.dateReported,
             mediaType: response.mediaType,
@@ -154,13 +193,60 @@ extension SurfReport {
             windSimilarity: response.windSimilarity,
             combinedSimilarity: response.combinedSimilarity,
             matchedBuoy: response.matchedBuoy,
-            historicalBuoyWaveHeight: response.historicalBuoyWaveHeight,
-            historicalBuoyWaveDirection: response.historicalBuoyWaveDirection,
-            historicalBuoyPeriod: response.historicalBuoyPeriod,
+            historicalBuoyWaveHeight: response.historicalBuoyWaveHeight?.doubleValue,
+            historicalBuoyWaveDirection: response.historicalBuoyWaveDirection?.doubleValue,
+            historicalBuoyPeriod: response.historicalBuoyPeriod?.doubleValue,
             historicalWindSpeed: response.historicalWindSpeed,
             historicalWindDirection: response.historicalWindDirection,
             travelTimeHours: response.travelTimeHours
         )
+    }
+    
+    /// Parse timestamp with multiple format support
+    private static func parseTime(_ timestamp: String) -> Date? {
+        // Format 1: "2025-07-12 19:57:27 +0000 UTC"
+        let formatter1 = DateFormatter()
+        formatter1.dateFormat = "yyyy-MM-dd HH:mm:ss ZZZZZ 'UTC'"
+        formatter1.locale = Locale(identifier: "en_US_POSIX")
+        formatter1.timeZone = TimeZone(abbreviation: "UTC")
+        
+        if let date = formatter1.date(from: timestamp) {
+            return date
+        }
+        
+        // Format 2: "2025-08-18 22:32:30.819091968 +0000 UTC m=+293.995127367"
+        // Extract the main timestamp part before the Go runtime info
+        if timestamp.contains(" m=") {
+            let components = timestamp.components(separatedBy: " m=")
+            if let mainTimestamp = components.first {
+                let formatter2 = DateFormatter()
+                formatter2.dateFormat = "yyyy-MM-dd HH:mm:ss.SSSSSSSSS ZZZZZ 'UTC'"
+                formatter2.locale = Locale(identifier: "en_US_POSIX")
+                formatter2.timeZone = TimeZone(abbreviation: "UTC")
+                
+                if let date = formatter2.date(from: mainTimestamp) {
+                    return date
+                }
+                
+                // Try without nanoseconds
+                let formatter3 = DateFormatter()
+                formatter3.dateFormat = "yyyy-MM-dd HH:mm:ss ZZZZZ 'UTC'"
+                formatter3.locale = Locale(identifier: "en_US_POSIX")
+                formatter3.timeZone = TimeZone(abbreviation: "UTC")
+                
+                if let date = formatter3.date(from: mainTimestamp) {
+                    return date
+                }
+            }
+        }
+        
+        // Format 3: Try ISO8601 format
+        let isoFormatter = ISO8601DateFormatter()
+        if let date = isoFormatter.date(from: timestamp) {
+            return date
+        }
+        
+        return nil
     }
 }
 

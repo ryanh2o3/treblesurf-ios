@@ -67,40 +67,8 @@ class LiveSpotViewModel: BaseViewModel {
             outputDateFormatter.locale = Locale(identifier: "en_US_POSIX")
 
             let reports = responses.map { [weak self] response in
-                // Parse the timestamp with multiple format support
-                let date = self?.parseTimestamp(response.time)
-                let formattedTime = date != nil ? outputDateFormatter.string(from: date!) : "Invalid Date"
-                
-                // Extract just the spot name
-                let spotName = response.countryRegionSpot.components(separatedBy: "_").last ?? response.countryRegionSpot
-                
-                let report = SurfReport(
-                    consistency: response.consistency,
-                    imageKey: response.imageKey,
-                    videoKey: response.videoKey,
-                    messiness: response.messiness,
-                    quality: response.quality,
-                    reporter: response.reporter,
-                    surfSize: response.surfSize,
-                    time: formattedTime,
-                    userEmail: response.userEmail,
-                    windAmount: response.windAmount,
-                    windDirection: response.windDirection,
-                    countryRegionSpot: spotName,
-                    dateReported: response.dateReported,
-                    mediaType: response.mediaType,
-                    iosValidated: response.iosValidated,
-                    buoySimilarity: response.buoySimilarity,
-                    windSimilarity: response.windSimilarity,
-                    combinedSimilarity: response.combinedSimilarity,
-                    matchedBuoy: response.matchedBuoy,
-                    historicalBuoyWaveHeight: response.historicalBuoyWaveHeight,
-                    historicalBuoyWaveDirection: response.historicalBuoyWaveDirection,
-                    historicalBuoyPeriod: response.historicalBuoyPeriod,
-                    historicalWindSpeed: response.historicalWindSpeed,
-                    historicalWindDirection: response.historicalWindDirection,
-                    travelTimeHours: response.travelTimeHours
-                )
+                // Use the convenience initializer that handles optional fields
+                let report = SurfReport(from: response)
                 
                 if let imageKey = response.imageKey, !imageKey.isEmpty {
                     self?.fetchImage(for: imageKey) { imageData in
@@ -215,40 +183,8 @@ class LiveSpotViewModel: BaseViewModel {
             outputDateFormatter.locale = Locale(identifier: "en_US_POSIX")
 
             let reports = responses.map { [weak self] response in
-                // Parse the timestamp with multiple format support
-                let date = self?.parseTimestamp(response.time)
-                let formattedTime = date != nil ? outputDateFormatter.string(from: date!) : "Invalid Date"
-                
-                // Extract just the spot name
-                let spotName = response.countryRegionSpot.components(separatedBy: "_").last ?? response.countryRegionSpot
-                
-                let report = SurfReport(
-                    consistency: response.consistency,
-                    imageKey: response.imageKey,
-                    videoKey: response.videoKey,
-                    messiness: response.messiness,
-                    quality: response.quality,
-                    reporter: response.reporter,
-                    surfSize: response.surfSize,
-                    time: formattedTime,
-                    userEmail: response.userEmail,
-                    windAmount: response.windAmount,
-                    windDirection: response.windDirection,
-                    countryRegionSpot: spotName,
-                    dateReported: response.dateReported,
-                    mediaType: response.mediaType,
-                    iosValidated: response.iosValidated,
-                    buoySimilarity: response.buoySimilarity,
-                    windSimilarity: response.windSimilarity,
-                    combinedSimilarity: response.combinedSimilarity,
-                    matchedBuoy: response.matchedBuoy,
-                    historicalBuoyWaveHeight: response.historicalBuoyWaveHeight,
-                    historicalBuoyWaveDirection: response.historicalBuoyWaveDirection,
-                    historicalBuoyPeriod: response.historicalBuoyPeriod,
-                    historicalWindSpeed: response.historicalWindSpeed,
-                    historicalWindDirection: response.historicalWindDirection,
-                    travelTimeHours: response.travelTimeHours
-                )
+                // Use the convenience initializer that handles optional fields
+                let report = SurfReport(from: response)
                 
                 if let imageKey = response.imageKey, !imageKey.isEmpty {
                     self?.fetchImage(for: imageKey) { imageData in

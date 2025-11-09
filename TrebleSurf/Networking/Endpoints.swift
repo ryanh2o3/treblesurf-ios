@@ -29,6 +29,7 @@ enum Endpoints {
     
     // MARK: - Surf Reports
     static let surfReports = "/api/getTodaySpotReports"
+    static let allSpotReports = "/api/getAllSpotReports"
     static let createSurfReport = "/api/submitSurfReport"
     static let createSurfReportWithIOSValidation = "/api/submitSurfReportWithIOSValidation"
     static let reportImage = "/api/getReportImage"
