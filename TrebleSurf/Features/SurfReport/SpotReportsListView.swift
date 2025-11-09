@@ -7,6 +7,7 @@ struct SpotReportsListView: View {
     
     @StateObject private var viewModel: SpotReportsListViewModel
     @Environment(\.dismiss) private var dismiss
+    @State private var selectedReport: SurfReport?
     
     init(spotId: String, spotName: String) {
         self.spotId = spotId
@@ -45,6 +46,9 @@ struct SpotReportsListView: View {
                             ForEach(viewModel.reports) { report in
                                 ReportCardView(report: report)
                                     .padding(.horizontal)
+                                    .onTapGesture {
+                                        selectedReport = report
+                                    }
                             }
                             
                             // Load more indicator
@@ -103,6 +107,9 @@ struct SpotReportsListView: View {
             }
             .refreshable {
                 await viewModel.refresh()
+            }
+            .sheet(item: $selectedReport) { report in
+                SurfReportDetailView(report: report, backButtonText: "Back to \(spotName)")
             }
         }
     }
