@@ -36,8 +36,9 @@ struct SignInView: View {
             
             Spacer()
             
+            #if DEBUG
             if UIDevice.current.isSimulator {
-                // Simulator Mode
+                // Simulator Mode - Only available in debug builds
                 VStack(spacing: 16) {
                     Image(systemName: "iphone.slash")
                         .font(.system(size: 48))
@@ -71,13 +72,27 @@ struct SignInView: View {
                     }
                 }
             }
+            #else
+            // Production Mode - Always show Google Sign-In
+            VStack(spacing: 16) {
+                GoogleSignInButton(action: handleSignInButton)
+                    .disabled(isSigningIn)
+                
+                if isSigningIn {
+                    ProgressView("Signing in...")
+                        .progressViewStyle(CircularProgressViewStyle())
+                }
+            }
+            #endif
             
             Spacer()
         }
         .padding()
+        #if DEBUG
         .sheet(isPresented: $showDevSignIn) {
             DevSignInView()
         }
+        #endif
     }
 
     func handleSignInButton() {
@@ -115,7 +130,9 @@ struct SignInView: View {
     }
 }
 
+#if DEBUG
 // MARK: - Development Sign-In View
+// This view is only available in debug builds for testing purposes
 struct DevSignInView: View {
     @Environment(\.dismiss) private var dismiss
     @StateObject private var authManager = AuthManager.shared
@@ -189,6 +206,7 @@ struct DevSignInView: View {
         }
     }
 }
+#endif
 
 #Preview {
     SignInView()

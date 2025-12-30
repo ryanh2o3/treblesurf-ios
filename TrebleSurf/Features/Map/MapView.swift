@@ -151,20 +151,6 @@ struct MapView: View {
             viewModel.loadMapData()
         })
     }
-    
-    // Navigate to detailed spot view
-    private func navigateToSpotDetails(_ spot: SpotData) {
-        // For now, we'll just clear the selection
-        // In a full implementation, this would navigate to the spot detail view
-        // and potentially change the tab or push a new view
-        viewModel.clearSelection()
-        
-        // TODO: Implement navigation to spot detail view
-        // This could involve:
-        // 1. Changing to the Spots tab
-        // 2. Pushing a detail view
-        // 3. Using a navigation coordinator
-    }
 }
 
 struct MapView_Previews: PreviewProvider {
