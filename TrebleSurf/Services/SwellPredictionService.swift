@@ -44,25 +44,31 @@ class SwellPredictionService: ObservableObject {
                 let responses = try await self.apiClient.fetchSwellPrediction(country: country, region: region, spot: spotName)
                 let entries = responses.map { SwellPredictionEntry(from: $0) }
                     .sorted { $0.arrivalTime < $1.arrivalTime }
-                self.isLoading = false
-                self.multiplePredictions[spot.id] = entries
-                if let firstEntry = entries.first {
-                    self.predictions[spot.id] = firstEntry
+                await MainActor.run {
+                    self.isLoading = false
+                    self.multiplePredictions[spot.id] = entries
+                    if let firstEntry = entries.first {
+                        self.predictions[spot.id] = firstEntry
+                    }
+                    completion(.success(entries))
                 }
-                completion(.success(entries))
             } catch {
                 // Fallback to DynamoDB format
                 do {
                     let dynamoDBData = try await self.apiClient.fetchSwellPredictionDynamoDB(country: country, region: region, spot: spotName)
                     let response = SwellPredictionResponse(from: dynamoDBData)
                     let entry = SwellPredictionEntry(from: response)
-                    self.isLoading = false
-                    self.predictions[spot.id] = entry
-                    completion(.success([entry]))
+                    await MainActor.run {
+                        self.isLoading = false
+                        self.predictions[spot.id] = entry
+                        completion(.success([entry]))
+                    }
                 } catch {
-                    self.isLoading = false
-                    self.lastError = error
-                    completion(.failure(error))
+                    await MainActor.run {
+                        self.isLoading = false
+                        self.lastError = error
+                        completion(.failure(error))
+                    }
                 }
             }
         }
