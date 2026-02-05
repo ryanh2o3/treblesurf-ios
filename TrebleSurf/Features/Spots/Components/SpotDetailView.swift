@@ -83,12 +83,14 @@ struct SpotDetailView: View {
                     // Spot image - moved here to be shared between live and forecast views
                     if let imageString = spot.imageString, !imageString.isEmpty,
                        let uiImage = imageString.toUIImage() {
-                        ZStack(alignment: .bottom) {
-                            Image(uiImage: uiImage)
-                                .resizable()
-                                .aspectRatio(contentMode: .fill)
-                                .frame(height: 200)
-                                .clipShape(RoundedRectangle(cornerRadius: 12))
+                        GeometryReader { geometry in
+                            ZStack(alignment: .bottom) {
+                                Image(uiImage: uiImage)
+                                    .resizable()
+                                    .aspectRatio(contentMode: .fill)
+                                    .frame(width: geometry.size.width, height: 200)
+                                    .clipped()
+                                    .clipShape(RoundedRectangle(cornerRadius: 12))
                             
                             // Overlay with key data and direction arrow - shared between both views
                             VStack(spacing: 12) {
@@ -103,11 +105,12 @@ struct SpotDetailView: View {
                                         selectedSwellPrediction: selectedSwellPrediction
                                     )
                                 }
+                                }
+                                .padding(.bottom, 8)
+                                .animation(.easeInOut(duration: 0.3), value: selectedViewMode)
                             }
-                            .padding(.bottom, 8)
-                            .animation(.easeInOut(duration: 0.3), value: selectedViewMode)
                         }
-                        .padding(.horizontal, 6)
+                        .frame(height: 200)
                         .padding(.bottom, 8)
                     }
                     
@@ -149,7 +152,6 @@ struct SpotDetailView: View {
                         )
                         Spacer()
                     }
-                    .padding(.horizontal, 6)
                     
                     // Content based on selected view mode
                     if selectedViewMode == "Live" {
@@ -178,7 +180,8 @@ struct SpotDetailView: View {
                         .clipped()
                     }
                 }
-                .padding()
+                .padding(.vertical)
+                .padding(.horizontal, 8)
             }
             Spacer()
         }
