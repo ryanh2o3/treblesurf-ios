@@ -8,11 +8,34 @@ struct LiveSpotView: View {
     var refreshTrigger: Bool = false // Add refresh trigger
     var spotImage: Image? = nil // This will be nil since parent handles the image
     var aiPrediction: SwellPredictionEntry? = nil // AI prediction passed from parent
-    @StateObject private var viewModel = LiveSpotViewModel()
+    @StateObject private var viewModel: LiveSpotViewModel
+    private let dependencies: AppDependencies
     @State private var selectedReport: SurfReport?
     @State private var showingVideoPlayer = false
     @State private var videoURL: URL?
     @State private var showingAllReports = false
+    
+    init(
+        spotId: String,
+        refreshTrigger: Bool = false,
+        spotImage: Image? = nil,
+        aiPrediction: SwellPredictionEntry? = nil,
+        dependencies: AppDependencies
+    ) {
+        self.spotId = spotId
+        self.refreshTrigger = refreshTrigger
+        self.spotImage = spotImage
+        self.aiPrediction = aiPrediction
+        self.dependencies = dependencies
+        _viewModel = StateObject(
+            wrappedValue: LiveSpotViewModel(
+                apiClient: dependencies.apiClient,
+                imageCache: dependencies.imageCache,
+                errorHandler: dependencies.errorHandler,
+                logger: dependencies.errorLogger
+            )
+        )
+    }
 
     var body: some View {
         ScrollView {
@@ -361,7 +384,7 @@ struct LiveSpotView: View {
         }
         .refreshable {
             // Refresh current conditions
-            dataStore.fetchConditions(for: spotId) { _ in }
+            _ = await dataStore.fetchConditions(for: spotId)
             
             // Refresh surf reports
             viewModel.refreshSurfReports(for: spotId)
@@ -371,11 +394,7 @@ struct LiveSpotView: View {
         }
         .task {
             // Trigger data fetch when view appears
-            dataStore.fetchConditions(for: spotId) { success in
-                if !success {
-                    // Handle error if needed
-                }
-            }
+            _ = await dataStore.fetchConditions(for: spotId)
             
             // Fetch surf reports for this spot
             viewModel.fetchSurfReports(for: spotId)
@@ -385,18 +404,32 @@ struct LiveSpotView: View {
         }
         .onChange(of: refreshTrigger) { _, newValue in
             // Refresh data when refresh trigger changes
-            dataStore.fetchConditions(for: spotId) { _ in }
-            viewModel.refreshSurfReports(for: spotId)
-            viewModel.refreshMatchingConditionReports(for: spotId)
+            Task {
+                _ = await dataStore.fetchConditions(for: spotId)
+                viewModel.refreshSurfReports(for: spotId)
+                viewModel.refreshMatchingConditionReports(for: spotId)
+            }
         }
         .sheet(item: $selectedReport) { report in
-            SurfReportDetailView(report: report, backButtonText: "Back to \(viewModel.getSpotName(from: spotId))")
+            SurfReportDetailView(
+                report: report,
+                backButtonText: "Back to \(viewModel.getSpotName(from: spotId))",
+                apiClient: dependencies.apiClient
+            )
         }
         .sheet(isPresented: $viewModel.showReportForm) {
-            SurfReportSubmissionView(spotId: spotId, spotName: viewModel.getSpotName(from: spotId))
+            SurfReportSubmissionView(
+                spotId: spotId,
+                spotName: viewModel.getSpotName(from: spotId),
+                dependencies: dependencies
+            )
         }
         .sheet(isPresented: $viewModel.showQuickForm) {
-            QuickPhotoReportView(spotId: spotId, spotName: viewModel.getSpotName(from: spotId))
+            QuickPhotoReportView(
+                spotId: spotId,
+                spotName: viewModel.getSpotName(from: spotId),
+                dependencies: dependencies
+            )
         }
         .sheet(isPresented: $showingVideoPlayer) {
             if let videoURL = videoURL {
@@ -409,7 +442,11 @@ struct LiveSpotView: View {
             }
         }
         .sheet(isPresented: $showingAllReports) {
-            SpotReportsListView(spotId: spotId, spotName: viewModel.getSpotName(from: spotId))
+            SpotReportsListView(
+                spotId: spotId,
+                spotName: viewModel.getSpotName(from: spotId),
+                dependencies: dependencies
+            )
         }
     }
     
@@ -634,6 +671,7 @@ struct LiveSpotView: View {
 }
 
 #Preview {
-    LiveSpotView(spotId: "test")
-        .environmentObject(DataStore())
+    let dependencies = AppDependencies()
+    LiveSpotView(spotId: "test", dependencies: dependencies)
+        .environmentObject(dependencies.dataStore)
 }

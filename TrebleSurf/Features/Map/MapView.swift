@@ -2,11 +2,24 @@ import SwiftUI
 import MapKit
 
 struct MapView: View {
-    @StateObject private var viewModel = MapViewModel()
+    @StateObject private var viewModel: MapViewModel
+    private let dependencies: AppDependencies
     @State private var region: MKCoordinateRegion = MKCoordinateRegion(
         center: CLLocationCoordinate2D(latitude: 55.186844, longitude: -7.59785),
         span: MKCoordinateSpan(latitudeDelta: 1.0, longitudeDelta: 1.0)
     )
+    
+    init(dependencies: AppDependencies) {
+        self.dependencies = dependencies
+        _viewModel = StateObject(
+            wrappedValue: MapViewModel(
+                dataStore: dependencies.dataStore,
+                apiClient: dependencies.apiClient,
+                errorHandler: dependencies.errorHandler,
+                logger: dependencies.errorLogger
+            )
+        )
+    }
     
     var body: some View {
         NavigationStack {
@@ -83,7 +96,8 @@ struct MapView: View {
                                 SpotDetailView(
                                     spot: selectedSpot,
                                     onBack: { viewModel.clearSelection() },
-                                    showBackButton: false
+                                    showBackButton: false,
+                                    dependencies: dependencies
                                 )
                                 .background(
                                     RoundedRectangle(cornerRadius: 20)
@@ -113,7 +127,8 @@ struct MapView: View {
                                 BuoyDetailView(
                                     buoy: selectedBuoy,
                                     onBack: { viewModel.clearSelection() },
-                                    showBackButton: false
+                                    showBackButton: false,
+                                    dependencies: dependencies
                                 )
                                 .background(
                                     RoundedRectangle(cornerRadius: 20)
@@ -155,6 +170,6 @@ struct MapView: View {
 
 struct MapView_Previews: PreviewProvider {
     static var previews: some View {
-        MapView()
+        MapView(dependencies: AppDependencies())
     }
 }

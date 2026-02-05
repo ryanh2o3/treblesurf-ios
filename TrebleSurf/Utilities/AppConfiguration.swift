@@ -60,6 +60,6 @@ final class AppConfiguration: AppConfigurationProtocol {
         UIDevice.current.isSimulator
     }
     
-    private init() {}
+    init() {}
 }
 

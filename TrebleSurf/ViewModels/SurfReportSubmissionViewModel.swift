@@ -87,6 +87,23 @@ class SurfReportSubmissionViewModel: BaseViewModel {
     // Store the spotId for image uploads
     private var spotId: String?
     
+    private let apiClient: APIClientProtocol
+    private let legacyErrorHandler: APIErrorHandler
+    private let imageValidationService: ImageValidationService
+    
+    init(
+        apiClient: APIClientProtocol,
+        legacyErrorHandler: APIErrorHandler = APIErrorHandler(),
+        imageValidationService: ImageValidationService = ImageValidationService(),
+        errorHandler: ErrorHandlerProtocol? = nil,
+        logger: ErrorLoggerProtocol? = nil
+    ) {
+        self.apiClient = apiClient
+        self.legacyErrorHandler = legacyErrorHandler
+        self.imageValidationService = imageValidationService
+        super.init(errorHandler: errorHandler, logger: logger)
+    }
+    
     // Nonisolated storage for video URL cleanup in deinit
     nonisolated(unsafe) private var temporaryVideoURL: URL?
     
@@ -365,7 +382,7 @@ class SurfReportSubmissionViewModel: BaseViewModel {
         super.handleError(error, context: context)
         
         // Also maintain compatibility with the old error display system
-        let errorDisplay = APIErrorHandler.shared.handleAPIError(error)
+        let errorDisplay = legacyErrorHandler.handleAPIError(error)
         
         if let errorDisplay = errorDisplay {
             logger.log("Error display created: \(errorDisplay.title) - \(errorDisplay.message)", level: .debug, category: .general)
@@ -462,7 +479,7 @@ class SurfReportSubmissionViewModel: BaseViewModel {
     func handleImageError(_ error: Error) {
         logger.log("Handling image-specific error", level: .info, category: .media)
         
-        let errorDisplay = APIErrorHandler.shared.handleAPIError(error)
+        let errorDisplay = legacyErrorHandler.handleAPIError(error)
         
         if let errorDisplay = errorDisplay, errorDisplay.requiresImageRetry {
             logger.log("Image retry required - clearing image and showing guidance", level: .warning, category: .media)
@@ -503,7 +520,7 @@ class SurfReportSubmissionViewModel: BaseViewModel {
                 
                 // Validate image using iOS ML before proceeding
                 print("🔍 [IMAGE_VALIDATION] Starting iOS ML validation...")
-                ImageValidationService.shared.validateSurfImage(image) { result in
+        imageValidationService.validateSurfImage(image) { result in
                     Task { @MainActor in
                         switch result {
                         case .success(let isValid):
@@ -758,7 +775,7 @@ class SurfReportSubmissionViewModel: BaseViewModel {
         videoValidationError = nil
         videoValidationPassed = false
         
-        ImageValidationService.shared.validateSurfVideo(videoURL) { [weak self] result in
+        imageValidationService.validateSurfVideo(videoURL) { [weak self] result in
             Task { @MainActor in
                 self?.isValidatingVideo = false
                 
@@ -1254,27 +1271,23 @@ class SurfReportSubmissionViewModel: BaseViewModel {
         let endpoint = "/api/generateImageUploadURL?country=\(country)&region=\(region)&spot=\(spot)"
         print("🌐 [IMAGE_UPLOAD] Requesting presigned URL from: \(endpoint)")
         
-        return try await withCheckedThrowingContinuation { continuation in
-            APIClient.shared.request(endpoint) { (result: Result<PresignedUploadResponse, Error>) in
-                switch result {
-                case .success(let response):
-                    print("✅ [IMAGE_UPLOAD] Presigned URL response received")
-                    print("🔑 [IMAGE_UPLOAD] Image key: \(response.imageKey)")
-                    print("🌐 [IMAGE_UPLOAD] Upload URL: \(response.uploadUrl.prefix(50))...")
-                    print("⏰ [IMAGE_UPLOAD] Expires at: \(response.expiresAt)")
-                    continuation.resume(returning: response)
-                case .failure(let error):
-                    print("❌ [IMAGE_UPLOAD] Failed to generate presigned URL: \(error)")
-                    print("❌ [IMAGE_UPLOAD] Error details:")
-                    if let nsError = error as NSError? {
-                        print("   - Domain: \(nsError.domain)")
-                        print("   - Code: \(nsError.code)")
-                        print("   - Description: \(nsError.localizedDescription)")
-                        print("   - User Info: \(nsError.userInfo)")
-                    }
-                    continuation.resume(throwing: error)
-                }
+        do {
+            let response: PresignedUploadResponse = try await apiClient.request(endpoint)
+            print("✅ [IMAGE_UPLOAD] Presigned URL response received")
+            print("🔑 [IMAGE_UPLOAD] Image key: \(response.imageKey)")
+            print("🌐 [IMAGE_UPLOAD] Upload URL: \(response.uploadUrl.prefix(50))...")
+            print("⏰ [IMAGE_UPLOAD] Expires at: \(response.expiresAt)")
+            return response
+        } catch {
+            print("❌ [IMAGE_UPLOAD] Failed to generate presigned URL: \(error)")
+            print("❌ [IMAGE_UPLOAD] Error details:")
+            if let nsError = error as NSError? {
+                print("   - Domain: \(nsError.domain)")
+                print("   - Code: \(nsError.code)")
+                print("   - Description: \(nsError.localizedDescription)")
+                print("   - User Info: \(nsError.userInfo)")
             }
+            throw error
         }
     }
     
@@ -1355,26 +1368,22 @@ class SurfReportSubmissionViewModel: BaseViewModel {
         let endpoint = "/api/generateVideoUploadURL?country=\(country)&region=\(region)&spot=\(spot)"
         print("🌐 [VIDEO_UPLOAD] Requesting presigned URL from: \(endpoint)")
         
-        return try await withCheckedThrowingContinuation { continuation in
-            APIClient.shared.request(endpoint) { (result: Result<PresignedVideoUploadResponse, Error>) in
-                switch result {
-                case .success(let response):
-                    print("✅ [VIDEO_UPLOAD] Presigned URL response received")
-                    print("🔑 [VIDEO_UPLOAD] Video key: \(response.videoKey)")
-                    print("🌐 [VIDEO_UPLOAD] Upload URL: \(response.uploadUrl.prefix(50))...")
-                    continuation.resume(returning: response)
-                case .failure(let error):
-                    print("❌ [VIDEO_UPLOAD] Failed to generate presigned URL: \(error)")
-                    print("❌ [VIDEO_UPLOAD] Error details:")
-                    if let nsError = error as NSError? {
-                        print("   - Domain: \(nsError.domain)")
-                        print("   - Code: \(nsError.code)")
-                        print("   - Description: \(nsError.localizedDescription)")
-                        print("   - User Info: \(nsError.userInfo)")
-                    }
-                    continuation.resume(throwing: error)
-                }
+        do {
+            let response: PresignedVideoUploadResponse = try await apiClient.request(endpoint)
+            print("✅ [VIDEO_UPLOAD] Presigned URL response received")
+            print("🔑 [VIDEO_UPLOAD] Video key: \(response.videoKey)")
+            print("🌐 [VIDEO_UPLOAD] Upload URL: \(response.uploadUrl.prefix(50))...")
+            return response
+        } catch {
+            print("❌ [VIDEO_UPLOAD] Failed to generate presigned URL: \(error)")
+            print("❌ [VIDEO_UPLOAD] Error details:")
+            if let nsError = error as NSError? {
+                print("   - Domain: \(nsError.domain)")
+                print("   - Code: \(nsError.code)")
+                print("   - Description: \(nsError.localizedDescription)")
+                print("   - User Info: \(nsError.userInfo)")
             }
+            throw error
         }
     }
     
@@ -1653,77 +1662,48 @@ class SurfReportSubmissionViewModel: BaseViewModel {
         
         // Always refresh CSRF token before making the request to ensure it's current
         print("🔄 [SURF_REPORT] Refreshing CSRF token before submission...")
-        await withCheckedContinuation { continuation in
-            APIClient.shared.refreshCSRFToken { success in
-                if success {
-                    print("✅ [SURF_REPORT] CSRF token refreshed successfully: \(AuthManager.shared.csrfToken?.prefix(10) ?? "nil")...")
-                } else {
-                    print("⚠️ [SURF_REPORT] CSRF token refresh failed, proceeding with existing token")
-                }
-                continuation.resume()
-            }
+        let csrfRefreshed = await apiClient.refreshCSRFToken()
+        if csrfRefreshed {
+            print("✅ [SURF_REPORT] CSRF token refreshed successfully")
+        } else {
+            print("⚠️ [SURF_REPORT] CSRF token refresh failed, proceeding with existing token")
         }
         
         print("🚀 [SURF_REPORT] Making POST request to: \(endpoint)")
         
         // Use APIClient which handles CSRF tokens and session cookies automatically
-        try await withCheckedThrowingContinuation { continuation in
-            APIClient.shared.postRequest(to: endpoint, body: jsonData) { (result: Result<SurfReportSubmissionResponse, Error>) in
-                switch result {
-                case .success:
-                    print("✅ [SURF_REPORT] POST request successful")
-                    // Clear uploaded media tracking since submission was successful
-                    self.uploadedImageKey = nil
-                    self.uploadedVideoKey = nil
-                    self.uploadedVideoThumbnailKey = nil
-                    continuation.resume()
-                case .failure(let error):
-                    print("❌ [SURF_REPORT] POST request failed: \(error)")
-                    print("❌ [SURF_REPORT] Error details:")
-                    if let nsError = error as NSError? {
-                        print("   - Domain: \(nsError.domain)")
-                        print("   - Code: \(nsError.code)")
-                        print("   - Description: \(nsError.localizedDescription)")
-                        print("   - User Info: \(nsError.userInfo)")
-                    }
-                    
-                    // If it's a 403 error, try refreshing the CSRF token and retry once
-                    if let nsError = error as NSError? {
-                        if nsError.code == 403 {
-                            print("🔄 [SURF_REPORT] 403 error detected, refreshing CSRF token and retrying...")
-                            APIClient.shared.refreshCSRFToken { success in
-                                if success {
-                                    print("✅ [SURF_REPORT] CSRF token refreshed, retrying request...")
-                                    // Retry the request
-                                    APIClient.shared.postRequest(to: endpoint, body: jsonData) { (retryResult: Result<SurfReportSubmissionResponse, Error>) in
-                                        switch retryResult {
-                                        case .success:
-                                            print("✅ [SURF_REPORT] Retry request successful")
-                                            continuation.resume()
-                                        case .failure(let error):
-                                            print("❌ [SURF_REPORT] Retry request failed: \(error)")
-                                            print("❌ [SURF_REPORT] Retry error details:")
-                                            if let nsError = error as NSError? {
-                                                print("   - Domain: \(nsError.domain)")
-                                                print("   - Code: \(nsError.code)")
-                                                print("   - Description: \(nsError.localizedDescription)")
-                                                print("   - User Info: \(nsError.userInfo)")
-                                            }
-                                            continuation.resume(throwing: error)
-                                        }
-                                    }
-                                } else {
-                                    print("❌ [SURF_REPORT] CSRF token refresh failed, using original error")
-                                    continuation.resume(throwing: error)
-                                }
-                            }
-                            return
-                        }
-                    }
-                    
-                    continuation.resume(throwing: error)
+        do {
+            _ = try await apiClient.postRequest(to: endpoint, body: jsonData) as SurfReportSubmissionResponse
+            print("✅ [SURF_REPORT] POST request successful")
+            // Clear uploaded media tracking since submission was successful
+            self.uploadedImageKey = nil
+            self.uploadedVideoKey = nil
+            self.uploadedVideoThumbnailKey = nil
+        } catch {
+            print("❌ [SURF_REPORT] POST request failed: \(error)")
+            print("❌ [SURF_REPORT] Error details:")
+            if let nsError = error as NSError? {
+                print("   - Domain: \(nsError.domain)")
+                print("   - Code: \(nsError.code)")
+                print("   - Description: \(nsError.localizedDescription)")
+                print("   - User Info: \(nsError.userInfo)")
+            }
+            
+            // If it's a 403 error, try refreshing the CSRF token and retry once
+            if let nsError = error as NSError?, nsError.code == 403 {
+                print("🔄 [SURF_REPORT] 403 error detected, refreshing CSRF token and retrying...")
+                let retryRefresh = await apiClient.refreshCSRFToken()
+                if retryRefresh {
+                    print("✅ [SURF_REPORT] CSRF token refreshed, retrying request...")
+                    _ = try await apiClient.postRequest(to: endpoint, body: jsonData) as SurfReportSubmissionResponse
+                    print("✅ [SURF_REPORT] Retry request successful")
+                    return
+                } else {
+                    print("❌ [SURF_REPORT] CSRF token refresh failed, using original error")
                 }
             }
+            
+            throw error
         }
     }
     
@@ -1796,18 +1776,8 @@ class SurfReportSubmissionViewModel: BaseViewModel {
         
         do {
             let endpoint = "/api/deleteUploadedMedia?key=\(key)&type=\(type)"
-            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-                APIClient.shared.makeFlexibleRequest(to: endpoint, method: "DELETE", requiresAuth: true) { (result: Result<EmptyResponse, Error>) in
-                    switch result {
-                    case .success:
-                        print("✅ [CLEANUP] Successfully deleted \(type): \(key)")
-                        continuation.resume()
-                    case .failure(let error):
-                        print("❌ [CLEANUP] Failed to delete \(type) \(key): \(error)")
-                        continuation.resume(throwing: error)
-                    }
-                }
-            }
+            _ = try await apiClient.makeFlexibleRequest(to: endpoint, method: "DELETE", requiresAuth: true) as EmptyResponse
+            print("✅ [CLEANUP] Successfully deleted \(type): \(key)")
         } catch {
             print("❌ [CLEANUP] Error deleting \(type) \(key): \(error)")
         }

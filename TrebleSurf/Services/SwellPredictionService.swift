@@ -9,17 +9,17 @@ import Foundation
 import Combine
 
 class SwellPredictionService: ObservableObject {
-    static let shared = SwellPredictionService()
-    
     @Published var predictions: [String: SwellPredictionEntry] = [:]
     @Published var multiplePredictions: [String: [SwellPredictionEntry]] = [:]
     @Published var isLoading: Bool = false
     @Published var lastError: Error?
     
-    private let apiClient = APIClient.shared
+    private let apiClient: APIClient
     private var cancellables = Set<AnyCancellable>()
     
-    private init() {}
+    init(apiClient: APIClient) {
+        self.apiClient = apiClient
+    }
     
     // MARK: - Public Methods
     
@@ -38,38 +38,31 @@ class SwellPredictionService: ObservableObject {
         isLoading = true
         lastError = nil
         
-        // Use regular format first (handles array responses), fallback to DynamoDB format
-        apiClient.fetchSwellPrediction(country: country, region: region, spot: spotName) { [weak self] result in
-            DispatchQueue.main.async {
-                self?.isLoading = false
-                
-                switch result {
-                case .success(let responses):
-                    let entries = responses.map { SwellPredictionEntry(from: $0) }
-                        .sorted { $0.arrivalTime < $1.arrivalTime }
-                    // Store all predictions sorted by arrival time
-                    self?.multiplePredictions[spot.id] = entries
-                    // Store the first prediction as the primary one for backward compatibility
-                    if let firstEntry = entries.first {
-                        self?.predictions[spot.id] = firstEntry
-                    }
-                    completion(.success(entries))
-                case .failure:
-                    // Fallback to DynamoDB format
-                    self?.apiClient.fetchSwellPredictionDynamoDB(country: country, region: region, spot: spotName) { [weak self] fallbackResult in
-                        DispatchQueue.main.async {
-                            switch fallbackResult {
-                            case .success(let dynamoDBData):
-                                let response = SwellPredictionResponse(from: dynamoDBData)
-                                let entry = SwellPredictionEntry(from: response)
-                                self?.predictions[spot.id] = entry
-                                completion(.success([entry]))
-                            case .failure(let fallbackError):
-                                self?.lastError = fallbackError
-                                completion(.failure(fallbackError))
-                            }
-                        }
-                    }
+        Task { [weak self] in
+            guard let self = self else { return }
+            do {
+                let responses = try await self.apiClient.fetchSwellPrediction(country: country, region: region, spot: spotName)
+                let entries = responses.map { SwellPredictionEntry(from: $0) }
+                    .sorted { $0.arrivalTime < $1.arrivalTime }
+                self.isLoading = false
+                self.multiplePredictions[spot.id] = entries
+                if let firstEntry = entries.first {
+                    self.predictions[spot.id] = firstEntry
+                }
+                completion(.success(entries))
+            } catch {
+                // Fallback to DynamoDB format
+                do {
+                    let dynamoDBData = try await self.apiClient.fetchSwellPredictionDynamoDB(country: country, region: region, spot: spotName)
+                    let response = SwellPredictionResponse(from: dynamoDBData)
+                    let entry = SwellPredictionEntry(from: response)
+                    self.isLoading = false
+                    self.predictions[spot.id] = entry
+                    completion(.success([entry]))
+                } catch {
+                    self.isLoading = false
+                    self.lastError = error
+                    completion(.failure(error))
                 }
             }
         }
@@ -94,45 +87,44 @@ class SwellPredictionService: ObservableObject {
             return components.count >= 2 ? "\(components[0])#\(components[1])" : ""
         }
         
-        var allPredictions: [SwellPredictionEntry] = []
-        let group = DispatchGroup()
-        var lastError: Error?
-        
-        for (regionKey, regionSpots) in regionGroups {
-            guard !regionKey.isEmpty else { continue }
+        Task { [weak self] in
+            guard let self = self else { return }
+            var allPredictions: [SwellPredictionEntry] = []
+            var lastError: Error?
             
-            let regionComponents = regionKey.components(separatedBy: "#")
-            guard regionComponents.count == 2 else { continue }
-            
-            let country = regionComponents[0]
-            let region = regionComponents[1]
-            let spotNames = regionSpots.map { spot in
-                spot.id.components(separatedBy: "#").last ?? ""
-            }.filter { !$0.isEmpty }
-            
-            group.enter()
-            apiClient.fetchMultipleSpotsSwellPrediction(country: country, region: region, spots: spotNames) { result in
-                defer { group.leave() }
+            for (regionKey, regionSpots) in regionGroups {
+                guard !regionKey.isEmpty else { continue }
                 
-                switch result {
-                case .success(let responses):
+                let regionComponents = regionKey.components(separatedBy: "#")
+                guard regionComponents.count == 2 else { continue }
+                
+                let country = regionComponents[0]
+                let region = regionComponents[1]
+                let spotNames = regionSpots.map { spot in
+                    spot.id.components(separatedBy: "#").last ?? ""
+                }.filter { !$0.isEmpty }
+                
+                do {
+                    let responses = try await self.apiClient.fetchMultipleSpotsSwellPrediction(country: country, region: region, spots: spotNames)
                     let entries = responses.flatMap { $0.map { SwellPredictionEntry(from: $0) } }
                     allPredictions.append(contentsOf: entries)
-                case .failure(let error):
+                } catch {
                     lastError = error
                 }
             }
-        }
-        
-        group.notify(queue: .main) {
+            
             if let error = lastError {
-                completion(.failure(error))
-            } else {
-                // Update local cache
-                for entry in allPredictions {
-                    self.predictions[entry.spotId] = entry
+                await MainActor.run {
+                    self.lastError = error
+                    completion(.failure(error))
                 }
-                completion(.success(allPredictions))
+            } else {
+                await MainActor.run {
+                    for entry in allPredictions {
+                        self.predictions[entry.spotId] = entry
+                    }
+                    completion(.success(allPredictions))
+                }
             }
         }
     }
@@ -141,21 +133,22 @@ class SwellPredictionService: ObservableObject {
     func fetchRegionSwellPrediction(country: String, region: String, completion: @escaping (Result<[SwellPredictionEntry], Error>) -> Void) {
         isLoading = true
         lastError = nil
-        
-        apiClient.fetchRegionSwellPrediction(country: country, region: region) { [weak self] result in
-            DispatchQueue.main.async {
-                self?.isLoading = false
-                
-                switch result {
-                case .success(let responses):
-                    let entries = responses.map { SwellPredictionEntry(from: $0) }
-                    // Update local cache
+        Task { [weak self] in
+            guard let self = self else { return }
+            do {
+                let responses = try await self.apiClient.fetchRegionSwellPrediction(country: country, region: region)
+                let entries = responses.map { SwellPredictionEntry(from: $0) }
+                await MainActor.run {
+                    self.isLoading = false
                     for entry in entries {
-                        self?.predictions[entry.spotId] = entry
+                        self.predictions[entry.spotId] = entry
                     }
                     completion(.success(entries))
-                case .failure(let error):
-                    self?.lastError = error
+                }
+            } catch {
+                await MainActor.run {
+                    self.isLoading = false
+                    self.lastError = error
                     completion(.failure(error))
                 }
             }
@@ -177,16 +170,19 @@ class SwellPredictionService: ObservableObject {
         isLoading = true
         lastError = nil
         
-        apiClient.fetchSwellPredictionRange(country: country, region: region, spot: spotName, startTime: startTime, endTime: endTime) { [weak self] result in
-            DispatchQueue.main.async {
-                self?.isLoading = false
-                
-                switch result {
-                case .success(let responses):
-                    let entries = responses.map { SwellPredictionEntry(from: $0) }
+        Task { [weak self] in
+            guard let self = self else { return }
+            do {
+                let responses = try await self.apiClient.fetchSwellPredictionRange(country: country, region: region, spot: spotName, startTime: startTime, endTime: endTime)
+                let entries = responses.map { SwellPredictionEntry(from: $0) }
+                await MainActor.run {
+                    self.isLoading = false
                     completion(.success(entries))
-                case .failure(let error):
-                    self?.lastError = error
+                }
+            } catch {
+                await MainActor.run {
+                    self.isLoading = false
+                    self.lastError = error
                     completion(.failure(error))
                 }
             }
@@ -197,21 +193,22 @@ class SwellPredictionService: ObservableObject {
     func fetchRecentSwellPredictions(hours: Int = 24, completion: @escaping (Result<[SwellPredictionEntry], Error>) -> Void) {
         isLoading = true
         lastError = nil
-        
-        apiClient.fetchRecentSwellPredictions(hours: hours) { [weak self] result in
-            DispatchQueue.main.async {
-                self?.isLoading = false
-                
-                switch result {
-                case .success(let responses):
-                    let entries = responses.map { SwellPredictionEntry(from: $0) }
-                    // Update local cache
+        Task { [weak self] in
+            guard let self = self else { return }
+            do {
+                let responses = try await self.apiClient.fetchRecentSwellPredictions(hours: hours)
+                let entries = responses.map { SwellPredictionEntry(from: $0) }
+                await MainActor.run {
+                    self.isLoading = false
                     for entry in entries {
-                        self?.predictions[entry.spotId] = entry
+                        self.predictions[entry.spotId] = entry
                     }
                     completion(.success(entries))
-                case .failure(let error):
-                    self?.lastError = error
+                }
+            } catch {
+                await MainActor.run {
+                    self.isLoading = false
+                    self.lastError = error
                     completion(.failure(error))
                 }
             }

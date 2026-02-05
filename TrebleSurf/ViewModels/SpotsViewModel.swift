@@ -7,7 +7,19 @@ class SpotsViewModel: BaseViewModel {
     @Published var spots: [SpotData] = []
     @Published var isRefreshing: Bool = false
     
-    private var dataStore: DataStore = DataStore()
+    private var dataStore: DataStore
+    private let apiClient: APIClientProtocol
+    
+    init(
+        dataStore: DataStore,
+        apiClient: APIClientProtocol,
+        errorHandler: ErrorHandlerProtocol? = nil,
+        logger: ErrorLoggerProtocol? = nil
+    ) {
+        self.dataStore = dataStore
+        self.apiClient = apiClient
+        super.init(errorHandler: errorHandler, logger: logger)
+    }
 
     func setDataStore(_ store: DataStore) {
         dataStore = store
@@ -17,12 +29,7 @@ class SpotsViewModel: BaseViewModel {
         logger.log("Loading spots for region: Donegal", level: .info, category: .api)
         
         await executeTask(context: "Load spots") {
-            let spots = try await withCheckedThrowingContinuation { continuation in
-                self.dataStore.fetchRegionSpots(region: "Donegal") { result in
-                    continuation.resume(with: result)
-                }
-            }
-            
+            let spots = try await self.dataStore.fetchRegionSpots(region: "Donegal")
             self.spots = spots
             self.logger.log("Loaded \(spots.count) spots", level: .info, category: .general)
         }
@@ -96,20 +103,15 @@ class SpotsViewModel: BaseViewModel {
         logger.log("Refreshing surf reports for spot: \(spotName)", level: .debug, category: .api)
         
         // Fetch fresh surf reports for this spot
-        await withCheckedContinuation { continuation in
-            APIClient.shared.fetchSurfReports(country: country, region: region, spot: spotName) { result in
-                switch result {
-                case .success:
-                    self.logger.log("Successfully refreshed reports for \(spotName)", level: .debug, category: .api)
-                case .failure(let error):
-                    self.logger.log("Failed to refresh reports for \(spotName): \(error.localizedDescription)", level: .error, category: .api)
-                }
-                continuation.resume()
-            }
+        do {
+            _ = try await apiClient.fetchSurfReports(country: country, region: region, spot: spotName)
+            self.logger.log("Successfully refreshed reports for \(spotName)", level: .debug, category: .api)
+        } catch {
+            self.logger.log("Failed to refresh reports for \(spotName): \(error.localizedDescription)", level: .error, category: .api)
         }
         
         // Force refresh the current conditions for this spot to ensure all data is fresh
-        dataStore.fetchConditions(for: spotId) { _ in }
+        _ = await dataStore.fetchConditions(for: spotId)
         
         // Small delay to ensure the refresh state is visible
         try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds

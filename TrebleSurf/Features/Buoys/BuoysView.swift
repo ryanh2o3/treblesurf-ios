@@ -2,8 +2,22 @@ import SwiftUI
 import Charts
 
 struct BuoysView: View {
-    @StateObject private var viewModel = BuoysViewModel()
+    @StateObject private var viewModel: BuoysViewModel
     @State private var selectedBuoy: Buoy?
+    private let dependencies: AppDependencies
+    
+    init(dependencies: AppDependencies) {
+        self.dependencies = dependencies
+        _viewModel = StateObject(
+            wrappedValue: BuoysViewModel(
+                weatherBuoyService: dependencies.weatherBuoyService,
+                buoyCacheService: dependencies.buoyCacheService,
+                apiClient: dependencies.apiClient,
+                errorHandler: dependencies.errorHandler,
+                logger: dependencies.errorLogger
+            )
+        )
+    }
     
     var body: some View {
         NavigationStack {
@@ -20,7 +34,8 @@ struct BuoysView: View {
                                 name: selectedBuoy.name
                             ),
                             onBack: { self.selectedBuoy = nil },
-                            showBackButton: true
+                            showBackButton: true,
+                            dependencies: dependencies
                         )
                     } else {
                         buoyListView

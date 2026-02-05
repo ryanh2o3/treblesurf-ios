@@ -33,7 +33,7 @@ class ImageCacheService: ObservableObject, ImageCacheProtocol {
     private let cacheDirectory: URL
     
     // MARK: - Initialization
-    private init() {
+    init() {
         // Create cache directory in app's documents folder
         let documentsPath = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first!
         cacheDirectory = documentsPath.appendingPathComponent("ImageCache")

@@ -80,17 +80,17 @@ class SpotForecastViewModel: BaseViewModel {
         }
     }
     
-    func fetchForecast(for spotId: String, completion: @escaping (Bool) -> Void) {
+    func fetchForecast(for spotId: String) async -> Bool {
         logger.log("Fetching forecast for spot: \(spotId)", level: .info, category: .api)
-        dataStore.fetchForecast(for: spotId, completion: completion)
+        return await dataStore.fetchForecast(for: spotId)
     }
     
     // Refresh forecast data by clearing cache and refetching
-    func refreshForecast(for spotId: String, completion: @escaping (Bool) -> Void) {
+    func refreshForecast(for spotId: String) async -> Bool {
         logger.log("Refreshing forecast for spot: \(spotId)", level: .info, category: .api)
         // Clear the specific spot's forecast cache
         dataStore.clearSpotCache(for: spotId)
         // Refetch the forecast
-        dataStore.fetchForecast(for: spotId, completion: completion)
+        return await dataStore.fetchForecast(for: spotId)
     }
 }

@@ -10,16 +10,14 @@ import Combine
 
 /// Service for fetching and processing weather buoy data
 class WeatherBuoyService: ObservableObject {
-    static let shared = WeatherBuoyService()
-    
     private let apiClient: APIClientProtocol
     private let buoyCacheService: BuoyCacheService
     private var cancellables = Set<AnyCancellable>()
     private let logger: ErrorLoggerProtocol
     
     init(
-        apiClient: APIClientProtocol = APIClient.shared,
-        buoyCacheService: BuoyCacheService = BuoyCacheService.shared,
+        apiClient: APIClientProtocol,
+        buoyCacheService: BuoyCacheService,
         logger: ErrorLoggerProtocol? = nil
     ) {
         self.apiClient = apiClient
@@ -35,59 +33,29 @@ class WeatherBuoyService: ObservableObject {
     // MARK: - Public Methods
     
     /// Fetch buoy data for specified buoy names
-    /// - Parameters:
-    ///   - buoyNames: Array of buoy names to fetch
-    ///   - completion: Completion handler with array of BuoyResponse objects
-    func fetchBuoyData(
-        buoyNames: [String],
-        completion: @escaping (Result<[BuoyResponse], Error>) -> Void
-    ) {
-        // Check cache first (on main actor)
-        Task { @MainActor in
-            if let cachedData = self.buoyCacheService.getCachedBuoyData(for: buoyNames) {
-                completion(.success(cachedData))
-                return
-            }
-            
-            // Fetch from API if not cached
-            self.apiClient.fetchBuoyData(buoyNames: buoyNames) { [weak self] result in
-                switch result {
-                case .success(let buoyResponses):
-                    self?.logger.log("Fetched \(buoyResponses.count) buoy data responses", level: .info, category: .api)
-                    // Cache the data for future use (on main actor)
-                    Task { @MainActor in
-                        self?.buoyCacheService.cacheBuoyData(buoyResponses)
-                        self?.logger.log("Cached buoy data", level: .debug, category: .cache)
-                    }
-                    completion(.success(buoyResponses))
-                case .failure(let error):
-                    self?.logger.log("Failed to fetch buoy data: \(error.localizedDescription)", level: .error, category: .api)
-                    completion(.failure(error))
-                }
-            }
+    /// - Parameter buoyNames: Array of buoy names to fetch
+    func fetchBuoyData(buoyNames: [String]) async throws -> [BuoyResponse] {
+        if let cachedData = await buoyCacheService.getCachedBuoyData(for: buoyNames) {
+            return cachedData
         }
+        
+        let buoyResponses = try await apiClient.fetchBuoyData(buoyNames: buoyNames)
+        logger.log("Fetched \(buoyResponses.count) buoy data responses", level: .info, category: .api)
+        await buoyCacheService.cacheBuoyData(buoyResponses)
+        logger.log("Cached buoy data", level: .debug, category: .cache)
+        return buoyResponses
     }
     
     /// Fetch buoy locations for a region
-    /// - Parameters:
-    ///   - region: Region name (e.g., "NorthAtlantic")
-    ///   - completion: Completion handler with array of BuoyLocation objects
-    func fetchBuoyLocations(
-        region: String,
-        completion: @escaping (Result<[BuoyLocation], Error>) -> Void
-    ) {
-        apiClient.fetchBuoys(region: region, completion: completion)
+    /// - Parameter region: Region name (e.g., "NorthAtlantic")
+    func fetchBuoyLocations(region: String) async throws -> [BuoyLocation] {
+        return try await apiClient.fetchBuoys(region: region)
     }
     
     /// Fetch historical data for a specific buoy
-    /// - Parameters:
-    ///   - buoyName: Name of the buoy
-    ///   - completion: Completion handler with array of historical BuoyResponse objects
-    func fetchHistoricalData(
-        for buoyName: String,
-        completion: @escaping (Result<[BuoyResponse], Error>) -> Void
-    ) {
-        apiClient.fetchLast24HoursBuoyData(buoyName: buoyName, completion: completion)
+    /// - Parameter buoyName: Name of the buoy
+    func fetchHistoricalData(for buoyName: String) async throws -> [BuoyResponse] {
+        return try await apiClient.fetchLast24HoursBuoyData(buoyName: buoyName)
     }
     
     // MARK: - Data Transformation

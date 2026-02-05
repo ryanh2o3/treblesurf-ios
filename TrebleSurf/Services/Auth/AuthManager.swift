@@ -16,6 +16,10 @@ class AuthManager: ObservableObject, AuthManagerProtocol {
     @Published var currentUser: User?
     @Published var isAuthenticated: Bool = false
     
+    private weak var dataStore: (any DataStoreProtocol)?
+    private weak var locationStore: (any LocationStoreProtocol)?
+    private weak var settingsStore: (any SettingsStoreProtocol)?
+    
     private let csrfKey = "com.treblesurf.csrfToken"
     private let sessionKey = "com.treblesurf.sessionId"
     
@@ -56,7 +60,17 @@ class AuthManager: ObservableObject, AuthManagerProtocol {
     
     // MARK: - Initialization
     
-    nonisolated private init() {}
+    nonisolated init() {}
+    
+    func setStores(
+        dataStore: any DataStoreProtocol,
+        locationStore: any LocationStoreProtocol,
+        settingsStore: any SettingsStoreProtocol
+    ) {
+        self.dataStore = dataStore
+        self.locationStore = locationStore
+        self.settingsStore = settingsStore
+    }
     
     // MARK: - Authentication Methods
     
@@ -77,14 +91,13 @@ class AuthManager: ObservableObject, AuthManagerProtocol {
         print("================================")
     }
     
-    func authenticateWithBackend(user: GIDGoogleUser, completion: @escaping (Bool, User?) -> Void) {
+    func authenticateWithBackend(user: GIDGoogleUser) async -> (Bool, User?) {
         print("🔐 Starting Google authentication with backend...")
         print("👤 Google user: \(user.profile?.email ?? "Unknown email")")
         
         guard let idToken = user.idToken?.tokenString else {
             print("❌ No ID token available from Google user")
-            completion(false, nil)
-            return
+            return (false, nil)
         }
         
         print("✅ ID token received, length: \(idToken.count) characters")
@@ -98,14 +111,8 @@ class AuthManager: ObservableObject, AuthManagerProtocol {
         request.httpBody = try? JSONSerialization.data(withJSONObject: body)
         print("📤 Sending request to backend: \(request.url?.absoluteString ?? "Invalid URL")")
 
-        URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
-            guard let self = self else { return }
-            
-            if let error = error {
-                print("Request failed with error: \(error.localizedDescription)")
-                completion(false, nil)
-                return
-            }
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
             
             if let httpResponse = response as? HTTPURLResponse {
                 print("Received HTTP response: \(httpResponse.statusCode)")
@@ -122,24 +129,14 @@ class AuthManager: ObservableObject, AuthManagerProtocol {
                 }
             }
             
-            guard let data = data else {
-                print("No data received")
-                completion(false, nil)
-                return
-            }
-            
-            do {
-                let authResponse = try JSONDecoder().decode(AuthResponse.self, from: data)
-                Task { @MainActor in
-                    self.currentUser = authResponse.user
-                    self.isAuthenticated = true
-                }
-                completion(true, authResponse.user)
-            } catch {
-                print("Failed to decode response: \(error)")
-                completion(false, nil)
-            }
-        }.resume()
+            let authResponse = try JSONDecoder().decode(AuthResponse.self, from: data)
+            self.currentUser = authResponse.user
+            self.isAuthenticated = true
+            return (true, authResponse.user)
+        } catch {
+            print("Request failed with error: \(error.localizedDescription)")
+            return (false, nil)
+        }
     }
     
     nonisolated private func extractSessionId(from cookieString: String) {
@@ -183,7 +180,7 @@ class AuthManager: ObservableObject, AuthManagerProtocol {
         print("Cookie string format: \(cookieString)")
     }
     
-    func validateSession(completion: @escaping (Bool, User?) -> Void) {
+    func validateSession() async -> (Bool, User?) {
         print("🔐 Starting session validation...")
         print("📱 Device: \(UIDevice.current.isSimulator ? "Simulator" : "Physical Device")")
         print("🔑 Stored session ID: \(sessionId ?? "None")")
@@ -206,20 +203,17 @@ class AuthManager: ObservableObject, AuthManagerProtocol {
             if let sessionId = sessionId, !sessionId.isEmpty {
                 print("Development mode: Using local session validation")
                 // Return the current user if available
-                completion(true, currentUser)
-                return
+                return (true, currentUser)
             } else {
                 print("Development mode: No local session available")
-                completion(false, nil)
-                return
+                return (false, nil)
             }
         }
         #endif
         
         // Use the correct API endpoint for session validation
         guard let url = URL(string: "\(baseURL)/api/auth/validate") else {
-            completion(false, nil)
-            return
+            return (false, nil)
         }
         
         var request = URLRequest(url: url)
@@ -234,42 +228,15 @@ class AuthManager: ObservableObject, AuthManagerProtocol {
             print("No local session ID available, attempting validation without cookie")
         }
         
-        URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
-            guard let self = self else { return }
-            
-            if let error = error {
-                print("Validation request failed: \(error.localizedDescription)")
-                
-                // In development, if server is not available, use local validation
-                #if DEBUG
-                if UIDevice.current.isSimulator {
-                    if let nsError = error as NSError? {
-                        if nsError.code == NSURLErrorCannotConnectToHost || 
-                           nsError.code == NSURLErrorTimedOut {
-                            print("Development server not available, using local session validation")
-                            if let sessionId = self.sessionId, !sessionId.isEmpty {
-                                Task { @MainActor in
-                                    completion(true, self.currentUser)
-                                }
-                                return
-                            }
-                        }
-                    }
-                }
-                #endif
-                
-                completion(false, nil)
-                return
-            }
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
             
             if let httpResponse = response as? HTTPURLResponse {
-                
                 // Check if we received HTML instead of JSON (indicates wrong endpoint)
                 if let contentType = httpResponse.value(forHTTPHeaderField: "Content-Type"),
                    contentType.contains("text/html") {
                     print("Received HTML response instead of JSON - wrong endpoint or backend issue")
-                    completion(false, nil)
-                    return
+                    return (false, nil)
                 }
                 
                 // Extract CSRF token from response headers
@@ -288,14 +255,8 @@ class AuthManager: ObservableObject, AuthManagerProtocol {
                     // Session is invalid
                     print("Session validation failed with status: \(httpResponse.statusCode)")
                     self.clearAllAppData()
-                    completion(false, nil)
-                    return
+                    return (false, nil)
                 }
-            }
-            
-            guard let data = data else {
-                completion(false, nil)
-                return
             }
             
             // Check if response is HTML (wrong endpoint)
@@ -303,33 +264,43 @@ class AuthManager: ObservableObject, AuthManagerProtocol {
                responseString.contains("<!DOCTYPE html>") {
                 print("Received HTML response instead of JSON - wrong endpoint or backend issue")
                 print("Response data: \(responseString)")
-                completion(false, nil)
-                return
+                return (false, nil)
             }
             
-            do {
-                let validateResponse = try JSONDecoder().decode(ValidateResponse.self, from: data)
-                if validateResponse.valid {
-                    Task { @MainActor in
-                        self.currentUser = validateResponse.user
-                        self.isAuthenticated = true
-                    }
-                    print("Session validation successful for user: \(validateResponse.user.email)")
-                    completion(true, validateResponse.user)
-                } else {
-                    print("Session validation returned invalid")
-                    self.clearAllAppData()
-                    completion(false, nil)
-                }
-            } catch {
-                print("Failed to decode validation response: \(error)")
-                print("Response data: \(String(data: data, encoding: .utf8) ?? "Invalid data")")
-                completion(false, nil)
+            let validateResponse = try JSONDecoder().decode(ValidateResponse.self, from: data)
+            if validateResponse.valid {
+                self.currentUser = validateResponse.user
+                self.isAuthenticated = true
+                print("Session validation successful for user: \(validateResponse.user.email)")
+                return (true, validateResponse.user)
+            } else {
+                print("Session validation returned invalid")
+                self.clearAllAppData()
+                return (false, nil)
             }
-        }.resume()
+        } catch {
+            print("Validation request failed: \(error.localizedDescription)")
+            
+            // In development, if server is not available, use local validation
+            #if DEBUG
+            if UIDevice.current.isSimulator {
+                if let nsError = error as NSError? {
+                    if nsError.code == NSURLErrorCannotConnectToHost ||
+                       nsError.code == NSURLErrorTimedOut {
+                        print("Development server not available, using local session validation")
+                        if let sessionId = self.sessionId, !sessionId.isEmpty {
+                            return (true, self.currentUser)
+                        }
+                    }
+                }
+            }
+            #endif
+            
+            return (false, nil)
+        }
     }
     
-    func logout(completion: @escaping (Bool) -> Void) {
+    func logout() async -> Bool {
         #if DEBUG
         // Check if running on simulator vs device
         let baseURL = UIDevice.current.isSimulator ? "http://localhost:8080" : "https://treblesurf.com"
@@ -341,8 +312,7 @@ class AuthManager: ObservableObject, AuthManagerProtocol {
         guard let url = URL(string: "\(baseURL)/api/auth/logout") else {
             // Even if the server request fails, we should still clear local data
             self.clearAllAppData()
-            completion(true)
-            return
+            return true
         }
         
         var request = URLRequest(url: url)
@@ -361,17 +331,8 @@ class AuthManager: ObservableObject, AuthManagerProtocol {
             print("Adding CSRF token for logout: \(csrfToken)")
         }
         
-        URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
-            guard let self = self else { return }
-            
-            if let error = error {
-                print("Logout request failed: \(error.localizedDescription)")
-                // Even if server logout fails, clear local data
-                self.clearAllAppData()
-                completion(true)
-                return
-            }
-            
+        do {
+            let (_, response) = try await URLSession.shared.data(for: request)
             if let httpResponse = response as? HTTPURLResponse {
                 print("Logout HTTP response: \(httpResponse.statusCode)")
                 
@@ -381,11 +342,13 @@ class AuthManager: ObservableObject, AuthManagerProtocol {
                     print("Received HTML response instead of JSON during logout - wrong endpoint or backend issue")
                 }
             }
-            
-            // Always clear local data regardless of server response
-            self.clearAllAppData()
-            completion(true)
-        }.resume()
+        } catch {
+            print("Logout request failed: \(error.localizedDescription)")
+        }
+        
+        // Always clear local data regardless of server response
+        self.clearAllAppData()
+        return true
     }
     
     /// Comprehensive method to clear all app data, caches, and user preferences
@@ -453,17 +416,9 @@ class AuthManager: ObservableObject, AuthManagerProtocol {
     nonisolated private func resetAllStores() {
         // Reset DataStore
         Task { @MainActor in
-            DataStore.shared.resetToInitialState()
-        }
-        
-        // Reset LocationStore
-        Task { @MainActor in
-            LocationStore.shared.resetToInitialState()
-        }
-        
-        // Reset SettingsStore
-        Task { @MainActor in
-            SettingsStore.shared.resetToInitialState()
+            dataStore?.resetToInitialState()
+            locationStore?.resetToInitialState()
+            settingsStore?.resetToInitialState()
         }
         
         print("All stores reset to initial state")
@@ -477,7 +432,7 @@ class AuthManager: ObservableObject, AuthManagerProtocol {
     
     // MARK: - Development Mode Support
     
-    func createDevSession(email: String, completion: @escaping (Bool) -> Void) {
+    func createDevSession(email: String) async -> Bool {
         // For development/testing purposes, create a session via backend
         #if DEBUG
         // Check if running on simulator vs device
@@ -488,8 +443,7 @@ class AuthManager: ObservableObject, AuthManagerProtocol {
         
         // Use the correct API endpoint for development session creation
         guard let url = URL(string: "\(baseURL)/api/auth/dev-session") else {
-            completion(false)
-            return
+            return false
         }
         
         var request = URLRequest(url: url)
@@ -500,15 +454,8 @@ class AuthManager: ObservableObject, AuthManagerProtocol {
         let body = ["email": email]
         request.httpBody = try? JSONSerialization.data(withJSONObject: body)
         
-        URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
-            guard let self = self else { return }
-            
-            if let error = error {
-                print("Dev session creation failed: \(error.localizedDescription)")
-                completion(false)
-                return
-            }
-            
+        do {
+            let (_, response) = try await URLSession.shared.data(for: request)
             if let httpResponse = response as? HTTPURLResponse {
                 print("Dev session HTTP response: \(httpResponse.statusCode)")
                 print("Dev session response headers: \(httpResponse.allHeaderFields)")
@@ -517,8 +464,7 @@ class AuthManager: ObservableObject, AuthManagerProtocol {
                 if let contentType = httpResponse.value(forHTTPHeaderField: "Content-Type"),
                    contentType.contains("text/html") {
                     print("Received HTML response instead of JSON during dev session creation - wrong endpoint or backend issue")
-                    completion(false)
-                    return
+                    return false
                 }
                 
                 // Extract CSRF token from response headers
@@ -548,21 +494,22 @@ class AuthManager: ObservableObject, AuthManagerProtocol {
                         theme: "dark"
                     )
                     
-                    Task { @MainActor in
-                        self.currentUser = devUser
-                        self.isAuthenticated = true
-                    }
+                    self.currentUser = devUser
+                    self.isAuthenticated = true
                     print("Development session created successfully for: \(email)")
-                    completion(true)
+                    return true
                 } else {
                     print("Dev session creation failed with status: \(httpResponse.statusCode)")
-                    completion(false)
+                    return false
                 }
             } else {
                 print("No HTTP response received")
-                completion(false)
+                return false
             }
-        }.resume()
+        } catch {
+            print("Dev session creation failed: \(error.localizedDescription)")
+            return false
+        }
     }
     
     // MARK: - Helper Methods
@@ -581,6 +528,10 @@ class AuthManager: ObservableObject, AuthManagerProtocol {
     nonisolated func getSessionCookie() -> [String: String]? {
         guard let sessionId = sessionId else { return nil }
         return ["Cookie": "session_id=\(sessionId)"]
+    }
+
+    nonisolated func updateCsrfToken(_ token: String) {
+        csrfToken = token
     }
     
     // Check if running in simulator

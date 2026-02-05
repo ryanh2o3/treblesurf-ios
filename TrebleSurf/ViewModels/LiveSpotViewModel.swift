@@ -21,6 +21,20 @@ class LiveSpotViewModel: BaseViewModel {
     @Published var showReportForm = false
     @Published var showQuickForm = false
     
+    private let apiClient: APIClientProtocol
+    private let imageCache: ImageCacheProtocol
+    
+    init(
+        apiClient: APIClientProtocol,
+        imageCache: ImageCacheProtocol,
+        errorHandler: ErrorHandlerProtocol? = nil,
+        logger: ErrorLoggerProtocol? = nil
+    ) {
+        self.apiClient = apiClient
+        self.imageCache = imageCache
+        super.init(errorHandler: errorHandler, logger: logger)
+    }
+    
     func loadSpotData(spotId: String) async {
         logger.log("Loading spot data for: \(spotId)", level: .info, category: .general)
         
@@ -56,11 +70,7 @@ class LiveSpotViewModel: BaseViewModel {
         self.recentReports = []
         
         executeTask(context: "Fetch surf reports") {
-            let responses = try await withCheckedThrowingContinuation { continuation in
-                APIClient.shared.fetchSurfReports(country: country, region: region, spot: spot) { result in
-                    continuation.resume(with: result)
-                }
-            }
+            let responses = try await self.apiClient.fetchSurfReports(country: country, region: region, spot: spot)
             
             let outputDateFormatter = DateFormatter()
             outputDateFormatter.dateFormat = "d MMM, h:mma"
@@ -71,10 +81,11 @@ class LiveSpotViewModel: BaseViewModel {
                 let report = SurfReport(from: response)
                 
                 if let imageKey = response.imageKey, !imageKey.isEmpty {
-                    self?.fetchImage(for: imageKey) { imageData in
-                        Task { @MainActor [weak self] in
-                            report.imageData = imageData?.imageData
-                            self?.objectWillChange.send()
+                    Task { @MainActor [weak self] in
+                        guard let self = self else { return }
+                        if let imageData = await self.fetchImage(for: imageKey) {
+                            report.imageData = imageData.imageData
+                            self.objectWillChange.send()
                         }
                     }
                 }
@@ -94,41 +105,38 @@ class LiveSpotViewModel: BaseViewModel {
         }
     }
     
-    private func fetchImage(for key: String, completion: @escaping (SurfReportImageResponse?) -> Void) {
+    private func fetchImage(for key: String) async -> SurfReportImageResponse? {
         // First, check the dedicated image cache
-        ImageCacheService.shared.getCachedSurfReportImageData(for: key) { [weak self] cachedImageData in
-            if let cachedImageData = cachedImageData {
-                self?.logger.log("Using cached image for key: \(key)", level: .debug, category: .cache)
-                // Create a mock response with the cached image data
-                let mockResponse = SurfReportImageResponse(imageData: cachedImageData.base64EncodedString(), contentType: "image/jpeg")
-                completion(mockResponse)
-                return
+        let cachedImageData = await withCheckedContinuation { continuation in
+            imageCache.getCachedSurfReportImageData(for: key) { data in
+                continuation.resume(returning: data)
+            }
+        }
+        
+        if let cachedImageData = cachedImageData {
+            logger.log("Using cached image for key: \(key)", level: .debug, category: .cache)
+            // Create a mock response with the cached image data
+            return SurfReportImageResponse(imageData: cachedImageData.base64EncodedString(), contentType: "image/jpeg")
+        }
+        
+        do {
+            let imageData = try await apiClient.getReportImage(key: key)
+            if let imageDataString = imageData.imageData, !imageDataString.isEmpty {
+                // Cache the image for future use
+                if let decodedImageData = Data(base64Encoded: imageDataString),
+                   let uiImage = UIImage(data: decodedImageData),
+                   let pngData = uiImage.pngData() {
+                    imageCache.cacheSurfReportImage(pngData, for: key)
+                    logger.log("Cached fetched image for key: \(key)", level: .debug, category: .cache)
+                }
+                return imageData
             }
             
-            // If not cached, fetch from API
-            APIClient.shared.getReportImage(key: key) { [weak self] result in
-                switch result {
-                case .success(let imageData):
-                    // Check if imageData is actually present
-                    if let imageDataString = imageData.imageData, !imageDataString.isEmpty {
-                        // Cache the image for future use
-                        if let decodedImageData = Data(base64Encoded: imageDataString),
-                           let uiImage = UIImage(data: decodedImageData) {
-                            if let pngData = uiImage.pngData() {
-                                ImageCacheService.shared.cacheSurfReportImage(pngData, for: key)
-                                self?.logger.log("Cached fetched image for key: \(key)", level: .debug, category: .cache)
-                            }
-                        }
-                        completion(imageData)
-                    } else {
-                        self?.logger.log("Image key \(key) exists but no data returned - likely missing from S3", level: .warning, category: .media)
-                        completion(nil)
-                    }
-                case .failure(let error):
-                    self?.logger.log("Failed to fetch image for key \(key): \(error.localizedDescription)", level: .error, category: .media)
-                    completion(nil)
-                }
-            }
+            logger.log("Image key \(key) exists but no data returned - likely missing from S3", level: .warning, category: .media)
+            return nil
+        } catch {
+            logger.log("Failed to fetch image for key \(key): \(error.localizedDescription)", level: .error, category: .media)
+            return nil
         }
     }
     
@@ -172,11 +180,13 @@ class LiveSpotViewModel: BaseViewModel {
         self.isLoadingMatchingReports = true
         
         executeTask(context: "Fetch matching condition reports") {
-            let responses = try await withCheckedThrowingContinuation { continuation in
-                APIClient.shared.fetchSurfReportsWithMatchingConditions(country: country, region: region, spot: spot) { result in
-                    continuation.resume(with: result)
-                }
-            }
+            let responses = try await self.apiClient.fetchSurfReportsWithMatchingConditions(
+                country: country,
+                region: region,
+                spot: spot,
+                daysBack: 365,
+                maxResults: 20
+            )
             
             let outputDateFormatter = DateFormatter()
             outputDateFormatter.dateFormat = "d MMM, h:mma"
@@ -187,10 +197,11 @@ class LiveSpotViewModel: BaseViewModel {
                 let report = SurfReport(from: response)
                 
                 if let imageKey = response.imageKey, !imageKey.isEmpty {
-                    self?.fetchImage(for: imageKey) { imageData in
-                        Task { @MainActor [weak self] in
-                            report.imageData = imageData?.imageData
-                            self?.objectWillChange.send()
+                    Task { @MainActor [weak self] in
+                        guard let self = self else { return }
+                        if let imageData = await self.fetchImage(for: imageKey) {
+                            report.imageData = imageData.imageData
+                            self.objectWillChange.send()
                         }
                     }
                 }

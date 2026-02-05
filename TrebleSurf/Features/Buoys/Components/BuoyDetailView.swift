@@ -6,7 +6,8 @@ struct BuoyDetailView: View {
     let onBack: () -> Void
     let showBackButton: Bool
     
-    @StateObject private var viewModel = BuoysViewModel()
+    @StateObject private var viewModel: BuoysViewModel
+    private let apiClient: APIClientProtocol
     @State private var similarReports: [SurfReport] = []
     @State private var isLoadingSimilarReports = false
     @State private var selectedReport: SurfReport?
@@ -24,10 +25,25 @@ struct BuoyDetailView: View {
         case customDate
     }
     
-    init(buoy: BuoyLocation, onBack: @escaping () -> Void, showBackButton: Bool = true) {
+    init(
+        buoy: BuoyLocation,
+        onBack: @escaping () -> Void,
+        showBackButton: Bool = true,
+        dependencies: AppDependencies
+    ) {
         self.buoy = buoy
         self.onBack = onBack
         self.showBackButton = showBackButton
+        self.apiClient = dependencies.apiClient
+        _viewModel = StateObject(
+            wrappedValue: BuoysViewModel(
+                weatherBuoyService: dependencies.weatherBuoyService,
+                buoyCacheService: dependencies.buoyCacheService,
+                apiClient: dependencies.apiClient,
+                errorHandler: dependencies.errorHandler,
+                logger: dependencies.errorLogger
+            )
+        )
     }
     
     var body: some View {
@@ -434,7 +450,11 @@ struct BuoyDetailView: View {
             }
         }
         .sheet(item: $selectedReport) { report in
-            SurfReportDetailView(report: report, backButtonText: "Back to Buoy")
+            SurfReportDetailView(
+                report: report,
+                backButtonText: "Back to Buoy",
+                apiClient: apiClient
+            )
         }
         .onDisappear {
             // Clean up any pending tasks
@@ -481,49 +501,45 @@ struct BuoyDetailView: View {
         print("   - Wave Direction: \(waveDirection)°")
         print("   - Period: \(period)s")
         
-        APIClient.shared.fetchSurfReportsWithSimilarBuoyData(
-            waveHeight: waveHeight,
-            waveDirection: waveDirection,
-            period: period,
-            buoyName: buoy.name,
-            maxResults: 10
-        ) { result in
-            DispatchQueue.main.async {
-                isLoadingSimilarReports = false
+        Task {
+            do {
+                let responses = try await apiClient.fetchSurfReportsWithSimilarBuoyData(
+                    waveHeight: waveHeight,
+                    waveDirection: waveDirection,
+                    period: period,
+                    buoyName: buoy.name,
+                    maxResults: 10
+                )
                 
-                switch result {
-                case .success(let responses):
-                    print("✅ Found \(responses.count) similar surf reports")
-                    
-                    // Convert responses to SurfReport objects
-                    similarReports = responses.map { SurfReport(from: $0) }
-                    
-                    // Fetch images for the reports
-                    for report in similarReports {
-                        if let imageKey = report.imageKey, !imageKey.isEmpty {
-                            fetchReportImage(for: report, imageKey: imageKey)
-                        }
+                isLoadingSimilarReports = false
+                print("✅ Found \(responses.count) similar surf reports")
+                
+                // Convert responses to SurfReport objects
+                similarReports = responses.map { SurfReport(from: $0) }
+                
+                // Fetch images for the reports
+                for report in similarReports {
+                    if let imageKey = report.imageKey, !imageKey.isEmpty {
+                        fetchReportImage(for: report, imageKey: imageKey)
                     }
-                    
-                case .failure(let error):
-                    print("❌ Failed to fetch similar surf reports: \(error.localizedDescription)")
                 }
+            } catch {
+                isLoadingSimilarReports = false
+                print("❌ Failed to fetch similar surf reports: \(error.localizedDescription)")
             }
         }
     }
     
     /// Fetches the image for a surf report
     private func fetchReportImage(for report: SurfReport, imageKey: String) {
-        APIClient.shared.getReportImage(key: imageKey) { result in
-            DispatchQueue.main.async {
-                switch result {
-                case .success(let imageResponse):
-                    if let imageData = imageResponse.imageData {
-                        report.imageData = imageData
-                    }
-                case .failure(let error):
-                    print("❌ Failed to fetch image for report: \(error.localizedDescription)")
+        Task {
+            do {
+                let imageResponse = try await apiClient.getReportImage(key: imageKey)
+                if let imageData = imageResponse.imageData {
+                    report.imageData = imageData
                 }
+            } catch {
+                print("❌ Failed to fetch image for report: \(error.localizedDescription)")
             }
         }
     }
@@ -773,7 +789,7 @@ struct BuoyDetailView_Previews: PreviewProvider {
             name: "M4"
         )
         
-        BuoyDetailView(buoy: sampleBuoy, onBack: {})
+        BuoyDetailView(buoy: sampleBuoy, onBack: {}, dependencies: AppDependencies())
             .background(Color.gray.opacity(0.1))
     }
 }

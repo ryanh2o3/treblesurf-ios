@@ -4,9 +4,11 @@ struct SpotDetailView: View {
     let spot: SpotData
     let onBack: () -> Void
     let showBackButton: Bool
+    private let dependencies: AppDependencies
     
-    @StateObject private var viewModel = SpotsViewModel()
-    @StateObject private var swellPredictionService = SwellPredictionService.shared
+    @StateObject private var viewModel: SpotsViewModel
+    @EnvironmentObject var swellPredictionService: SwellPredictionService
+    @EnvironmentObject var dataStore: DataStore
     @State private var selectedViewMode: String = "Live"
     @State private var selectedForecastEntry: ForecastEntry? = nil
     @State private var selectedSwellPrediction: SwellPredictionEntry? = nil
@@ -14,10 +16,24 @@ struct SpotDetailView: View {
     @State private var isLoadingAI = false
     @State private var aiErrorMessage: String? = nil
     
-    init(spot: SpotData, onBack: @escaping () -> Void, showBackButton: Bool = true) {
+    init(
+        spot: SpotData,
+        onBack: @escaping () -> Void,
+        showBackButton: Bool = true,
+        dependencies: AppDependencies
+    ) {
         self.spot = spot
         self.onBack = onBack
         self.showBackButton = showBackButton
+        self.dependencies = dependencies
+        _viewModel = StateObject(
+            wrappedValue: SpotsViewModel(
+                dataStore: dependencies.dataStore,
+                apiClient: dependencies.apiClient,
+                errorHandler: dependencies.errorHandler,
+                logger: dependencies.errorLogger
+            )
+        )
     }
     
     var body: some View {
@@ -79,7 +95,7 @@ struct SpotDetailView: View {
                                 // Key data display - will be populated by child views
                                 if selectedViewMode == "Live" {
                                     LiveSpotOverlay(spotId: spot.id, aiPrediction: liveAIPrediction)
-                                        .environmentObject(DataStore.shared)
+                                        .environmentObject(dataStore)
                                 } else {
                                     EnhancedSpotOverlay(
                                         spotId: spot.id, 
@@ -137,12 +153,19 @@ struct SpotDetailView: View {
                     
                     // Content based on selected view mode
                     if selectedViewMode == "Live" {
-                        LiveSpotView(spotId: spot.id, refreshTrigger: viewModel.isRefreshing, spotImage: nil, aiPrediction: liveAIPrediction)
+                        LiveSpotView(
+                            spotId: spot.id,
+                            refreshTrigger: viewModel.isRefreshing,
+                            spotImage: nil,
+                            aiPrediction: liveAIPrediction,
+                            dependencies: dependencies
+                        )
                             .id(spot.id)
                             .clipped()
                     } else {
                         EnhancedForecastView(
                             spot: spot,
+                            dataStore: dataStore,
                             spotImage: nil,
                             onForecastSelectionChanged: { forecastEntry in
                                 selectedForecastEntry = forecastEntry
@@ -168,11 +191,11 @@ struct SpotDetailView: View {
             
             // Refresh based on current view mode
             if selectedViewMode == "Live" {
-                DataStore.shared.fetchConditions(for: spot.id) { _ in }
+                _ = await dataStore.fetchConditions(for: spot.id)
             }
         }
         .onAppear {
-            viewModel.setDataStore(DataStore.shared)
+            viewModel.setDataStore(dataStore)
             fetchLiveAIPrediction()
         }
         .padding(.horizontal, showBackButton ? 0 : 16)
@@ -199,18 +222,16 @@ struct SpotDetailView: View {
         isLoadingAI = true
         aiErrorMessage = nil
         
-        APIClient.shared.fetchClosestAIPrediction(country: country, region: region, spot: spotName) { result in
-            DispatchQueue.main.async {
+        Task {
+            do {
+                let response = try await dependencies.apiClient.fetchClosestAIPrediction(country: country, region: region, spot: spotName)
                 self.isLoadingAI = false
-                
-                switch result {
-                case .success(let response):
-                    print("✅ [SpotDetailView] AI prediction loaded successfully: surfSize=\(response.surf_size)")
-                    self.liveAIPrediction = SwellPredictionEntry(from: response)
-                case .failure(let error):
-                    print("❌ [SpotDetailView] AI prediction failed: \(error.localizedDescription)")
-                    self.aiErrorMessage = "Failed to load AI prediction: \(error.localizedDescription)"
-                }
+                print("✅ [SpotDetailView] AI prediction loaded successfully: surfSize=\(response.surf_size)")
+                self.liveAIPrediction = SwellPredictionEntry(from: response)
+            } catch {
+                self.isLoadingAI = false
+                print("❌ [SpotDetailView] AI prediction failed: \(error.localizedDescription)")
+                self.aiErrorMessage = "Failed to load AI prediction: \(error.localizedDescription)"
             }
         }
     }
@@ -229,7 +250,10 @@ struct SpotDetailView_Previews: PreviewProvider {
             imageString: nil
         )
         
-        SpotDetailView(spot: sampleSpot, onBack: {})
+        let dependencies = AppDependencies()
+        return SpotDetailView(spot: sampleSpot, onBack: {}, dependencies: dependencies)
             .background(Color.gray.opacity(0.1))
+            .environmentObject(dependencies.dataStore)
+            .environmentObject(dependencies.swellPredictionService)
     }
 }

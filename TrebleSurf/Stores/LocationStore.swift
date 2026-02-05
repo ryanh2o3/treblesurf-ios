@@ -37,7 +37,7 @@ class LocationStore: NSObject, ObservableObject, LocationStoreProtocol {
     private let locationManager = CLLocationManager()
     nonisolated private let geocoder = CLGeocoder()
     
-    nonisolated private override init() {
+    nonisolated override init() {
         super.init()
         Task { @MainActor in
             self.setupLocationManager()

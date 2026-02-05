@@ -10,7 +10,7 @@ import SwiftUI
 struct EnhancedSpotOverlay: View {
     @EnvironmentObject var dataStore: DataStore
     @EnvironmentObject var settingsStore: SettingsStore
-    @StateObject private var swellPredictionService = SwellPredictionService.shared
+    @EnvironmentObject var swellPredictionService: SwellPredictionService
     
     let spotId: String
     let selectedForecastEntry: ForecastEntry?
@@ -113,7 +113,7 @@ struct EnhancedSpotOverlay: View {
         }
         .onAppear {
             // Fetch current conditions when overlay appears
-            dataStore.fetchConditions(for: spotId) { _ in }
+            Task { _ = await dataStore.fetchConditions(for: spotId) }
         }
     }
     

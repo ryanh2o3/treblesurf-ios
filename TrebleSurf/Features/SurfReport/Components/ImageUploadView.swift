@@ -339,6 +339,6 @@ struct ImageUploadView: View {
     }
 }
 
-#Preview {
-    ImageUploadView(viewModel: SurfReportSubmissionViewModel())
-}
+//#Preview {
+//    ImageUploadView(viewModel: SurfReportSubmissionViewModel())
+//}

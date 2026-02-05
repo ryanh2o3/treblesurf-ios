@@ -5,7 +5,21 @@ struct SurfReportSubmissionView: View {
     let spotId: String
     let spotName: String
     @Environment(\.dismiss) private var dismiss
-    @StateObject private var viewModel = SurfReportSubmissionViewModel()
+    @StateObject private var viewModel: SurfReportSubmissionViewModel
+    
+    init(spotId: String, spotName: String, dependencies: AppDependencies) {
+        self.spotId = spotId
+        self.spotName = spotName
+        _viewModel = StateObject(
+            wrappedValue: SurfReportSubmissionViewModel(
+                apiClient: dependencies.apiClient,
+                legacyErrorHandler: dependencies.legacyErrorHandler,
+                imageValidationService: dependencies.imageValidationService,
+                errorHandler: dependencies.errorHandler,
+                logger: dependencies.errorLogger
+            )
+        )
+    }
     
     var body: some View {
         NavigationView {
@@ -320,5 +334,5 @@ struct OptionCard: View {
 }
 
 #Preview {
-    SurfReportSubmissionView(spotId: "test", spotName: "Test Spot")
+    SurfReportSubmissionView(spotId: "test", spotName: "Test Spot", dependencies: AppDependencies())
 }

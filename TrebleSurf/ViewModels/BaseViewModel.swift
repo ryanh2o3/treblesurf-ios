@@ -38,9 +38,9 @@ class BaseViewModel: ObservableObject, BaseViewModelProtocol {
     // MARK: - Initialization
     
     init(errorHandler: ErrorHandlerProtocol? = nil, logger: ErrorLoggerProtocol? = nil) {
-        let deps = AppDependencies.shared
-        self.errorHandler = errorHandler ?? deps.errorHandler
-        self.logger = logger ?? deps.errorLogger
+        let loggerInstance = logger ?? ErrorLogger(minimumLogLevel: .info, enableConsoleOutput: true, enableOSLog: true)
+        self.logger = loggerInstance
+        self.errorHandler = errorHandler ?? ErrorHandler(logger: loggerInstance)
     }
     
     // MARK: - Error Handling

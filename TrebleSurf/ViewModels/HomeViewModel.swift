@@ -44,20 +44,22 @@ class HomeViewModel: BaseViewModel {
     private let apiClient: APIClientProtocol
     private let surfReportService: SurfReportService
     private let weatherBuoyService: WeatherBuoyService
-    private let buoyCacheService = BuoyCacheService.shared
+    private let buoyCacheService: BuoyCacheService
     
     private var cancellables = Set<AnyCancellable>()
     
     init(
-        config: AppConfigurationProtocol = AppConfiguration.shared,
-        apiClient: APIClientProtocol = APIClient.shared,
-        surfReportService: SurfReportService = SurfReportService.shared,
-        weatherBuoyService: WeatherBuoyService = WeatherBuoyService.shared
+        config: AppConfigurationProtocol,
+        apiClient: APIClientProtocol,
+        surfReportService: SurfReportService,
+        weatherBuoyService: WeatherBuoyService,
+        buoyCacheService: BuoyCacheService
     ) {
         self.config = config
         self.apiClient = apiClient
         self.surfReportService = surfReportService
         self.weatherBuoyService = weatherBuoyService
+        self.buoyCacheService = buoyCacheService
         
         super.init()
         
@@ -112,19 +114,15 @@ class HomeViewModel: BaseViewModel {
     private func fetchSpots() {
         logger.log("Fetching spots for \(config.defaultCountry)/\(config.defaultRegion)", level: .info, category: .api)
         
-        apiClient.fetchSpots(country: config.defaultCountry, region: config.defaultRegion) { [weak self] result in
-            switch result {
-            case .success(let spots):
-                Task { @MainActor [weak self] in
-                    guard let self = self else { return }
-                    self.logger.log("Successfully fetched \(spots.count) spots", level: .info, category: .api)
-                    self.spots = spots
-                    self.updateCurrentConditionsFromBallyhiernan()
-                }
-            case .failure(let error):
-                Task { @MainActor [weak self] in
-                    self?.logger.log("Failed to fetch spots: \(error.localizedDescription)", level: .error, category: .api)
-                }
+        Task { [weak self] in
+            guard let self = self else { return }
+            do {
+                let spots = try await self.apiClient.fetchSpots(country: self.config.defaultCountry, region: self.config.defaultRegion)
+                self.logger.log("Successfully fetched \(spots.count) spots", level: .info, category: .api)
+                self.spots = spots
+                self.updateCurrentConditionsFromBallyhiernan()
+            } catch {
+                self.logger.log("Failed to fetch spots: \(error.localizedDescription)", level: .error, category: .api)
             }
         }
     }
@@ -139,39 +137,37 @@ class HomeViewModel: BaseViewModel {
         isLoadingConditions = true
         
         // Fetch current conditions for Ballyhiernan
-        apiClient.fetchCurrentConditions(country: config.defaultCountry, region: config.defaultRegion, spot: ballyhiernanSpot) { [weak self] result in
-            Task { @MainActor [weak self] in
-                guard let self = self else { return }
+        Task { [weak self] in
+            guard let self = self else { return }
+            do {
+                let conditionsResponses = try await self.apiClient.fetchCurrentConditions(country: self.config.defaultCountry, region: self.config.defaultRegion, spot: ballyhiernanSpot)
                 self.isLoadingConditions = false
-                
-                switch result {
-                case .success(let conditionsResponses):
-                    if let firstCondition = conditionsResponses.first {
-                        self.logger.log("Successfully fetched conditions for \(ballyhiernanSpot)", level: .debug, category: .api)
-                        let condition = self.createCurrentCondition(from: firstCondition.data, spotName: ballyhiernanSpot)
-                        self.currentCondition = condition
-                    } else {
-                        self.logger.log("No conditions available for \(ballyhiernanSpot)", level: .warning, category: .api)
-                        // Fallback to mock data if no conditions available
-                        self.currentCondition = CurrentCondition(
-                            waveHeight: "1.5m",
-                            windDirection: "W",
-                            windSpeed: "15 km/h",
-                            temperature: "18°C",
-                            summary: "No data available for \(ballyhiernanSpot)"
-                        )
-                    }
-                case .failure(let error):
-                    self.logger.log("Failed to fetch current conditions for \(ballyhiernanSpot): \(error.localizedDescription)", level: .error, category: .api)
-                    // Fallback to mock data on error
+                if let firstCondition = conditionsResponses.first {
+                    self.logger.log("Successfully fetched conditions for \(ballyhiernanSpot)", level: .debug, category: .api)
+                    let condition = self.createCurrentCondition(from: firstCondition.data, spotName: ballyhiernanSpot)
+                    self.currentCondition = condition
+                } else {
+                    self.logger.log("No conditions available for \(ballyhiernanSpot)", level: .warning, category: .api)
+                    // Fallback to mock data if no conditions available
                     self.currentCondition = CurrentCondition(
                         waveHeight: "1.5m",
                         windDirection: "W",
                         windSpeed: "15 km/h",
                         temperature: "18°C",
-                        summary: "Unable to load conditions for \(ballyhiernanSpot)"
+                        summary: "No data available for \(ballyhiernanSpot)"
                     )
                 }
+            } catch {
+                self.isLoadingConditions = false
+                self.logger.log("Failed to fetch current conditions for \(ballyhiernanSpot): \(error.localizedDescription)", level: .error, category: .api)
+                // Fallback to mock data on error
+                self.currentCondition = CurrentCondition(
+                    waveHeight: "1.5m",
+                    windDirection: "W",
+                    windSpeed: "15 km/h",
+                    temperature: "18°C",
+                    summary: "Unable to load conditions for \(ballyhiernanSpot)"
+                )
             }
         }
     }
@@ -216,25 +212,20 @@ class HomeViewModel: BaseViewModel {
         }
         
         // Fetch from API if not cached
-        apiClient.fetchBuoyData(buoyNames: buoyNames) { [weak self] result in
-            switch result {
-            case .success(let buoyResponses):
-                Task { @MainActor [weak self] in
-                    guard let self = self else { return }
-                    self.logger.log("Successfully fetched buoy data for \(buoyResponses.count) buoys", level: .info, category: .api)
-                    // Cache the data for future use
-                    self.buoyCacheService.cacheBuoyData(buoyResponses)
-                    self.updateWeatherBuoys(with: buoyResponses)
-                    self.isLoadingBuoys = false
-                }
-            case .failure(let error):
-                Task { @MainActor [weak self] in
-                    guard let self = self else { return }
-                    self.logger.log("Failed to fetch buoy data: \(error.localizedDescription)", level: .error, category: .api)
-                    // Update buoys with error state
-                    self.updateWeatherBuoysWithError()
-                    self.isLoadingBuoys = false
-                }
+        Task { [weak self] in
+            guard let self = self else { return }
+            do {
+                let buoyResponses = try await self.apiClient.fetchBuoyData(buoyNames: buoyNames)
+                self.logger.log("Successfully fetched buoy data for \(buoyResponses.count) buoys", level: .info, category: .api)
+                // Cache the data for future use
+                self.buoyCacheService.cacheBuoyData(buoyResponses)
+                self.updateWeatherBuoys(with: buoyResponses)
+                self.isLoadingBuoys = false
+            } catch {
+                self.logger.log("Failed to fetch buoy data: \(error.localizedDescription)", level: .error, category: .api)
+                // Update buoys with error state
+                self.updateWeatherBuoysWithError()
+                self.isLoadingBuoys = false
             }
         }
     }
@@ -310,22 +301,19 @@ class HomeViewModel: BaseViewModel {
         logger.log("Fetching surf reports for \(config.defaultCountry)/\(config.defaultRegion)", level: .info, category: .api)
         
         // Use SurfReportService to fetch and cache reports
-        surfReportService.fetchSurfReports(
-            country: config.defaultCountry,
-            region: config.defaultRegion
-        ) { [weak self] result in
-            Task { @MainActor [weak self] in
-                guard let self = self else { return }
-                
-                switch result {
-                case .success(let reports):
-                    self.logger.log("Successfully fetched \(reports.count) surf reports", level: .info, category: .api)
-                    self.recentReports = reports
-                    self.isLoadingReports = false
-                case .failure(let error):
-                    self.logger.log("Failed to fetch surf reports: \(error.localizedDescription)", level: .error, category: .api)
-                    self.isLoadingReports = false
-                }
+        Task { [weak self] in
+            guard let self = self else { return }
+            do {
+                let reports = try await self.surfReportService.fetchSurfReports(
+                    country: self.config.defaultCountry,
+                    region: self.config.defaultRegion
+                )
+                self.logger.log("Successfully fetched \(reports.count) surf reports", level: .info, category: .api)
+                self.recentReports = reports
+                self.isLoadingReports = false
+            } catch {
+                self.logger.log("Failed to fetch surf reports: \(error.localizedDescription)", level: .error, category: .api)
+                self.isLoadingReports = false
             }
         }
     }

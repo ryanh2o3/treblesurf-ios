@@ -10,45 +10,67 @@ import GoogleSignIn
 
 @main
 struct TrebleSurfApp: App {
-    @StateObject private var settingsStore = SettingsStore.shared
-    @StateObject private var dataStore = DataStore.shared
-    @StateObject private var authManager = AuthManager.shared
-    @State private var isLoading = true
+    @StateObject private var dependencies = AppDependencies()
 
     var body: some Scene {
         WindowGroup {
-            ZStack {
-                if isLoading {
-                    ProgressView("Loading...")
-                        .onAppear {
-                            checkAuthenticationState()
-                        }
-                } else if authManager.isAuthenticated {
-                    MainTabView()
-                        .environmentObject(settingsStore)
-                        .environmentObject(authManager)
-                        .currentTheme(settingsStore.selectedTheme)
-                        .preferredColorScheme(settingsStore.getPreferredColorScheme())
-                        .accentColor(.blue)
-                        .onOpenURL { url in
-                            #if DEBUG
-                            // In debug builds, only handle URLs on physical devices
-                            // (Google Sign-In doesn't work in simulator)
-                            if !UIDevice.current.isSimulator {
-                                GIDSignIn.sharedInstance.handle(url)
-                            }
-                            #else
-                            // In production, always handle URLs
-                            GIDSignIn.sharedInstance.handle(url)
-                            #endif
-                        }
-                        .environmentObject(dataStore)
-                } else {
-                    SignInView()
-                        .environmentObject(authManager)
-                }
+            RootView(dependencies: dependencies)
+        }
+    }
+}
+
+struct RootView: View {
+    @ObservedObject var dependencies: AppDependencies
+    @ObservedObject var settingsStore: SettingsStore
+    @ObservedObject var authManager: AuthManager
+    
+    @State private var isLoading = true
+    
+    init(dependencies: AppDependencies) {
+        self.dependencies = dependencies
+        self.settingsStore = dependencies.settingsStore
+        self.authManager = dependencies.authManager
+    }
+    
+    var body: some View {
+        ZStack {
+            if isLoading {
+                ProgressView("Loading...")
+                    .onAppear {
+                        checkAuthenticationState()
+                    }
+            } else if authManager.isAuthenticated {
+                MainTabView()
+                    .environmentObject(dependencies)
+                    .environmentObject(settingsStore)
+                    .environmentObject(authManager)
+                    .environmentObject(dependencies.dataStore)
+                    .environmentObject(dependencies.locationStore)
+                    .environmentObject(dependencies.swellPredictionService)
+                    .currentTheme(settingsStore.selectedTheme)
+                    .accentColor(.blue)
+                    .onOpenURL { url in
+                        handleOpenURL(url)
+                    }
+            } else {
+                SignInView()
+                    .environmentObject(authManager)
             }
         }
+        .preferredColorScheme(settingsStore.getPreferredColorScheme())
+    }
+    
+    private func handleOpenURL(_ url: URL) {
+        #if DEBUG
+        // In debug builds, only handle URLs on physical devices
+        // (Google Sign-In doesn't work in simulator)
+        if !UIDevice.current.isSimulator {
+            GIDSignIn.sharedInstance.handle(url)
+        }
+        #else
+        // In production, always handle URLs
+        GIDSignIn.sharedInstance.handle(url)
+        #endif
     }
     
     private func checkAuthenticationState() {
@@ -66,23 +88,22 @@ struct TrebleSurfApp: App {
         
         #if DEBUG
         // Debug: Print current auth state (debug builds only)
-        AuthManager.shared.debugPrintAuthState()
+        authManager.debugPrintAuthState()
         #endif
         
         // Check if we have any stored authentication data
-        if AuthManager.shared.hasStoredAuthData() {
+        if authManager.hasStoredAuthData() {
             print("Found stored authentication data, attempting to validate session")
             
             // First, try to validate existing session with backend
-            AuthManager.shared.validateSession { success, user in
-                DispatchQueue.main.async {
-                    if success {
-                        print("Successfully validated existing session for user: \(user?.email ?? "Unknown")")
-                        self.isLoading = false
-                    } else {
-                        print("Session validation failed, checking for Google Sign-In")
-                        self.checkGoogleSignIn()
-                    }
+            Task { @MainActor in
+                let (success, user) = await authManager.validateSession()
+                if success {
+                    print("Successfully validated existing session for user: \(user?.email ?? "Unknown")")
+                    self.isLoading = false
+                } else {
+                    print("Session validation failed, checking for Google Sign-In")
+                    self.checkGoogleSignIn()
                 }
             }
         } else {
@@ -99,16 +120,13 @@ struct TrebleSurfApp: App {
                 
                 // Now authenticate with backend
                 Task { @MainActor in
-                    AuthManager.shared.authenticateWithBackend(user: user) { success, _ in
-                        DispatchQueue.main.async {
-                            if success {
-                                print("Successfully restored authentication")
-                            } else {
-                                print("Failed to restore backend authentication")
-                            }
-                            self.isLoading = false
-                        }
+                    let (success, _) = await authManager.authenticateWithBackend(user: user)
+                    if success {
+                        print("Successfully restored authentication")
+                    } else {
+                        print("Failed to restore backend authentication")
                     }
+                    self.isLoading = false
                 }
             } else if let error = error {
                 print("Failed to restore previous sign-in: \(error.localizedDescription)")

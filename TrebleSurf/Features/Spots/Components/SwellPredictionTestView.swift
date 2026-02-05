@@ -8,7 +8,7 @@
 import SwiftUI
 
 struct SwellPredictionTestView: View {
-    @StateObject private var swellPredictionService = SwellPredictionService.shared
+    @EnvironmentObject var swellPredictionService: SwellPredictionService
     @EnvironmentObject var settingsStore: SettingsStore
     
     var body: some View {
@@ -120,6 +120,8 @@ struct SwellPredictionTestView: View {
 }
 
 #Preview {
-    SwellPredictionTestView()
-        .environmentObject(SettingsStore.shared)
+    let dependencies = AppDependencies()
+    return SwellPredictionTestView()
+        .environmentObject(dependencies.settingsStore)
+        .environmentObject(dependencies.swellPredictionService)
 }

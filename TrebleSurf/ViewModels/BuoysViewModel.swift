@@ -19,13 +19,20 @@ class BuoysViewModel: BaseViewModel {
     private var cancellables = Set<AnyCancellable>()
     
     // MARK: - Shared Buoy Cache
-    private let buoyCacheService = BuoyCacheService.shared
+    private let buoyCacheService: BuoyCacheService
     private let weatherBuoyService: WeatherBuoyService
+    private let apiClient: APIClientProtocol
     
-    init(weatherBuoyService: WeatherBuoyService = WeatherBuoyService.shared,
+    init(
+         weatherBuoyService: WeatherBuoyService,
+         buoyCacheService: BuoyCacheService,
+         apiClient: APIClientProtocol,
          errorHandler: ErrorHandlerProtocol? = nil,
-         logger: ErrorLoggerProtocol? = nil) {
+         logger: ErrorLoggerProtocol? = nil
+    ) {
         self.weatherBuoyService = weatherBuoyService
+        self.buoyCacheService = buoyCacheService
+        self.apiClient = apiClient
         super.init(errorHandler: errorHandler, logger: logger)
         setupFilterSubscription()
     }
@@ -62,11 +69,7 @@ class BuoysViewModel: BaseViewModel {
         
         do {
             // Fetch buoy locations
-            let buoyResponses = try await withCheckedThrowingContinuation { continuation in
-                APIClient.shared.fetchBuoys(region: "NorthAtlantic") { result in
-                    continuation.resume(with: result)
-                }
-            }
+            let buoyResponses = try await apiClient.fetchBuoys(region: "NorthAtlantic")
             
             buoyNames = buoyResponses.map { $0.name }
             buoyLocations = buoyResponses
@@ -84,11 +87,7 @@ class BuoysViewModel: BaseViewModel {
         
         do {
             // Fetch current buoy data
-            let buoyResponses = try await withCheckedThrowingContinuation { continuation in
-                APIClient.shared.fetchBuoyData(buoyNames: buoyNames) { result in
-                    continuation.resume(with: result)
-                }
-            }
+            let buoyResponses = try await apiClient.fetchBuoyData(buoyNames: buoyNames)
             
             logger.log("API returned \(buoyResponses.count) buoy responses", level: .debug, category: .api)
             
@@ -157,11 +156,7 @@ class BuoysViewModel: BaseViewModel {
         logger.log("Loading historical data for buoy: \(id)", level: .info, category: .api)
         
         do {
-            let historicalData = try await withCheckedThrowingContinuation { continuation in
-                APIClient.shared.fetchLast24HoursBuoyData(buoyName: id) { result in
-                    continuation.resume(with: result)
-                }
-            }
+            let historicalData = try await apiClient.fetchLast24HoursBuoyData(buoyName: id)
             
             // Find the buoy to update
             if let index = buoys.firstIndex(where: { $0.id == id }) {
@@ -197,11 +192,7 @@ class BuoysViewModel: BaseViewModel {
         logger.log("Loading historical data for buoy: \(id) from \(startDate) to \(endDate)", level: .info, category: .api)
         
         do {
-            let historicalData = try await withCheckedThrowingContinuation { continuation in
-                APIClient.shared.fetchBuoyDataRange(buoyName: id, startDate: startDate, endDate: endDate) { result in
-                    continuation.resume(with: result)
-                }
-            }
+            let historicalData = try await apiClient.fetchBuoyDataRange(buoyName: id, startDate: startDate, endDate: endDate)
             
             // Find the buoy to update
             if let index = buoys.firstIndex(where: { $0.id == id }) {

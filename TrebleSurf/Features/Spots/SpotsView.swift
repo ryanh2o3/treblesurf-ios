@@ -26,10 +26,23 @@ extension String {
 
 struct SpotsView: View {
     @EnvironmentObject var dataStore: DataStore
-    @StateObject private var viewModel: SpotsViewModel = SpotsViewModel()
+    @StateObject private var viewModel: SpotsViewModel
     @State private var selectedSpot: SpotData?
     @State private var selectedViewMode: String = "Live"
     @State private var selectedForecastEntry: ForecastEntry? = nil
+    private let dependencies: AppDependencies
+    
+    init(dependencies: AppDependencies) {
+        self.dependencies = dependencies
+        _viewModel = StateObject(
+            wrappedValue: SpotsViewModel(
+                dataStore: dependencies.dataStore,
+                apiClient: dependencies.apiClient,
+                errorHandler: dependencies.errorHandler,
+                logger: dependencies.errorLogger
+            )
+        )
+    }
     
     var body: some View {
         NavigationStack {
@@ -40,7 +53,8 @@ struct SpotsView: View {
                         SpotDetailView(
                             spot: selectedSpot,
                             onBack: { self.selectedSpot = nil },
-                            showBackButton: true
+                            showBackButton: true,
+                            dependencies: dependencies
                         )
                     } else {
                         spotsListView
@@ -269,7 +283,7 @@ struct LiveSpotOverlay: View {
         }
         .onAppear {
             // Fetch current conditions when overlay appears
-            dataStore.fetchConditions(for: spotId) { _ in }
+            Task { _ = await dataStore.fetchConditions(for: spotId) }
         }
     }
 }
@@ -335,6 +349,7 @@ struct ForecastSpotOverlay: View {
 }
 
 #Preview {
-    SpotsView()
-        .environmentObject(DataStore())
+    let dependencies = AppDependencies()
+    SpotsView(dependencies: dependencies)
+        .environmentObject(dependencies.dataStore)
 }

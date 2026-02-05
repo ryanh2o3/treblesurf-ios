@@ -9,9 +9,8 @@ import SwiftUI
 
 struct EnhancedForecastView: View {
     @StateObject private var forecastViewModel: SpotForecastViewModel
-    @StateObject private var swellPredictionService = SwellPredictionService.shared
+    @EnvironmentObject var swellPredictionService: SwellPredictionService
     @EnvironmentObject var settingsStore: SettingsStore
-    @EnvironmentObject var dataStore: DataStore
     
     var spot: SpotData
     var spotImage: Image? = nil
@@ -26,13 +25,18 @@ struct EnhancedForecastView: View {
     @State private var swellPredictionError: Error?
     @State private var swellPredictions: [SwellPredictionEntry] = []
     
-    init(spot: SpotData, spotImage: Image? = nil, onForecastSelectionChanged: ((ForecastEntry?) -> Void)? = nil, onSwellPredictionSelectionChanged: ((SwellPredictionEntry?) -> Void)? = nil) {
+    init(
+        spot: SpotData,
+        dataStore: DataStore,
+        spotImage: Image? = nil,
+        onForecastSelectionChanged: ((ForecastEntry?) -> Void)? = nil,
+        onSwellPredictionSelectionChanged: ((SwellPredictionEntry?) -> Void)? = nil
+    ) {
         self.spot = spot
         self.spotImage = spotImage
         self.onForecastSelectionChanged = onForecastSelectionChanged
         self.onSwellPredictionSelectionChanged = onSwellPredictionSelectionChanged
-        
-        let dataStore = DataStore.shared
+
         let viewModel = SpotForecastViewModel(dataStore: dataStore)
         self._forecastViewModel = StateObject(wrappedValue: viewModel)
     }
@@ -577,7 +581,8 @@ struct EnhancedForecastView: View {
     }
     
     private func loadForecastData() {
-        forecastViewModel.fetchForecast(for: spot.id) { success in
+        Task {
+            let success = await forecastViewModel.fetchForecast(for: spot.id)
             if !success {
                 print("Failed to fetch forecast for spot: \(spot.id)")
             }

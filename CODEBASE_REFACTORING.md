@@ -25,6 +25,16 @@
 
 **Fix:** Implement proper dependency injection through constructor injection and use `AppDependencies` container consistently.
 
+**Status:** 🟡 **In Progress**
+
+**Recent Progress:**
+- Core services now use constructor injection (removed `.shared` from `APIClient`, `DataStore`, `SurfReportService`, `WeatherBuoyService`, `SwellPredictionService`).
+- Views/ViewModels now receive dependencies via `AppDependencies` (e.g., `HomeView`, `MapView`, `SpotsView`, `BuoysView`, `LiveSpotView`).
+
+**Remaining Work:**
+- Finish removing singleton usage from remaining stores/services (e.g., `AuthManager`, `SettingsStore`, `BuoyCacheService`, `ImageCacheService`, `KeychainHelper` if applicable).
+- Replace remaining direct singleton access in any outliers.
+
 ---
 
 ### 2. Broken SwiftUI Lifecycle with @StateObject
@@ -39,6 +49,15 @@
 - Unpredictable behavior
 
 **Fix:** Use `@StateObject` with properly injected dependencies via environment objects or constructor parameters.
+
+**Status:** 🟡 **In Progress**
+
+**Recent Progress:**
+- Major views now initialize their view models via injected dependencies (`HomeView`, `MapView`, `SpotsView`, `BuoysView`, `LiveSpotView`).
+- Previews updated to use `AppDependencies` for initialization.
+
+**Remaining Work:**
+- Audit remaining views and view models for any default/inline initialization.
 
 ---
 
@@ -57,6 +76,14 @@
 - Convert all `APIClient` methods to async/await
 - Remove completion handler wrappers
 - Use structured concurrency throughout
+
+**Status:** 🟡 **In Progress**
+
+**Recent Progress:**
+- `APIClient` and several call sites now use async/await.
+
+**Remaining Work:**
+- Remove remaining completion-based flows outside `APIClient` (e.g., any lingering async wrappers).
 
 ---
 
@@ -79,6 +106,16 @@
 - Move business logic to ViewModels
 - Create reusable UI components
 
+**Status:** 🟡 **In Progress**
+
+**Recent Progress:**
+- Extracted `SurfReportDetailView` into `Features/Home/Components/SurfReportDetailView.swift`.
+- Extracted `RecentReportsSection` and `WeatherBuoysSection` into `Features/Home/Components/`.
+
+**Remaining Work:**
+- Finish breaking down `HomeView.swift` (current conditions + helpers).
+- Audit other large view files (e.g., `BuoysView`, `SpotDetailView`, `LiveSpotView`) for extraction candidates.
+
 ---
 
 ### 5. Massive APIClient File
@@ -92,6 +129,8 @@
 - `ForecastService`
 - `WeatherService`
 - `AuthService`
+
+**Status:** 🔴 **Not Started**
 
 ---
 
@@ -188,6 +227,8 @@
 - Separate API response models from domain models
 - Ensure consistent structure and naming
 
+**Status:** 🔴 **Not Started**
+
 ---
 
 ### 8. Unused Dependency Container
@@ -200,6 +241,15 @@
 - Remove singleton pattern usage
 - Inject dependencies through environment or constructors
 
+**Status:** 🟡 **In Progress**
+
+**Recent Progress:**
+- `AppDependencies` is now the primary container for core services and stores.
+- Main view hierarchy now passes `AppDependencies` into child views.
+
+**Remaining Work:**
+- Ensure all services and view models are constructed via `AppDependencies`.
+
 ---
 
 ## 🟢 Medium Priority Issues
@@ -209,6 +259,8 @@
 **Problem:** Inconsistent use of `[weak self]` in closures.
 
 **Fix:** Always use `[weak self]` in async closures or document why it's not needed.
+
+**Status:** 🔴 **Not Started**
 
 ---
 
@@ -222,6 +274,8 @@
 - Use `@MainActor` on UI-updating methods
 - Properly isolate background work
 - Remove `nonisolated(unsafe)` unless absolutely necessary
+
+**Status:** 🔴 **Not Started**
 
 ---
 
@@ -237,6 +291,8 @@
 - String literals
 
 **Fix:** Use configuration or constants files with proper organization.
+
+**Status:** 🔴 **Not Started**
 
 ---
 
@@ -258,28 +314,30 @@
 - Memory management
 - Unified invalidation strategy
 
+**Status:** 🔴 **Not Started**
+
 ---
 
 ## 📋 Recommended Action Plan
 
 ### Phase 1: Foundation (Week 1-2)
 
-- [ ] Convert `APIClient` to async/await
-- [ ] Establish proper dependency injection pattern
-- [ ] Create centralized error handling
+- [x] Convert `APIClient` to async/await
+- [~] Establish proper dependency injection pattern
+- [x] Create centralized error handling
 - [ ] Set up proper environment configuration
 
 ### Phase 2: Architecture (Week 3-4)
 
-- [ ] Remove singleton dependencies from ViewModels
-- [ ] Properly inject ViewModels into Views
-- [ ] Break up large files into focused components
+- [~] Remove singleton dependencies from ViewModels
+- [~] Properly inject ViewModels into Views
+- [~] Break up large files into focused components
 - [ ] Implement protocol-based service architecture
 
 ### Phase 3: Refinement (Week 5-6)
 
 - [ ] Consolidate cache implementations
-- [ ] Add comprehensive error handling
+- [~] Add comprehensive error handling
 - [ ] Add unit tests for critical paths
 - [ ] Document architecture decisions
 - [ ] Clean up concurrency annotations
@@ -289,9 +347,9 @@
 
 ## 🎯 Success Metrics
 
-- [ ] All services use dependency injection instead of singletons
-- [ ] No view file exceeds 300 lines
-- [ ] All async operations use async/await (no completion handlers)
+- [~] All services use dependency injection instead of singletons
+- [~] No view file exceeds 300 lines
+- [~] All async operations use async/await (no completion handlers)
 - [ ] 80%+ test coverage for business logic
 - [ ] Centralized error handling with consistent UX
 - [ ] All concurrency properly annotated for Swift 6

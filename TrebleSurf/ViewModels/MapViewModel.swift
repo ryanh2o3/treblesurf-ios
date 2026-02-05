@@ -15,9 +15,17 @@ class MapViewModel: BaseViewModel {
     @Published var showingBuoyDetails: Bool = false
     
     private var cancellables = Set<AnyCancellable>()
-    private let dataStore = DataStore.shared
+    private let dataStore: DataStore
+    private let apiClient: APIClientProtocol
     
-    override init(errorHandler: ErrorHandlerProtocol? = nil, logger: ErrorLoggerProtocol? = nil) {
+    init(
+        dataStore: DataStore,
+        apiClient: APIClientProtocol,
+        errorHandler: ErrorHandlerProtocol? = nil,
+        logger: ErrorLoggerProtocol? = nil
+    ) {
+        self.dataStore = dataStore
+        self.apiClient = apiClient
         super.init(errorHandler: errorHandler, logger: logger)
         loadMapData()
     }
@@ -32,34 +40,16 @@ class MapViewModel: BaseViewModel {
         }
     }
     
-    @MainActor
     private func loadSurfSpots() async throws {
         logger.log("Loading surf spots for region: Donegal", level: .info, category: .general)
-        try await withCheckedThrowingContinuation { continuation in
-            dataStore.fetchRegionSpots(region: "Donegal") { [weak self] result in
-                switch result {
-                case .success(let spots):
-                    Task { @MainActor in
-                        self?.surfSpots = spots
-                        self?.logger.log("Loaded \(spots.count) surf spots", level: .info, category: .general)
-                    }
-                    continuation.resume()
-                case .failure(let error):
-                    continuation.resume(throwing: error)
-                }
-            }
-        }
+        let spots = try await dataStore.fetchRegionSpots(region: "Donegal")
+        self.surfSpots = spots
+        self.logger.log("Loaded \(spots.count) surf spots", level: .info, category: .general)
     }
     
-    @MainActor
     private func loadBuoys() async throws {
         logger.log("Loading buoys for region: NorthAtlantic", level: .info, category: .general)
-        let buoyResponses = try await withCheckedThrowingContinuation { continuation in
-            APIClient.shared.fetchBuoys(region: "NorthAtlantic") { result in
-                continuation.resume(with: result)
-            }
-        }
-        
+        let buoyResponses = try await apiClient.fetchBuoys(region: "NorthAtlantic")
         self.buoys = buoyResponses
         logger.log("Loaded \(buoyResponses.count) buoys", level: .info, category: .general)
     }
@@ -101,15 +91,13 @@ class MapViewModel: BaseViewModel {
     // Load current conditions for a selected spot
     func loadCurrentConditions(for spot: SpotData) {
         isLoadingConditions = true
-        
-        // Use the existing DataStore method to fetch conditions
-        dataStore.fetchConditions(for: spot.id) { [weak self] success in
-            Task { @MainActor in
-                self?.isLoadingConditions = false
-                if success {
-                    // Get conditions from the DataStore's currentConditions property
-                    self?.selectedSpotConditions = self?.dataStore.currentConditions
-                }
+        Task { [weak self] in
+            guard let self = self else { return }
+            let success = await self.dataStore.fetchConditions(for: spot.id)
+            self.isLoadingConditions = false
+            if success {
+                // Get conditions from the DataStore's currentConditions property
+                self.selectedSpotConditions = self.dataStore.currentConditions
             }
         }
     }

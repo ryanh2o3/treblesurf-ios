@@ -50,8 +50,28 @@ class QuickPhotoReportViewModel: BaseViewModel {
         set { super.fieldErrors = newValue }
     }
     
+    private let apiClient: APIClientProtocol
+    private let authManager: AuthManagerProtocol
+    private let legacyErrorHandler: APIErrorHandler
+    private let imageValidationService: ImageValidationService
+    
     // Track submission success to avoid cleanup after successful submission
     @Published var submissionSuccessful = false
+
+    init(
+        apiClient: APIClientProtocol,
+        authManager: AuthManagerProtocol,
+        legacyErrorHandler: APIErrorHandler = APIErrorHandler(),
+        imageValidationService: ImageValidationService = ImageValidationService(),
+        errorHandler: ErrorHandlerProtocol? = nil,
+        logger: ErrorLoggerProtocol? = nil
+    ) {
+        self.apiClient = apiClient
+        self.authManager = authManager
+        self.legacyErrorHandler = legacyErrorHandler
+        self.imageValidationService = imageValidationService
+        super.init(errorHandler: errorHandler, logger: logger)
+    }
     
     // Media validation properties
     @Published var isValidatingImage = false
@@ -176,7 +196,7 @@ class QuickPhotoReportViewModel: BaseViewModel {
         imageValidationError = nil
         imageValidationPassed = false
         
-        ImageValidationService.shared.validateSurfImage(image) { [weak self] result in
+        imageValidationService.validateSurfImage(image) { [weak self] result in
             Task { @MainActor [weak self] in
                 guard let self = self else { return }
                 self.isValidatingImage = false
@@ -320,7 +340,7 @@ class QuickPhotoReportViewModel: BaseViewModel {
         videoValidationError = nil
         videoValidationPassed = false
         
-        ImageValidationService.shared.validateSurfVideo(videoURL) { [weak self] result in
+        imageValidationService.validateSurfVideo(videoURL) { [weak self] result in
             Task { @MainActor [weak self] in
                 guard let self = self else { return }
                 self.isValidatingVideo = false
@@ -407,17 +427,13 @@ class QuickPhotoReportViewModel: BaseViewModel {
         let endpoint = "/api/generateVideoUploadURL?country=\(country)&region=\(region)&spot=\(spot)"
         logger.log("Requesting presigned URL for video upload", level: .debug, category: .api)
         
-        return try await withCheckedThrowingContinuation { continuation in
-            APIClient.shared.request(endpoint) { (result: Result<PresignedVideoUploadResponse, Error>) in
-                switch result {
-                case .success(let response):
-                    self.logger.log("Presigned URL generated successfully", level: .info, category: .api)
-                    continuation.resume(returning: response)
-                case .failure(let error):
-                    self.logger.log("Failed to generate presigned URL: \(error.localizedDescription)", level: .error, category: .api)
-                    continuation.resume(throwing: error)
-                }
-            }
+        do {
+            let response: PresignedVideoUploadResponse = try await apiClient.request(endpoint)
+            self.logger.log("Presigned URL generated successfully", level: .info, category: .api)
+            return response
+        } catch {
+            self.logger.log("Failed to generate presigned URL: \(error.localizedDescription)", level: .error, category: .api)
+            throw error
         }
     }
     
@@ -506,17 +522,13 @@ class QuickPhotoReportViewModel: BaseViewModel {
         let endpoint = "/api/generateImageUploadURL?country=\(country)&region=\(region)&spot=\(spot)"
         print("🌐 [VIDEO_THUMBNAIL] Requesting presigned URL from: \(endpoint)")
         
-        return try await withCheckedThrowingContinuation { continuation in
-            APIClient.shared.request(endpoint) { (result: Result<PresignedUploadResponse, Error>) in
-                switch result {
-                case .success(let response):
-                    print("✅ [VIDEO_THUMBNAIL] Presigned URL generated successfully")
-                    continuation.resume(returning: response)
-                case .failure(let error):
-                    print("❌ [VIDEO_THUMBNAIL] Failed to generate presigned URL: \(error)")
-                    continuation.resume(throwing: error)
-                }
-            }
+        do {
+            let response: PresignedUploadResponse = try await apiClient.request(endpoint)
+            print("✅ [VIDEO_THUMBNAIL] Presigned URL generated successfully")
+            return response
+        } catch {
+            print("❌ [VIDEO_THUMBNAIL] Failed to generate presigned URL: \(error)")
+            throw error
         }
     }
     
@@ -802,16 +814,7 @@ class QuickPhotoReportViewModel: BaseViewModel {
         
         let endpoint = "/api/generateImageUploadURL?country=\(country)&region=\(region)&spot=\(spot)"
         
-        return try await withCheckedThrowingContinuation { continuation in
-            APIClient.shared.request(endpoint) { (result: Result<PresignedUploadResponse, Error>) in
-                switch result {
-                case .success(let response):
-                    continuation.resume(returning: response)
-                case .failure(let error):
-                    continuation.resume(throwing: error)
-                }
-            }
-        }
+        return try await apiClient.request(endpoint)
     }
     
     /// Uploads image to S3 using presigned URL
@@ -1072,46 +1075,28 @@ class QuickPhotoReportViewModel: BaseViewModel {
         }
         
         // Check if we have a CSRF token, refresh if needed
-        if AuthManager.shared.csrfToken == nil {
-            await withCheckedContinuation { continuation in
-                APIClient.shared.refreshCSRFToken { success in
-                    continuation.resume()
-                }
-            }
+        if authManager.getCsrfHeader() == nil {
+            _ = await apiClient.refreshCSRFToken()
         }
         
         // Use APIClient which handles CSRF tokens and session cookies automatically
-        return await withCheckedContinuation { continuation in
-            APIClient.shared.postRequest(to: endpoint, body: jsonData) { (result: Result<SurfReportSubmissionResponse, Error>) in
-                switch result {
-                case .success:
-                    continuation.resume(returning: true)
-                case .failure(let error):
-                    // If it's a 403 error, try refreshing the CSRF token and retry once
-                    if let nsError = error as NSError? {
-                        if nsError.code == 403 {
-                            APIClient.shared.refreshCSRFToken { success in
-                                if success {
-                                    // Retry the request
-                                    APIClient.shared.postRequest(to: endpoint, body: jsonData) { (retryResult: Result<SurfReportSubmissionResponse, Error>) in
-                                        switch retryResult {
-                                        case .success:
-                                            continuation.resume(returning: true)
-                                        case .failure:
-                                            continuation.resume(returning: false)
-                                        }
-                                    }
-                                } else {
-                                    continuation.resume(returning: false)
-                                }
-                            }
-                            return
-                        }
+        do {
+            _ = try await apiClient.postRequest(to: endpoint, body: jsonData) as SurfReportSubmissionResponse
+            return true
+        } catch {
+            // If it's a 403 error, try refreshing the CSRF token and retry once
+            if let nsError = error as NSError?, nsError.code == 403 {
+                let refreshed = await apiClient.refreshCSRFToken()
+                if refreshed {
+                    do {
+                        _ = try await apiClient.postRequest(to: endpoint, body: jsonData) as SurfReportSubmissionResponse
+                        return true
+                    } catch {
+                        return false
                     }
-                    
-                    continuation.resume(returning: false)
                 }
             }
+            return false
         }
     }
     
@@ -1123,7 +1108,7 @@ class QuickPhotoReportViewModel: BaseViewModel {
         handleError(error, context: "Quick photo report submission")
         
         // Also maintain compatibility with the old error display system
-        let errorDisplay = APIErrorHandler.shared.handleAPIError(error)
+        let errorDisplay = legacyErrorHandler.handleAPIError(error)
         self.currentError = errorDisplay
         self.errorMessage = errorDisplay?.message
         
@@ -1240,58 +1225,11 @@ class QuickPhotoReportViewModel: BaseViewModel {
             let endpoint = "/api/deleteUploadedMedia?key=\(key)&type=\(type)"
             
             // Check if we have a CSRF token, refresh if needed (same as submitSurfReportWithIOSValidation)
-            if AuthManager.shared.csrfToken == nil {
-                await withCheckedContinuation { continuation in
-                    APIClient.shared.refreshCSRFToken { success in
-                        continuation.resume()
-                    }
-                }
+            if authManager.getCsrfHeader() == nil {
+                _ = await apiClient.refreshCSRFToken()
             }
             
-            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-                // Use the same authentication pattern as postRequest
-                guard let url = URL(string: "\(APIClient.shared.getBaseURL)\(endpoint)") else {
-                    let error = NSError(domain: "APIClient", code: 1, userInfo: [NSLocalizedDescriptionKey: "Invalid URL"])
-                    continuation.resume(throwing: error)
-                    return
-                }
-                
-                var request = URLRequest(url: url)
-                request.httpMethod = "DELETE"
-                
-                // Add session cookie (same as postRequest)
-                if let sessionCookie = AuthManager.shared.getSessionCookie() {
-                    for (key, value) in sessionCookie {
-                        request.addValue(value, forHTTPHeaderField: key)
-                    }
-                }
-                
-                // Add CSRF token for DELETE requests (same as postRequest)
-                if let csrfHeader = AuthManager.shared.getCsrfHeader() {
-                    for (key, value) in csrfHeader {
-                        request.addValue(value, forHTTPHeaderField: key)
-                    }
-                }
-                
-                URLSession.shared.dataTask(with: request) { data, response, error in
-                    if let error = error {
-                        continuation.resume(throwing: error)
-                        return
-                    }
-                    
-                    if let httpResponse = response as? HTTPURLResponse {
-                        if httpResponse.statusCode == 200 {
-                            continuation.resume()
-                        } else {
-                            let error = NSError(domain: "APIClient", code: httpResponse.statusCode, userInfo: [NSLocalizedDescriptionKey: "HTTP \(httpResponse.statusCode)"])
-                            continuation.resume(throwing: error)
-                        }
-                    } else {
-                        let error = NSError(domain: "APIClient", code: 0, userInfo: [NSLocalizedDescriptionKey: "Invalid response"])
-                        continuation.resume(throwing: error)
-                    }
-                }.resume()
-            }
+            _ = try await apiClient.makeFlexibleRequest(to: endpoint, method: "DELETE", requiresAuth: true) as EmptyResponse
         } catch {
             // Silently handle cleanup errors - they're not critical for user experience
         }

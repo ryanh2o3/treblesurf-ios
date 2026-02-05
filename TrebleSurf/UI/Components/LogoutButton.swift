@@ -8,7 +8,7 @@
 import SwiftUI
 
 struct LogoutButton: View {
-    @StateObject private var authManager = AuthManager.shared
+    @EnvironmentObject var authManager: AuthManager
     @State private var isLoggingOut = false
     @State private var showLogoutAlert = false
     
@@ -44,17 +44,16 @@ struct LogoutButton: View {
     private func handleLogout() {
         isLoggingOut = true
         
-        authManager.logout { success in
-            DispatchQueue.main.async {
-                isLoggingOut = false
-                if success {
-                    print("Successfully logged out and cleared all app data")
-                    // You might want to navigate to the sign-in screen here
-                    // or trigger a navigation reset
-                } else {
-                    print("Logout failed")
-                    // Even if logout fails, the local data should still be cleared
-                }
+        Task { @MainActor in
+            let success = await authManager.logout()
+            isLoggingOut = false
+            if success {
+                print("Successfully logged out and cleared all app data")
+                // You might want to navigate to the sign-in screen here
+                // or trigger a navigation reset
+            } else {
+                print("Logout failed")
+                // Even if logout fails, the local data should still be cleared
             }
         }
     }
@@ -62,4 +61,5 @@ struct LogoutButton: View {
 
 #Preview {
     LogoutButton()
+        .environmentObject(AuthManager())
 }

@@ -10,45 +10,80 @@ import SwiftUI
 
 /// Centralized dependency container for the app
 @MainActor
-class AppDependencies {
-    nonisolated static let shared = AppDependencies()
+final class AppDependencies: ObservableObject {
+    // MARK: - Core Dependencies
     
-    // MARK: - Error Handling Infrastructure
+    let config: AppConfigurationProtocol
+    let errorLogger: ErrorLoggerProtocol
+    let errorHandler: ErrorHandlerProtocol
     
-    lazy var errorLogger: ErrorLoggerProtocol = {
-        #if DEBUG
-        return ErrorLogger(minimumLogLevel: .debug, enableConsoleOutput: true, enableOSLog: true)
-        #else
-        return ErrorLogger(minimumLogLevel: .info, enableConsoleOutput: false, enableOSLog: true)
-        #endif
-    }()
+    // MARK: - Stores & Services
     
-    lazy var errorHandler: ErrorHandlerProtocol = ErrorHandler(logger: errorLogger)
-    
-    // MARK: - Lazy Dependencies
-    
-    lazy var dataStore: any DataStoreProtocol = DataStore.shared
-    lazy var authManager: any AuthManagerProtocol = AuthManager.shared
-    lazy var apiClient: any APIClientProtocol = APIClient.shared
-    lazy var settingsStore: any SettingsStoreProtocol = SettingsStore.shared
-    lazy var locationStore: any LocationStoreProtocol = LocationStore.shared
-    lazy var imageCache: any ImageCacheProtocol = ImageCacheService.shared
-    lazy var config: any AppConfigurationProtocol = AppConfiguration.shared
-    lazy var buoyCacheService = BuoyCacheService.shared
+    let authManager: AuthManager
+    let settingsStore: SettingsStore
+    let locationStore: LocationStore
+    let imageCache: ImageCacheService
+    let buoyCacheService: BuoyCacheService
+    let imageValidationService: ImageValidationService
+    let legacyErrorHandler: APIErrorHandler
+    let apiClient: APIClient
+    let dataStore: DataStore
+    let surfReportService: SurfReportService
+    let weatherBuoyService: WeatherBuoyService
+    let swellPredictionService: SwellPredictionService
     
     // MARK: - Initialization
     
-    nonisolated private init() {}
+    init() {
+        let config = AppConfiguration()
+        let errorLogger: ErrorLoggerProtocol = {
+            #if DEBUG
+            return ErrorLogger(minimumLogLevel: .debug, enableConsoleOutput: true, enableOSLog: true)
+            #else
+            return ErrorLogger(minimumLogLevel: .info, enableConsoleOutput: false, enableOSLog: true)
+            #endif
+        }()
+        
+        self.config = config
+        self.errorLogger = errorLogger
+        self.errorHandler = ErrorHandler(logger: errorLogger)
+        
+        let authManager = AuthManager()
+        let settingsStore = SettingsStore()
+        let locationStore = LocationStore()
+        let imageCache = ImageCacheService()
+        let buoyCacheService = BuoyCacheService()
+        let imageValidationService = ImageValidationService()
+        let legacyErrorHandler = APIErrorHandler()
+        let apiClient = APIClient(config: config, authManager: authManager)
+        let dataStore = DataStore(config: config, apiClient: apiClient, imageCache: imageCache)
+        
+        authManager.setStores(
+            dataStore: dataStore,
+            locationStore: locationStore,
+            settingsStore: settingsStore
+        )
+        
+        self.authManager = authManager
+        self.settingsStore = settingsStore
+        self.locationStore = locationStore
+        self.imageCache = imageCache
+        self.buoyCacheService = buoyCacheService
+        self.imageValidationService = imageValidationService
+        self.legacyErrorHandler = legacyErrorHandler
+        self.apiClient = apiClient
+        self.dataStore = dataStore
+        self.surfReportService = SurfReportService(apiClient: apiClient, imageCacheService: imageCache)
+        self.weatherBuoyService = WeatherBuoyService(apiClient: apiClient, buoyCacheService: buoyCacheService, logger: errorLogger)
+        self.swellPredictionService = SwellPredictionService(apiClient: apiClient)
+    }
     
     // MARK: - Testing Support
     
     /// Create a mock dependencies instance for testing
-    nonisolated static func createMock() -> AppDependencies {
-        let deps = AppDependencies()
+    static func createMock() -> AppDependencies {
         // In the future, can swap implementations here
-        // deps.dataStore = MockDataStore()
-        // deps.authManager = MockAuthManager()
-        return deps
+        return AppDependencies()
     }
     
     // MARK: - Reset

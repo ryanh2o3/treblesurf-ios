@@ -34,7 +34,6 @@ struct ScrollOffsetReader: View {
 
 struct SpotForecastView: View {
     @StateObject private var viewModel: SpotForecastViewModel
-    @EnvironmentObject var dataStore: DataStore
     var spotId: String
     var spotImage: Image? = nil
     var onForecastSelectionChanged: ((ForecastEntry) -> Void)? = nil
@@ -45,12 +44,16 @@ struct SpotForecastView: View {
     @State private var lastScrollOffset: CGFloat = 0
 
         
-    init(spotId: String, spotImage: Image? = nil, onForecastSelectionChanged: ((ForecastEntry) -> Void)? = nil) {
+    init(
+        spotId: String,
+        dataStore: DataStore,
+        spotImage: Image? = nil,
+        onForecastSelectionChanged: ((ForecastEntry) -> Void)? = nil
+    ) {
         self.spotId = spotId
         self.spotImage = spotImage
         self.onForecastSelectionChanged = onForecastSelectionChanged
         
-        let dataStore = DataStore.shared
         let viewModel = SpotForecastViewModel(dataStore: dataStore)
         self._viewModel = StateObject(wrappedValue: viewModel)
     }
@@ -379,7 +382,8 @@ struct SpotForecastView: View {
     }
     
     private func loadForecastData() {
-        viewModel.fetchForecast(for: spotId) { success in
+        Task {
+            let success = await viewModel.fetchForecast(for: spotId)
             if !success {
                 print("Failed to fetch forecast for spot: \(spotId)")
             }

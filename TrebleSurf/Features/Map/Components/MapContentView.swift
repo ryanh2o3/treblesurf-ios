@@ -54,7 +54,11 @@ struct MapContentView: View {
 
 struct MapContentView_Previews: PreviewProvider {
     static var previews: some View {
-        let viewModel = MapViewModel()
+        let dependencies = AppDependencies()
+        let viewModel = MapViewModel(
+            dataStore: dependencies.dataStore,
+            apiClient: dependencies.apiClient
+        )
         MapContentView(
             viewModel: viewModel,
             region: .constant(MKCoordinateRegion(

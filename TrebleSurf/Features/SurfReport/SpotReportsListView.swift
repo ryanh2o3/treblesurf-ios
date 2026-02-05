@@ -6,13 +6,15 @@ struct SpotReportsListView: View {
     let spotName: String
     
     @StateObject private var viewModel: SpotReportsListViewModel
+    private let dependencies: AppDependencies
     @Environment(\.dismiss) private var dismiss
     @State private var selectedReport: SurfReport?
     
-    init(spotId: String, spotName: String) {
+    init(spotId: String, spotName: String, dependencies: AppDependencies) {
         self.spotId = spotId
         self.spotName = spotName
-        self._viewModel = StateObject(wrappedValue: SpotReportsListViewModel(spotId: spotId))
+        self.dependencies = dependencies
+        self._viewModel = StateObject(wrappedValue: SpotReportsListViewModel(spotId: spotId, apiClient: dependencies.apiClient))
     }
     
     var body: some View {
@@ -44,7 +46,7 @@ struct SpotReportsListView: View {
                     ScrollView {
                         LazyVStack(spacing: 16) {
                             ForEach(viewModel.reports) { report in
-                                ReportCardView(report: report)
+                                ReportCardView(report: report, apiClient: dependencies.apiClient)
                                     .padding(.horizontal)
                                     .onTapGesture {
                                         selectedReport = report
@@ -108,9 +110,13 @@ struct SpotReportsListView: View {
             .refreshable {
                 await viewModel.refresh()
             }
-            .sheet(item: $selectedReport) { report in
-                SurfReportDetailView(report: report, backButtonText: "Back to \(spotName)")
-            }
+        .sheet(item: $selectedReport) { report in
+            SurfReportDetailView(
+                report: report,
+                backButtonText: "Back to \(spotName)",
+                apiClient: dependencies.apiClient
+            )
+        }
         }
     }
 }
@@ -118,6 +124,7 @@ struct SpotReportsListView: View {
 // MARK: - Report Card View
 struct ReportCardView: View {
     @ObservedObject var report: SurfReport
+    let apiClient: APIClientProtocol
     @State private var isLoadingImage = false
     @State private var isLoadingVideo = false
     @State private var showingVideoPlayer = false
@@ -265,15 +272,14 @@ struct ReportCardView: View {
         // Load image if needed
         if let imageKey = report.imageKey, !imageKey.isEmpty, report.imageData == nil {
             isLoadingImage = true
-            APIClient.shared.getReportImage(key: imageKey) { result in
-                DispatchQueue.main.async {
+            Task {
+                do {
+                    let response = try await apiClient.getReportImage(key: imageKey)
                     isLoadingImage = false
-                    switch result {
-                    case .success(let response):
-                        report.imageData = response.imageData
-                    case .failure(let error):
-                        print("Failed to load image: \(error)")
-                    }
+                    report.imageData = response.imageData
+                } catch {
+                    isLoadingImage = false
+                    print("Failed to load image: \(error)")
                 }
             }
         }
@@ -283,25 +289,28 @@ struct ReportCardView: View {
         guard let videoKey = report.videoKey, !videoKey.isEmpty else { return }
         
         isLoadingVideo = true
-        APIClient.shared.getVideoViewURL(key: videoKey) { result in
-            DispatchQueue.main.async {
+        Task {
+            do {
+                let response = try await apiClient.getVideoViewURL(key: videoKey)
                 self.isLoadingVideo = false
-                switch result {
-                case .success(let response):
-                    if let viewURLString = response.viewURL,
-                       let url = URL(string: viewURLString) {
-                        self.videoURL = url
-                        self.showingVideoPlayer = true
-                    }
-                case .failure(let error):
-                    print("Failed to generate video view URL: \(error)")
+                if let viewURLString = response.viewURL,
+                   let url = URL(string: viewURLString) {
+                    self.videoURL = url
+                    self.showingVideoPlayer = true
                 }
+            } catch {
+                self.isLoadingVideo = false
+                print("Failed to generate video view URL: \(error)")
             }
         }
     }
 }
 
 #Preview {
-    SpotReportsListView(spotId: "Ireland#Donegal#Tullan Strand", spotName: "Tullan Strand")
+    SpotReportsListView(
+        spotId: "Ireland#Donegal#Tullan Strand",
+        spotName: "Tullan Strand",
+        dependencies: AppDependencies()
+    )
 }
 

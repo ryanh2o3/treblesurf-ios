@@ -246,5 +246,6 @@ struct ThemeOptionRow: View {
 
 #Preview {
     SettingsView()
-        .environmentObject(SettingsStore.shared)
+        .environmentObject(SettingsStore())
+        .environmentObject(AuthManager())
 }

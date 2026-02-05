@@ -6,11 +6,26 @@ struct QuickPhotoReportView: View {
     let spotId: String
     let spotName: String
     @Environment(\.dismiss) private var dismiss
-    @StateObject private var viewModel = QuickPhotoReportViewModel()
+    @StateObject private var viewModel: QuickPhotoReportViewModel
     @State private var showingPhotoPicker = false
     @State private var showingVideoPicker = false
     @State private var showingVideoPlayer = false
     @State private var videoURL: URL?
+    
+    init(spotId: String, spotName: String, dependencies: AppDependencies) {
+        self.spotId = spotId
+        self.spotName = spotName
+        _viewModel = StateObject(
+            wrappedValue: QuickPhotoReportViewModel(
+                apiClient: dependencies.apiClient,
+                authManager: dependencies.authManager,
+                legacyErrorHandler: dependencies.legacyErrorHandler,
+                imageValidationService: dependencies.imageValidationService,
+                errorHandler: dependencies.errorHandler,
+                logger: dependencies.errorLogger
+            )
+        )
+    }
     
     var body: some View {
         NavigationView {
@@ -454,5 +469,5 @@ struct QuickPhotoReportView: View {
 
 
 #Preview {
-    QuickPhotoReportView(spotId: "test", spotName: "Test Spot")
+    QuickPhotoReportView(spotId: "test", spotName: "Test Spot", dependencies: AppDependencies())
 }

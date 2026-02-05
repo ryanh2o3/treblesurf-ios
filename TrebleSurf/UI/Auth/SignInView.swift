@@ -11,7 +11,7 @@ import GoogleSignInSwift
 import UIKit
 
 struct SignInView: View {
-    @StateObject private var authManager = AuthManager.shared
+    @EnvironmentObject var authManager: AuthManager
     @State private var isSigningIn = false
     @State private var showDevSignIn = false
     @State private var devEmail = ""
@@ -115,13 +115,12 @@ struct SignInView: View {
                 }
 
                 if let result = signInResult {
-                    authManager.authenticateWithBackend(user: result.user) { success, user in
-                        DispatchQueue.main.async {
-                            if success {
-                                print("Successfully authenticated user: \(user?.email ?? "Unknown")")
-                            } else {
-                                print("Backend authentication failed")
-                            }
+                    Task { @MainActor in
+                        let (success, user) = await authManager.authenticateWithBackend(user: result.user)
+                        if success {
+                            print("Successfully authenticated user: \(user?.email ?? "Unknown")")
+                        } else {
+                            print("Backend authentication failed")
                         }
                     }
                 }
@@ -135,7 +134,7 @@ struct SignInView: View {
 // This view is only available in debug builds for testing purposes
 struct DevSignInView: View {
     @Environment(\.dismiss) private var dismiss
-    @StateObject private var authManager = AuthManager.shared
+    @EnvironmentObject var authManager: AuthManager
     @State private var email = "dev@treblesurf.com"
     @State private var isSigningIn = false
     
@@ -196,12 +195,11 @@ struct DevSignInView: View {
     private func createDevSession() {
         isSigningIn = true
         
-        authManager.createDevSession(email: email) { success in
-            DispatchQueue.main.async {
-                isSigningIn = false
-                if success {
-                    dismiss()
-                }
+        Task { @MainActor in
+            let success = await authManager.createDevSession(email: email)
+            isSigningIn = false
+            if success {
+                dismiss()
             }
         }
     }
@@ -210,4 +208,5 @@ struct DevSignInView: View {
 
 #Preview {
     SignInView()
+        .environmentObject(AuthManager())
 }

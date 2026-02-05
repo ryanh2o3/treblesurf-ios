@@ -7,7 +7,7 @@ import AVFoundation
 class ImageValidationService {
     static let shared = ImageValidationService()
     
-    private init() {}
+    init() {}
     
     /// Validates if an image contains surf-related content using Vision framework
     /// - Parameters:

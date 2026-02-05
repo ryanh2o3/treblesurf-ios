@@ -9,17 +9,18 @@ import SwiftUI
 
 @MainActor
 class DataStore: ObservableObject, DataStoreProtocol {
-    nonisolated static let shared = DataStore()
-    
     nonisolated(unsafe) private let config: any AppConfigurationProtocol
     nonisolated(unsafe) private let apiClient: any APIClientProtocol
+    nonisolated(unsafe) private let imageCache: ImageCacheService
     
     nonisolated init(
-        config: any AppConfigurationProtocol = AppConfiguration.shared,
-        apiClient: any APIClientProtocol = APIClient.shared
+        config: any AppConfigurationProtocol,
+        apiClient: any APIClientProtocol,
+        imageCache: ImageCacheService
     ) {
         self.config = config
         self.apiClient = apiClient
+        self.imageCache = imageCache
     }
 
     @Published var currentConditions = ConditionData(from: [:])
@@ -76,7 +77,7 @@ class DataStore: ObservableObject, DataStoreProtocol {
     @Published var currentSpotId: String = ""
     
     // Fetch conditions for a spot
-    func fetchConditions(for spotId: String, completion: @escaping (Bool) -> Void = {_ in}) {
+    func fetchConditions(for spotId: String) async -> Bool {
         // Check if we have cached data that's still valid
         if let cached = spotConditionsCache[spotId],
            Date().timeIntervalSince(cached.timestamp) < cacheExpirationInterval {
@@ -85,16 +86,14 @@ class DataStore: ObservableObject, DataStoreProtocol {
             currentSpotId = spotId
             currentConditions = cached.conditions
             currentConditionsTimestamp = cached.forecastTimestamp
-            completion(true)
-            return
+            return true
         }
 
         // Split the spotId into components
         let components = spotId.split(separator: "#")
         guard components.count == 3 else {
             print("Invalid spotId format")
-            completion(false)
-            return
+            return false
         }
         
         let country = String(components[0])
@@ -102,53 +101,43 @@ class DataStore: ObservableObject, DataStoreProtocol {
         let spot = String(components[2])
         
         // Make API call
-        apiClient.fetchCurrentConditions(country: country, region: region, spot: spot) { [weak self] (result: Result<[CurrentConditionsResponse], Error>) in
-            guard let self = self else { return }
-            
-            switch result {
-            case .success(let responses):
-                if let firstResponse = responses.first {
-                    // Update on main actor (handled by @MainActor annotation)
-                    Task { @MainActor [weak self] in
-                        guard let self = self else { return }
-                        // Update current conditions
-                        self.currentConditions = firstResponse.data
-                        self.currentConditionsTimestamp = firstResponse.generated_at
-                        
-                        // Update current spot ID
-                        self.currentSpotId = spotId
-                        
-                        // Cache the data with current timestamp
-                        self.spotConditionsCache[spotId] = (firstResponse.data, firstResponse.generated_at, Date())
-                        
-                        completion(true)
-                    }
-                }
-                
-            case .failure(let error):
-                print("Error fetching conditions: \(error)")
-                completion(false)
+        do {
+            let responses = try await apiClient.fetchCurrentConditions(country: country, region: region, spot: spot)
+            guard let firstResponse = responses.first else {
+                return false
             }
+            
+            // Update current conditions
+            currentConditions = firstResponse.data
+            currentConditionsTimestamp = firstResponse.generated_at
+            
+            // Update current spot ID
+            currentSpotId = spotId
+            
+            // Cache the data with current timestamp
+            spotConditionsCache[spotId] = (firstResponse.data, firstResponse.generated_at, Date())
+            return true
+        } catch {
+            print("Error fetching conditions: \(error)")
+            return false
         }
     }
     
-    func fetchForecast(for spotId: String, completion: @escaping (Bool) -> Void = {_ in}) {
+    func fetchForecast(for spotId: String) async -> Bool {
             // Check if we have cached data that's still valid
             if let cached = spotForecastCache[spotId],
                Date().timeIntervalSince(cached.timestamp) < cacheExpirationInterval {
                 
                 // Use cached data - already on main thread
                 currentForecastEntries = cached.forecast
-                completion(true)
-                return
+                return true
             }
 
             // Split the spotId into components
             let components = spotId.split(separator: "#")
             guard components.count == 3 else {
                 print("Invalid spotId format")
-                completion(false)
-                return
+                return false
             }
             
             let country = String(components[0])
@@ -156,180 +145,140 @@ class DataStore: ObservableObject, DataStoreProtocol {
             let spot = String(components[2])
             
             // Make API call and convert response to ForecastEntry objects directly
-            apiClient.fetchForecast(country: country, region: region, spot: spot) { [weak self] (result: Result<[ForecastResponse], Error>) in
-                guard let self = self else { return }
+            do {
+                let responses = try await apiClient.fetchForecast(country: country, region: region, spot: spot)
+                // Convert to ForecastEntry objects
+                let entries = responses.toForecastEntries()
                 
-                switch result {
-                case .success(let responses):
-                    // Convert to ForecastEntry objects
-                    let entries = responses.toForecastEntries()
-                    
-                    // Update on main actor
-                    Task { @MainActor [weak self] in
-                        guard let self = self else { return }
-                        // Update current forecast with flattened data
-                        self.currentForecastEntries = entries
-                        
-                        // Cache the flattened data with current timestamp
-                        self.spotForecastCache[spotId] = (entries, Date())
-                        
-                        completion(true)
-                    }
-                    
-                case .failure(let error):
-                    print("Error fetching forecast: \(error)")
-                    completion(false)
-                }
+                // Update current forecast with flattened data
+                currentForecastEntries = entries
+                
+                // Cache the flattened data with current timestamp
+                spotForecastCache[spotId] = (entries, Date())
+                return true
+            } catch {
+                print("Error fetching forecast: \(error)")
+                return false
             }
         }
     
-    func fetchRegionSpots(region: String, completion: @escaping (Result<[SpotData], Error>) -> Void) {
+    func fetchRegionSpots(region: String) async throws -> [SpotData] {
         // Check if we have cached data that's still valid
         if let cached = regionSpotsCache[region],
            Date().timeIntervalSince(cached.timestamp) < spotCacheExpirationInterval {
             
             // Use cached data - already on main thread
-            completion(.success(cached.spots))
-            return
+            return cached.spots
         }
 
         print("Fetching spots for region: \(region)")
         
         // For now we only handle Donegal, but this could be expanded
-        apiClient.fetchDonegalSpots { [weak self] result in
-            guard let self = self else { return }
-            print("result \(result)")
-            switch result {
-            case .success(let spots):
-                print("Successfully fetched \(spots.count) spots for region: \(region)")
-                
-                Task { @MainActor [weak self] in
-                    guard let self = self else { return }
-                    // Cache the data with current timestamp (on main thread)
-                    self.regionSpotsCache[region] = (spots, Date())
-                    // Update the published property
-                    self.regionSpots = spots
-                    completion(.success(spots))
-                    
-                    // Preload spot images for better user experience
-                    self.preloadSpotImages(for: region)
-                }
-                
-            case .failure(let error):
-                print("Error fetching spots for region \(region): \(error)")
-                print("Error details: \(error.localizedDescription)")
-                completion(.failure(error))
+        let spots = try await apiClient.fetchDonegalSpots()
+        print("Successfully fetched \(spots.count) spots for region: \(region)")
+        
+        // Cache the data with current timestamp (on main thread)
+        regionSpotsCache[region] = (spots, Date())
+        // Update the published property
+        regionSpots = spots
+        
+        // Preload spot images for better user experience
+        preloadSpotImages(for: region)
+        return spots
+    }
+    
+    private func cachedSpotImage(for spotId: String) async -> Image? {
+        await withCheckedContinuation { continuation in
+            imageCache.getCachedSpotImage(for: spotId) { cachedImage in
+                continuation.resume(returning: cachedImage)
             }
         }
     }
     
-    func fetchSpotImage(for spotId: String, completion: @escaping (Image?) -> Void = {_ in}) {
+    func fetchSpotImage(for spotId: String) async -> Image? {
         print("Fetching image for spotId: \(spotId)")
         
         // First, check the dedicated image cache
-        ImageCacheService.shared.getCachedSpotImage(for: spotId) { cachedImage in
-            if let cachedImage = cachedImage {
-                print("✅ Using cached spot image for spotId: \(spotId)")
-                completion(cachedImage)
-                return
-            }
-            
-            // Check if we have cached data with image already in regionSpotsCache
-            for (_, cachedData) in self.regionSpotsCache {
-                if let spotIndex = cachedData.spots.firstIndex(where: { $0.id == spotId }),
-                   let imageData = cachedData.spots[spotIndex].imageString,
-                   !imageData.isEmpty,
-                   Date().timeIntervalSince(cachedData.timestamp) < self.spotCacheExpirationInterval {
-                    print("Using cached image data from regionSpotsCache for spotId: \(spotId)")
-                    
-                        // Convert base64 to UIImage if we have it cached
-                        if let image = UIImage(data: Data(base64Encoded: imageData) ?? Data()) {
-                            let swiftUIImage = Image(uiImage: image)
-                            
-                            // Cache this image in the dedicated image cache for future use
-                            if let imageData = image.pngData() {
-                                ImageCacheService.shared.cacheSpotImage(imageData, for: spotId)
-                            }
-                            
-                            Task { @MainActor in
-                                completion(swiftUIImage)
-                            }
-                            return
-                        }
-                }
-            }
-            
-            // Split the spotId into components
-            let components = spotId.split(separator: "#")
-            guard components.count == 3 else {
-                print("Invalid spotId format")
-                completion(nil)
-                return
-            }
-            
-            let country = String(components[0])
-            let region = String(components[1])
-            let spot = String(components[2])
-            
-            // Call locationInfo API route
-            self.apiClient.fetchLocationInfo(country: country, region: region, spot: spot) { [weak self] result in
-                guard let self = self else { return }
+        if let cachedImage = await cachedSpotImage(for: spotId) {
+            print("✅ Using cached spot image for spotId: \(spotId)")
+            return cachedImage
+        }
+        
+        // Check if we have cached data with image already in regionSpotsCache
+        for (_, cachedData) in regionSpotsCache {
+            if let spotIndex = cachedData.spots.firstIndex(where: { $0.id == spotId }),
+               let imageData = cachedData.spots[spotIndex].imageString,
+               !imageData.isEmpty,
+               Date().timeIntervalSince(cachedData.timestamp) < spotCacheExpirationInterval {
+                print("Using cached image data from regionSpotsCache for spotId: \(spotId)")
                 
-                switch result {
-                case .success(let spotData):
-                    Task { @MainActor [weak self] in
-                        guard let self = self else { return }
-                        // Update cache with the new image data
-                        for (regionKey, cachedData) in self.regionSpotsCache {
-                            var updatedSpots = cachedData.spots
-                            if let index = updatedSpots.firstIndex(where: { $0.id == spotId }) {
-                                // Create a mutable copy of the original spot
-                                var updatedSpot = updatedSpots[index]
-                                // Update the image property
-                                updatedSpot.imageString = spotData.image
-                                // Replace the spot in the array
-                                updatedSpots[index] = updatedSpot
-                                // Update the cache
-                                self.regionSpotsCache[regionKey] = (updatedSpots, Date())
-                            }
-                        }
-                        
-                        // Convert base64 to UIImage
-                        if let imageData = spotData.imageString,
-                           let image = UIImage(data: Data(base64Encoded: imageData) ?? Data()) {
-                            let swiftUIImage = Image(uiImage: image)
-                            
-                            // Cache this image in the dedicated image cache for future use
-                            if let pngData = image.pngData() {
-                                ImageCacheService.shared.cacheSpotImage(pngData, for: spotId)
-                            }
-                            
-                            Task { @MainActor in
-                                completion(swiftUIImage)
-                            }
-                        } else {
-                            completion(nil)
-                        }
-                        
-                        // Preload other spot images for this region to improve user experience
-                        let components = spotId.split(separator: "#")
-                        if components.count == 3 {
-                            let region = String(components[1])
-                            self.preloadSpotImages(for: region)
-                        }
-                        
-                        // Preload surf report images for this spot to improve user experience
-                        // This would require access to surf report data, which is handled in the ViewModels
-                        
-                        // Note: Surf report image preloading is handled in the ViewModels
-                        // when they fetch surf reports, as they have access to the image keys
-                        }
+                // Convert base64 to UIImage if we have it cached
+                if let image = UIImage(data: Data(base64Encoded: imageData) ?? Data()) {
+                    let swiftUIImage = Image(uiImage: image)
                     
-                case .failure(let error):
-                    print("Error fetching spot image: \(error)")
-                    completion(nil)
+                    // Cache this image in the dedicated image cache for future use
+                    if let imageData = image.pngData() {
+                        imageCache.cacheSpotImage(imageData, for: spotId)
+                    }
+                    
+                    return swiftUIImage
                 }
             }
+        }
+        
+        // Split the spotId into components
+        let components = spotId.split(separator: "#")
+        guard components.count == 3 else {
+            print("Invalid spotId format")
+            return nil
+        }
+        
+        let country = String(components[0])
+        let region = String(components[1])
+        let spot = String(components[2])
+        
+        // Call locationInfo API route
+        do {
+            let spotData = try await apiClient.fetchLocationInfo(country: country, region: region, spot: spot)
+            // Update cache with the new image data
+            for (regionKey, cachedData) in regionSpotsCache {
+                var updatedSpots = cachedData.spots
+                if let index = updatedSpots.firstIndex(where: { $0.id == spotId }) {
+                    // Create a mutable copy of the original spot
+                    var updatedSpot = updatedSpots[index]
+                    // Update the image property
+                    updatedSpot.imageString = spotData.image
+                    // Replace the spot in the array
+                    updatedSpots[index] = updatedSpot
+                    // Update the cache
+                    regionSpotsCache[regionKey] = (updatedSpots, Date())
+                }
+            }
+            
+            // Convert base64 to UIImage
+            if let imageData = spotData.imageString,
+               let image = UIImage(data: Data(base64Encoded: imageData) ?? Data()) {
+                let swiftUIImage = Image(uiImage: image)
+                
+                // Cache this image in the dedicated image cache for future use
+                if let pngData = image.pngData() {
+                    imageCache.cacheSpotImage(pngData, for: spotId)
+                }
+                
+                // Preload other spot images for this region to improve user experience
+                let components = spotId.split(separator: "#")
+                if components.count == 3 {
+                    let region = String(components[1])
+                    preloadSpotImages(for: region)
+                }
+                
+                return swiftUIImage
+            }
+            
+            return nil
+        } catch {
+            print("Error fetching spot image: \(error)")
+            return nil
         }
     }
     
@@ -362,10 +311,10 @@ class DataStore: ObservableObject, DataStoreProtocol {
     func clearImageCache(for spotId: String? = nil) {
         if let spotId = spotId {
             // Clear specific spot image cache
-            ImageCacheService.shared.removeCachedSpotImage(for: spotId)
+            imageCache.removeCachedSpotImage(for: spotId)
         } else {
             // Clear all image caches
-            ImageCacheService.shared.clearAllCache()
+            imageCache.clearAllCache()
         }
     }
     
@@ -375,23 +324,23 @@ class DataStore: ObservableObject, DataStoreProtocol {
         if let cachedData = regionSpotsCache[region] {
             let spotIds = cachedData.spots.map { $0.id }
             let imageKeys = spotIds.map { "spot_\($0)" }
-            ImageCacheService.shared.preloadImages(for: imageKeys)
+            imageCache.preloadImages(for: imageKeys)
         }
     }
     
     // Get image cache statistics for debugging
     func getImageCacheStats() -> (totalImages: Int, memoryUsage: String, diskUsage: String) {
-        return ImageCacheService.shared.getCacheStats()
+        return imageCache.getCacheStats()
     }
     
     // Get detailed image cache statistics by type
     func getDetailedImageCacheStats() -> (spotImages: Int, reportImages: Int, totalImages: Int, memoryUsage: String, diskUsage: String) {
-        return ImageCacheService.shared.getDetailedCacheStats()
+        return imageCache.getDetailedCacheStats()
     }
     
     // Export image cache information for debugging
     func exportImageCacheInfo() -> String {
-        return ImageCacheService.shared.exportCacheInfo()
+        return imageCache.exportCacheInfo()
     }
     
     // Test the image cache system
@@ -412,17 +361,17 @@ class DataStore: ObservableObject, DataStoreProtocol {
     
     // Clean up any corrupted cache files
     func cleanupImageCache() {
-        ImageCacheService.shared.cleanExpiredCache()
+        imageCache.cleanExpiredCache()
         print("🧹 Image cache cleanup completed")
     }
     
     // Refresh image cache for a specific spot
-    func refreshSpotImage(for spotId: String, completion: @escaping (Image?) -> Void = {_ in}) {
+    func refreshSpotImage(for spotId: String) async -> Image? {
         // Clear the cached image first
         clearImageCache(for: spotId)
         
         // Fetch the image again
-        fetchSpotImage(for: spotId, completion: completion)
+        return await fetchSpotImage(for: spotId)
     }
     
     // Refresh all image caches
@@ -470,7 +419,7 @@ class DataStore: ObservableObject, DataStoreProtocol {
         // Clear associated spot image caches
         if let cachedData = regionSpotsCache[region] {
             for spot in cachedData.spots {
-                ImageCacheService.shared.removeCachedSpotImage(for: spot.id)
+                imageCache.removeCachedSpotImage(for: spot.id)
             }
         }
         

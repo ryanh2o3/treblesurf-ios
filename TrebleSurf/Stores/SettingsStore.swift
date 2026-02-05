@@ -51,7 +51,7 @@ class SettingsStore: ObservableObject, SettingsStoreProtocol {
     
     private var cancellables = Set<AnyCancellable>()
     
-    nonisolated private init() {
+    nonisolated init() {
         Task { @MainActor in
             self.loadSettings()
             self.setupThemeObserver()

@@ -2,28 +2,29 @@ import SwiftUI
 
 struct MainTabView: View {
     @State private var selectedTab = 0 // Default to Map tab
+    @EnvironmentObject var dependencies: AppDependencies
 
     var body: some View {
         TabView(selection: $selectedTab) {
-            HomeView()
+            HomeView(dependencies: dependencies)
                 .tabItem {
                     Label("Home", systemImage: "house")
                 }
                 .tag(0)
             
-            MapView()
+            MapView(dependencies: dependencies)
                 .tabItem {
                     Label("Map", systemImage: "map")
                 }
                 .tag(1)
             
-            BuoysView()
+            BuoysView(dependencies: dependencies)
                 .tabItem {
                     Label("Buoys", systemImage: "water.waves")
                 }
                 .tag(2)
             
-            SpotsView()
+            SpotsView(dependencies: dependencies)
                 .tabItem {
                     Label("Spots", systemImage: "mappin")
                 }
