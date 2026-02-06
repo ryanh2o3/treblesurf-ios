@@ -30,6 +30,7 @@ struct SpotDetailView: View {
             wrappedValue: SpotsViewModel(
                 dataStore: dependencies.dataStore,
                 apiClient: dependencies.apiClient,
+                surfReportService: dependencies.surfReportService,
                 errorHandler: dependencies.errorHandler,
                 logger: dependencies.errorLogger
             )

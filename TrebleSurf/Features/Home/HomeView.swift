@@ -7,14 +7,15 @@ struct HomeView: View {
     @State private var selectedReport: SurfReport?
     @State private var showingVideoPlayer = false
     @State private var videoURL: URL?
-    private let apiClient: APIClientProtocol
+    private let surfReportService: SurfReportService
     
     init(dependencies: AppDependencies) {
-        self.apiClient = dependencies.apiClient
+        self.surfReportService = dependencies.surfReportService
         _viewModel = StateObject(
             wrappedValue: HomeViewModel(
                 config: dependencies.config,
                 apiClient: dependencies.apiClient,
+                spotService: dependencies.spotService,
                 surfReportService: dependencies.surfReportService,
                 weatherBuoyService: dependencies.weatherBuoyService,
                 buoyCacheService: dependencies.buoyCacheService
@@ -76,7 +77,7 @@ struct HomeView: View {
                     }
                 }
                 .sheet(item: $selectedReport) { report in
-                    SurfReportDetailView(report: report, apiClient: apiClient)
+                    SurfReportDetailView(report: report, surfReportService: surfReportService)
                 }
                 .sheet(isPresented: $showingVideoPlayer) {
                     if let videoURL = videoURL {

@@ -42,6 +42,7 @@ class HomeViewModel: BaseViewModel {
     // MARK: - Dependencies
     private let config: AppConfigurationProtocol
     private let apiClient: APIClientProtocol
+    private let spotService: SpotServiceProtocol
     private let surfReportService: SurfReportService
     private let weatherBuoyService: WeatherBuoyService
     private let buoyCacheService: BuoyCacheService
@@ -51,12 +52,14 @@ class HomeViewModel: BaseViewModel {
     init(
         config: AppConfigurationProtocol,
         apiClient: APIClientProtocol,
+        spotService: SpotServiceProtocol,
         surfReportService: SurfReportService,
         weatherBuoyService: WeatherBuoyService,
         buoyCacheService: BuoyCacheService
     ) {
         self.config = config
         self.apiClient = apiClient
+        self.spotService = spotService
         self.surfReportService = surfReportService
         self.weatherBuoyService = weatherBuoyService
         self.buoyCacheService = buoyCacheService
@@ -117,7 +120,7 @@ class HomeViewModel: BaseViewModel {
         Task { [weak self] in
             guard let self = self else { return }
             do {
-                let spots = try await self.apiClient.fetchSpots(country: self.config.defaultCountry, region: self.config.defaultRegion)
+                let spots = try await self.spotService.fetchSpots(country: self.config.defaultCountry, region: self.config.defaultRegion)
                 self.logger.log("Successfully fetched \(spots.count) spots", level: .info, category: .api)
                 self.spots = spots
                 self.updateCurrentConditionsFromBallyhiernan()

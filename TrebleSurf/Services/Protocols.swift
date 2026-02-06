@@ -32,22 +32,25 @@ protocol DataStoreProtocol: ObservableObject {
     func resetToInitialState()
 }
 
+// MARK: - SpotService Protocol
+
+protocol SpotServiceProtocol {
+    func fetchSpots(country: String, region: String) async throws -> [SpotData]
+    func fetchDonegalSpots() async throws -> [SpotData]
+    func fetchLocationInfo(country: String, region: String, spot: String) async throws -> SpotData
+}
+
 // MARK: - APIClient Protocol
 
 protocol APIClientProtocol {
-    func fetchSpots(country: String, region: String) async throws -> [SpotData]
-    func fetchDonegalSpots() async throws -> [SpotData]
     func fetchCurrentConditions(country: String, region: String, spot: String) async throws -> [CurrentConditionsResponse]
     func fetchForecast(country: String, region: String, spot: String) async throws -> [ForecastResponse]
     func fetchBuoys(region: String) async throws -> [BuoyLocation]
     func fetchBuoyData(buoyNames: [String]) async throws -> [BuoyResponse]
     func fetchLast24HoursBuoyData(buoyName: String) async throws -> [BuoyResponse]
     func fetchBuoyDataRange(buoyName: String, startDate: Date, endDate: Date) async throws -> [BuoyResponse]
-    func fetchSurfReports(country: String, region: String, spot: String) async throws -> [SurfReportResponse]
-    func fetchLocationInfo(country: String, region: String, spot: String) async throws -> SpotData
-    func getReportImage(key: String) async throws -> SurfReportImageResponse
-    func getReportVideo(key: String) async throws -> SurfReportVideoResponse
-    func getVideoViewURL(key: String) async throws -> PresignedVideoViewResponse
+    // Surf Reports Protocol methods moved to SurfReportServiceProtocol - removing from here in next steps or keeping for backward compat during migration?
+    // Plan said: remove spot related methods. Keeping others for now.
     
     // Generic Request support
     func request<T: Decodable>(_ endpoint: String, method: String, body: Data?) async throws -> T
@@ -62,7 +65,6 @@ protocol APIClientProtocol {
         maxResults: Int
     ) async throws -> [SurfReportResponse]
     
-    func fetchAllSpotReports(country: String, region: String, spot: String, limit: Int) async throws -> [SurfReportResponse]
     
     func fetchSurfReportsWithSimilarBuoyData(
         waveHeight: Double,
@@ -102,10 +104,9 @@ extension APIClientProtocol {
         )
     }
     
-    func fetchAllSpotReports(country: String, region: String, spot: String, limit: Int = 50) async throws -> [SurfReportResponse] {
-        return try await fetchAllSpotReports(country: country, region: region, spot: spot, limit: limit)
     }
-}
+
+
 
 // MARK: - AuthManager Protocol
 

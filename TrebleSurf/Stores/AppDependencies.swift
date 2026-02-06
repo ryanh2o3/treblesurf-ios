@@ -31,6 +31,7 @@ final class AppDependencies: ObservableObject {
     let surfReportService: SurfReportService
     let weatherBuoyService: WeatherBuoyService
     let swellPredictionService: SwellPredictionService
+    let spotService: SpotService
     
     // MARK: - Initialization
     
@@ -56,7 +57,8 @@ final class AppDependencies: ObservableObject {
         let imageValidationService = ImageValidationService()
         let legacyErrorHandler = APIErrorHandler()
         let apiClient = APIClient(config: config, authManager: authManager)
-        let dataStore = DataStore(config: config, apiClient: apiClient, imageCache: imageCache)
+        let spotService = SpotService(apiClient: apiClient)
+        let dataStore = DataStore(config: config, apiClient: apiClient, imageCache: imageCache, spotService: spotService)
         
         authManager.setStores(
             dataStore: dataStore,
@@ -72,8 +74,9 @@ final class AppDependencies: ObservableObject {
         self.imageValidationService = imageValidationService
         self.legacyErrorHandler = legacyErrorHandler
         self.apiClient = apiClient
+        self.spotService = spotService
         self.dataStore = dataStore
-        self.surfReportService = SurfReportService(apiClient: apiClient, imageCacheService: imageCache)
+        self.surfReportService = SurfReportService(apiClient: apiClient, imageCacheService: imageCache, spotService: spotService)
         self.weatherBuoyService = WeatherBuoyService(apiClient: apiClient, buoyCacheService: buoyCacheService, logger: errorLogger)
         self.swellPredictionService = SwellPredictionService(apiClient: apiClient)
     }

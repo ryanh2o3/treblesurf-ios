@@ -410,21 +410,10 @@ class APIClient: APIClientProtocol {
 }
 
 // MARK: - Surf Spots API Extensions
+// Logic moved to SpotService
 extension APIClient {
-    func fetchSpots(country: String, region: String) async throws -> [SpotData] {
-        let endpoint = "/api/spots?country=\(country)&region=\(region)"
-        return try await request(endpoint, method: "GET")
-    }
-    
-    // Convenience method for the specific Donegal, Ireland endpoint
-    func fetchDonegalSpots() async throws -> [SpotData] {
-        return try await fetchSpots(country: "Ireland", region: "Donegal")
-    }
-    
-    func fetchLocationInfo(country: String, region: String, spot: String) async throws -> SpotData {
-        let endpoint = "/api/locationInfo?country=\(country)&region=\(region)&spot=\(spot)"
-        return try await request(endpoint, method: "GET")
-    }
+    // Kept empty or remove extension entirely?
+    // Removing methods as per plan.
 }
 
 // MARK: - Buoys API Extensions
@@ -491,44 +480,7 @@ extension APIClient {
 
 // MARK: - Surf Reports API Extensions
 extension APIClient {
-    func fetchSurfReports(country: String, region: String, spot: String) async throws -> [SurfReportResponse] {
-        let endpoint = "/api/getTodaySpotReports?country=\(country)&region=\(region)&spot=\(spot)"
-        // Use flexible request method that can handle authentication gracefully
-        return try await makeFlexibleRequest(to: endpoint, requiresAuth: true)
-    }
-    
-    func fetchAllSpotReports(country: String, region: String, spot: String, limit: Int = 50) async throws -> [SurfReportResponse] {
-        let endpoint = "/api/getAllSpotReports?country=\(country)&region=\(region)&spot=\(spot)&limit=\(limit)"
-        
-        print("📋 [API_CLIENT] Fetching all reports for spot: \(spot), limit: \(limit)")
-        
-        // Use flexible request method that can handle authentication gracefully
-        return try await makeFlexibleRequest(to: endpoint, requiresAuth: true)
-    }
-    
-    func getReportImage(key: String) async throws -> SurfReportImageResponse {
-        let endpoint = "/api/getReportImage?key=\(key)"
-        
-        print("📷 [API_CLIENT] Fetching report image for key: \(key)")
-        
-        // Use flexible request method that can handle authentication gracefully
-        return try await makeFlexibleRequest(to: endpoint, requiresAuth: true)
-    }
-    
-    func getReportVideo(key: String) async throws -> SurfReportVideoResponse {
-        let endpoint = "/api/getReportVideo?key=\(key)"
-        
-        // Use flexible request method that can handle authentication gracefully
-        return try await makeFlexibleRequest(to: endpoint, requiresAuth: true)
-    }
-    
-    func getVideoViewURL(key: String) async throws -> PresignedVideoViewResponse {
-        let endpoint = "\(Endpoints.generateVideoViewURL)?key=\(key)"
-        
-        print("🎬 [API_CLIENT] Getting video view URL for key: \(key)")
-        
-        return try await makeFlexibleRequest(to: endpoint, requiresAuth: true)
-    }
+    // fetchSurfReports, fetchAllSpotReports, getReportImage/Video moved to SurfReportService
     
     func fetchSurfReportsWithSimilarBuoyData(
         waveHeight: Double,

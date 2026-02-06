@@ -26,16 +26,19 @@ struct CachedSurfReports {
 class SurfReportService: ObservableObject {
     private let apiClient: APIClientProtocol
     private let imageCacheService: ImageCacheProtocol
+    private let spotService: SpotServiceProtocol
     private var surfReportsCache: [String: CachedSurfReports] = [:]
     private let cacheQueue = DispatchQueue(label: "com.treblesurf.surfreports.cache", qos: .utility)
     private var cancellables = Set<AnyCancellable>()
     
     init(
         apiClient: APIClientProtocol,
-        imageCacheService: ImageCacheProtocol
+        imageCacheService: ImageCacheProtocol,
+        spotService: SpotServiceProtocol
     ) {
         self.apiClient = apiClient
         self.imageCacheService = imageCacheService
+        self.spotService = spotService
         setupCacheCleanup()
     }
     
@@ -111,7 +114,7 @@ class SurfReportService: ObservableObject {
         }
         
         // First fetch all spots, then get reports for each spot
-        let spots = try await apiClient.fetchSpots(country: country, region: region)
+        let spots = try await spotService.fetchSpots(country: country, region: region)
         let reports = try await fetchReportsForAllSpots(spots: spots, country: country, region: region)
         
         // Cache the results
@@ -136,6 +139,75 @@ class SurfReportService: ObservableObject {
         }
     }
     
+    // MARK: - API Methods
+    
+    /// Fetch surf reports for a specific spot (today's reports)
+    func fetchReportsForSpot(country: String, region: String, spot: String) async throws -> [SurfReport] {
+        // Manually construct endpoint and call request, logic moved from APIClient
+        let endpoint = "/api/getTodaySpotReports?country=\(country)&region=\(region)&spot=\(spot)"
+        
+        print("📋 [SURF_REPORT_SERVICE] Fetching today's reports for spot: \(spot)")
+        
+        let responses: [SurfReportResponse] = try await apiClient.makeFlexibleRequest(to: endpoint, requiresAuth: true)
+        let reports = responses.map { SurfReport(from: $0) }
+        
+        // Cache processing could be added here similar to fetchReportsForAllSpots if needed
+        
+        return reports
+    }
+    
+    func fetchAllSpotReports(country: String, region: String, spot: String, limit: Int = 50) async throws -> [SurfReport] {
+        // Manually construct endpoint and call request, logic moved from APIClient
+        let endpoint = "/api/getAllSpotReports?country=\(country)&region=\(region)&spot=\(spot)&limit=\(limit)"
+        
+        print("📋 [SURF_REPORT_SERVICE] Fetching all reports for spot: \(spot), limit: \(limit)")
+        
+        // Use flexible request method that can handle authentication gracefully
+        let responses: [SurfReportResponse] = try await apiClient.makeFlexibleRequest(to: endpoint, requiresAuth: true)
+        let reports = responses.map { response -> SurfReport in
+            let report = SurfReport(from: response)
+            // Preload images in background
+            if let imageKey = response.imageKey, !imageKey.isEmpty {
+                print("Debug - ImageKey from API: '\(imageKey)'")
+                Task { @MainActor in
+                    if let imageData = await self.fetchImage(for: imageKey) {
+                        report.imageData = imageData.imageData
+                        report.objectWillChange.send()
+                    }
+                }
+            }
+            return report
+        }
+        
+        // Log image preloading info
+        let imageKeys = reports.compactMap { $0.imageKey }.filter { !$0.isEmpty }
+        if !imageKeys.isEmpty {
+            print("📱 Preloading \(imageKeys.count) surf report images")
+        }
+        
+        return reports
+    }
+    
+    func getReportVideo(key: String) async throws -> SurfReportVideoResponse {
+        let endpoint = "/api/getReportVideo?key=\(key)"
+        return try await apiClient.makeFlexibleRequest(to: endpoint, requiresAuth: true)
+    }
+    
+    func getVideoViewURL(key: String) async throws -> PresignedVideoViewResponse {
+        let endpoint = "/api/generateVideoViewURL?key=\(key)"
+        
+        print("🎬 [SURF_REPORT_SERVICE] Getting video view URL for key: \(key)")
+        
+        return try await apiClient.makeFlexibleRequest(to: endpoint, requiresAuth: true)
+    }
+    
+    func getReportImage(key: String) async throws -> SurfReportImageResponse {
+        if let response = await fetchImage(for: key) {
+             return response
+        }
+        throw NSError(domain: "SurfReportService", code: 404, userInfo: [NSLocalizedDescriptionKey: "Image not found"])
+    }
+    
     // MARK: - Private Methods
     
     private func fetchReportsForAllSpots(
@@ -148,7 +220,9 @@ class SurfReportService: ObservableObject {
         try await withThrowingTaskGroup(of: [SurfReport].self) { group in
             for spot in spots {
                 group.addTask { [apiClient] in
-                    let responses = try await apiClient.fetchSurfReports(country: country, region: region, spot: spot.name)
+                    // Manually construct endpoint and call request, logic moved from APIClient
+                    let endpoint = "/api/getTodaySpotReports?country=\(country)&region=\(region)&spot=\(spot.name)"
+                    let responses: [SurfReportResponse] = try await apiClient.makeFlexibleRequest(to: endpoint, requiresAuth: true)
                     return responses.map { response in
                         let report = SurfReport(from: response)
                         if let imageKey = response.imageKey, !imageKey.isEmpty {
@@ -195,7 +269,11 @@ class SurfReportService: ObservableObject {
         }
         
         do {
-            let imageData = try await apiClient.getReportImage(key: key)
+            // Manually construct endpoint and call request, logic moved from APIClient
+            let endpoint = "/api/getReportImage?key=\(key)"
+            print("📷 [SURF_REPORT_SERVICE] Fetching report image for key: \(key)")
+            let imageData: SurfReportImageResponse = try await apiClient.makeFlexibleRequest(to: endpoint, requiresAuth: true)
+            
             if let imageDataString = imageData.imageData, !imageDataString.isEmpty {
                 if let decodedImageData = Data(base64Encoded: imageDataString),
                    let uiImage = UIImage(data: decodedImageData),

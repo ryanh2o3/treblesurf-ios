@@ -22,15 +22,18 @@ class LiveSpotViewModel: BaseViewModel {
     @Published var showQuickForm = false
     
     private let apiClient: APIClientProtocol
+    private let surfReportService: SurfReportService
     private let imageCache: ImageCacheProtocol
     
     init(
         apiClient: APIClientProtocol,
+        surfReportService: SurfReportService,
         imageCache: ImageCacheProtocol,
         errorHandler: ErrorHandlerProtocol? = nil,
         logger: ErrorLoggerProtocol? = nil
     ) {
         self.apiClient = apiClient
+        self.surfReportService = surfReportService
         self.imageCache = imageCache
         super.init(errorHandler: errorHandler, logger: logger)
     }
@@ -70,28 +73,18 @@ class LiveSpotViewModel: BaseViewModel {
         self.recentReports = []
         
         executeTask(context: "Fetch surf reports") {
-            let responses = try await self.apiClient.fetchSurfReports(country: country, region: region, spot: spot)
+            let reports = try await self.surfReportService.fetchAllSpotReports(country: country, region: region, spot: spot)
             
             let outputDateFormatter = DateFormatter()
             outputDateFormatter.dateFormat = "d MMM, h:mma"
             outputDateFormatter.locale = Locale(identifier: "en_US_POSIX")
 
-            let reports = responses.map { [weak self] response in
-                // Use the convenience initializer that handles optional fields
-                let report = SurfReport(from: response)
-                
-                if let imageKey = response.imageKey, !imageKey.isEmpty {
-                    Task { @MainActor [weak self] in
-                        guard let self = self else { return }
-                        if let imageData = await self.fetchImage(for: imageKey) {
-                            report.imageData = imageData.imageData
-                            self.objectWillChange.send()
-                        }
-                    }
-                }
-                
-                return report
-            }
+            
+            // The service returns SurfReport array directly, no need to map unless we want to process further
+            // But the existing code was mapping responses to SurfReports and preloading images.
+            // SurfReportService handles image preloading privately but exposes them on the model?
+            // Actually SurfReportService returns [SurfReport] directly.
+            // So we can just use them.
             
             self.recentReports = reports
             
@@ -106,34 +99,8 @@ class LiveSpotViewModel: BaseViewModel {
     }
     
     private func fetchImage(for key: String) async -> SurfReportImageResponse? {
-        // First, check the dedicated image cache
-        let cachedImageData = await withCheckedContinuation { continuation in
-            imageCache.getCachedSurfReportImageData(for: key) { data in
-                continuation.resume(returning: data)
-            }
-        }
-        
-        if let cachedImageData = cachedImageData {
-            logger.log("Using cached image for key: \(key)", level: .debug, category: .cache)
-            // Create a mock response with the cached image data
-            return SurfReportImageResponse(imageData: cachedImageData.base64EncodedString(), contentType: "image/jpeg")
-        }
-        
         do {
-            let imageData = try await apiClient.getReportImage(key: key)
-            if let imageDataString = imageData.imageData, !imageDataString.isEmpty {
-                // Cache the image for future use
-                if let decodedImageData = Data(base64Encoded: imageDataString),
-                   let uiImage = UIImage(data: decodedImageData),
-                   let pngData = uiImage.pngData() {
-                    imageCache.cacheSurfReportImage(pngData, for: key)
-                    logger.log("Cached fetched image for key: \(key)", level: .debug, category: .cache)
-                }
-                return imageData
-            }
-            
-            logger.log("Image key \(key) exists but no data returned - likely missing from S3", level: .warning, category: .media)
-            return nil
+            return try await surfReportService.getReportImage(key: key)
         } catch {
             logger.log("Failed to fetch image for key \(key): \(error.localizedDescription)", level: .error, category: .media)
             return nil
@@ -180,6 +147,9 @@ class LiveSpotViewModel: BaseViewModel {
         self.isLoadingMatchingReports = true
         
         executeTask(context: "Fetch matching condition reports") {
+            // NOTE: fetchSurfReportsWithMatchingConditions is NOT removed from APIClient yet?
+            // Checking Protocols.swift (step 184) -> fetchSurfReportsWithMatchingConditions is still there.
+            // So this should be fine.
             let responses = try await self.apiClient.fetchSurfReportsWithMatchingConditions(
                 country: country,
                 region: region,

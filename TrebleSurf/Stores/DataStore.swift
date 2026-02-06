@@ -12,15 +12,18 @@ class DataStore: ObservableObject, DataStoreProtocol {
     nonisolated(unsafe) private let config: any AppConfigurationProtocol
     nonisolated(unsafe) private let apiClient: any APIClientProtocol
     nonisolated(unsafe) private let imageCache: ImageCacheService
+    nonisolated(unsafe) private let spotService: any SpotServiceProtocol
     
     nonisolated init(
         config: any AppConfigurationProtocol,
         apiClient: any APIClientProtocol,
-        imageCache: ImageCacheService
+        imageCache: ImageCacheService,
+        spotService: any SpotServiceProtocol
     ) {
         self.config = config
         self.apiClient = apiClient
         self.imageCache = imageCache
+        self.spotService = spotService
     }
 
     @Published var currentConditions = ConditionData(from: [:])
@@ -174,7 +177,7 @@ class DataStore: ObservableObject, DataStoreProtocol {
         print("Fetching spots for region: \(region)")
         
         // For now we only handle Donegal, but this could be expanded
-        let spots = try await apiClient.fetchDonegalSpots()
+        let spots = try await spotService.fetchDonegalSpots()
         print("Successfully fetched \(spots.count) spots for region: \(region)")
         
         // Cache the data with current timestamp (on main thread)
@@ -239,7 +242,7 @@ class DataStore: ObservableObject, DataStoreProtocol {
         
         // Call locationInfo API route
         do {
-            let spotData = try await apiClient.fetchLocationInfo(country: country, region: region, spot: spot)
+            let spotData = try await spotService.fetchLocationInfo(country: country, region: region, spot: spot)
             // Update cache with the new image data
             for (regionKey, cachedData) in regionSpotsCache {
                 var updatedSpots = cachedData.spots

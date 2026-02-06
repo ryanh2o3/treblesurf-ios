@@ -7,6 +7,7 @@ struct BuoyDetailView: View {
     let showBackButton: Bool
     
     @StateObject private var viewModel: BuoysViewModel
+    private let surfReportService: SurfReportService
     private let apiClient: APIClientProtocol
     @State private var similarReports: [SurfReport] = []
     @State private var isLoadingSimilarReports = false
@@ -34,6 +35,7 @@ struct BuoyDetailView: View {
         self.buoy = buoy
         self.onBack = onBack
         self.showBackButton = showBackButton
+        self.surfReportService = dependencies.surfReportService
         self.apiClient = dependencies.apiClient
         _viewModel = StateObject(
             wrappedValue: BuoysViewModel(
@@ -453,7 +455,7 @@ struct BuoyDetailView: View {
             SurfReportDetailView(
                 report: report,
                 backButtonText: "Back to Buoy",
-                apiClient: apiClient
+                surfReportService: surfReportService
             )
         }
         .onDisappear {
@@ -534,7 +536,7 @@ struct BuoyDetailView: View {
     private func fetchReportImage(for report: SurfReport, imageKey: String) {
         Task {
             do {
-                let imageResponse = try await apiClient.getReportImage(key: imageKey)
+                let imageResponse = try await surfReportService.getReportImage(key: imageKey)
                 if let imageData = imageResponse.imageData {
                     report.imageData = imageData
                 }

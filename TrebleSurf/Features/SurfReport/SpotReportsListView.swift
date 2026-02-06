@@ -14,7 +14,7 @@ struct SpotReportsListView: View {
         self.spotId = spotId
         self.spotName = spotName
         self.dependencies = dependencies
-        self._viewModel = StateObject(wrappedValue: SpotReportsListViewModel(spotId: spotId, apiClient: dependencies.apiClient))
+        self._viewModel = StateObject(wrappedValue: SpotReportsListViewModel(spotId: spotId, surfReportService: dependencies.surfReportService))
     }
     
     var body: some View {
@@ -46,7 +46,7 @@ struct SpotReportsListView: View {
                     ScrollView {
                         LazyVStack(spacing: 16) {
                             ForEach(viewModel.reports) { report in
-                                ReportCardView(report: report, apiClient: dependencies.apiClient)
+                                ReportCardView(report: report, surfReportService: dependencies.surfReportService)
                                     .padding(.horizontal)
                                     .onTapGesture {
                                         selectedReport = report
@@ -114,7 +114,7 @@ struct SpotReportsListView: View {
             SurfReportDetailView(
                 report: report,
                 backButtonText: "Back to \(spotName)",
-                apiClient: dependencies.apiClient
+                surfReportService: dependencies.surfReportService
             )
         }
         }
@@ -124,7 +124,7 @@ struct SpotReportsListView: View {
 // MARK: - Report Card View
 struct ReportCardView: View {
     @ObservedObject var report: SurfReport
-    let apiClient: APIClientProtocol
+    let surfReportService: SurfReportService
     @State private var isLoadingImage = false
     @State private var isLoadingVideo = false
     @State private var showingVideoPlayer = false
@@ -274,7 +274,7 @@ struct ReportCardView: View {
             isLoadingImage = true
             Task {
                 do {
-                    let response = try await apiClient.getReportImage(key: imageKey)
+                    let response = try await surfReportService.getReportImage(key: imageKey)
                     isLoadingImage = false
                     report.imageData = response.imageData
                 } catch {
@@ -291,7 +291,7 @@ struct ReportCardView: View {
         isLoadingVideo = true
         Task {
             do {
-                let response = try await apiClient.getVideoViewURL(key: videoKey)
+                let response = try await surfReportService.getVideoViewURL(key: videoKey)
                 self.isLoadingVideo = false
                 if let viewURLString = response.viewURL,
                    let url = URL(string: viewURLString) {

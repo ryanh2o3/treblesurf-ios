@@ -10,13 +10,13 @@ class SpotReportsListViewModel: ObservableObject {
     @Published var errorMessage: String?
     
     private let spotId: String
-    private let apiClient: APIClientProtocol
+    private let surfReportService: SurfReportService
     private let reportsPerPage = 20
     private var currentPage = 0
     
-    init(spotId: String, apiClient: APIClientProtocol) {
+    init(spotId: String, surfReportService: SurfReportService) {
         self.spotId = spotId
-        self.apiClient = apiClient
+        self.surfReportService = surfReportService
     }
     
     func loadInitialReports() {
@@ -68,7 +68,8 @@ class SpotReportsListViewModel: ObservableObject {
         Task { [weak self] in
             guard let self = self else { return }
             do {
-                let responses = try await apiClient.fetchAllSpotReports(
+                // SurfReportService returns domain models already
+                let newReports = try await surfReportService.fetchAllSpotReports(
                     country: country,
                     region: region,
                     spot: spot,
@@ -77,9 +78,6 @@ class SpotReportsListViewModel: ObservableObject {
                 
                 self.isLoading = false
                 self.isLoadingMore = false
-                
-                // Convert responses to SurfReport objects
-                let newReports = responses.map { SurfReport(from: $0) }
                 
                 // Check if we have more reports
                 // If we got fewer reports than requested, there are no more

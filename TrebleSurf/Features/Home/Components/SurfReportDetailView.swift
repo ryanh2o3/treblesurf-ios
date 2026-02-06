@@ -7,7 +7,7 @@ import Foundation
 struct SurfReportDetailView: View {
     let report: SurfReport
     let backButtonText: String
-    private let apiClient: APIClientProtocol
+    private let surfReportService: SurfReportService
     
     @Environment(\.dismiss) private var dismiss
     @State private var showingVideoPlayer = false
@@ -16,10 +16,10 @@ struct SurfReportDetailView: View {
     @State private var isLoadingVideo = false
     @State private var cachedVideoURL: URL?
     
-    init(report: SurfReport, backButtonText: String = "Back to Reports", apiClient: APIClientProtocol) {
+    init(report: SurfReport, backButtonText: String = "Back to Reports", surfReportService: SurfReportService) {
         self.report = report
         self.backButtonText = backButtonText
-        self.apiClient = apiClient
+        self.surfReportService = surfReportService
     }
     
     var body: some View {
@@ -305,7 +305,7 @@ struct SurfReportDetailView: View {
         
         Task {
             do {
-                let viewResponse = try await apiClient.getVideoViewURL(key: videoKey)
+                let viewResponse = try await surfReportService.getVideoViewURL(key: videoKey)
                 self.isLoadingVideo = false
                 if let viewURL = viewResponse.viewURL {
                     self.videoViewURL = viewURL

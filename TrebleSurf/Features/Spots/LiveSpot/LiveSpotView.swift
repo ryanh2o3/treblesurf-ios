@@ -30,6 +30,7 @@ struct LiveSpotView: View {
         _viewModel = StateObject(
             wrappedValue: LiveSpotViewModel(
                 apiClient: dependencies.apiClient,
+                surfReportService: dependencies.surfReportService,
                 imageCache: dependencies.imageCache,
                 errorHandler: dependencies.errorHandler,
                 logger: dependencies.errorLogger
@@ -414,7 +415,7 @@ struct LiveSpotView: View {
             SurfReportDetailView(
                 report: report,
                 backButtonText: "Back to \(viewModel.getSpotName(from: spotId))",
-                apiClient: dependencies.apiClient
+                surfReportService: dependencies.surfReportService
             )
         }
         .sheet(isPresented: $viewModel.showReportForm) {
