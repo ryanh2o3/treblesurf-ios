@@ -32,34 +32,22 @@ class LocationStore: NSObject, ObservableObject, LocationStoreProtocol {
     @AppStorage("savedLocations") private var savedLocationsData: Data = Data()
     @Published var savedLocations: [LocationData] = []
     
-    private let locationManager = CLLocationManager()
-    nonisolated private let geocoder = CLGeocoder()
+    // Removed CLLocationManager logic as it is unused and authorization keys were removed.
     
     nonisolated override init() {
         super.init()
         Task { @MainActor in
-            self.setupLocationManager()
             self.loadSavedLocations()
         }
     }
     
     func setupLocationManager() {
-        locationManager.delegate = self
-        checkLocationAuthorization()
+        // No-op
     }
     
     func checkLocationAuthorization() {
-        switch locationManager.authorizationStatus {
-        case .authorizedWhenInUse, .authorizedAlways:
-            locationManager.startUpdatingLocation()
-            isLocationServiceEnabled = true
-        case .denied, .restricted:
-            isLocationServiceEnabled = false
-        case .notDetermined:
-            locationManager.requestWhenInUseAuthorization()
-        @unknown default:
-            break
-        }
+        // No-op
+        isLocationServiceEnabled = false
     }
     
     func loadSavedLocations() {
@@ -126,48 +114,6 @@ class LocationStore: NSObject, ObservableObject, LocationStoreProtocol {
             longitude: coordinates?.longitude
         )
     }
-}
-
-extension LocationStore: CLLocationManagerDelegate {
-    nonisolated func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
-        Task { @MainActor in
-            checkLocationAuthorization()
-        }
-    }
-    
-    nonisolated func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
-        guard let location = locations.last else { return }
-        
-        // Reverse geocode to get location details
-        geocoder.reverseGeocodeLocation(location) { [weak self] placemarks, error in
-            guard let self = self else { return }
-            
-            if error != nil {
-                return
-            }
-            
-            if let placemark = placemarks?.first {
-                Task { @MainActor in
-                    self.country = placemark.country ?? ""
-                    self.region = placemark.administrativeArea ?? ""
-                    self.spot = placemark.locality ?? ""
-                    self.coordinates = location.coordinate
-                }
-            }
-        }
-        
-        // Stop updating location after getting it once
-        Task { @MainActor in
-            locationManager.stopUpdatingLocation()
-        }
-    }
-    
-    nonisolated func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
-
-        Task { @MainActor in
-            isLocationServiceEnabled = false
-        }
-    }
     
     /// Reset the store to its initial state - clears all location data
     func resetToInitialState() {
@@ -184,10 +130,5 @@ extension LocationStore: CLLocationManagerDelegate {
         self.savedLocationsData = Data()
         UserDefaults.standard.removeObject(forKey: "savedLocations")
         UserDefaults.standard.synchronize()
-        
-        // Stop location updates
-        self.locationManager.stopUpdatingLocation()
-        
-
     }
 }

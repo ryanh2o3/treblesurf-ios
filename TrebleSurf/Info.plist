@@ -13,26 +13,7 @@
 	</array>
 	<key>GIDClientID</key>
 	<string>667754725634-9tck0kii14dm6d1e0u05preefmfppp5b.apps.googleusercontent.com</string>
-	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>TrebleSurf uses your location to show nearby surf spots and provide accurate forecasts for your area.</string>
-	<key>NSCameraUsageDescription</key>
-	<string>TrebleSurf needs camera access to let you take photos of current surf conditions for reports.</string>
-	<key>NSPhotoLibraryUsageDescription</key>
-	<string>TrebleSurf needs photo library access to let you select photos and videos to include in surf reports.</string>
-	<key>NSPhotoLibraryAddUsageDescription</key>
-	<string>TrebleSurf needs permission to save photos to your library.</string>
-	<key>NSAppTransportSecurity</key>
-	<dict>
-		<key>NSExceptionDomains</key>
-		<dict>
-			<key>localhost</key>
-			<dict>
-				<key>NSExceptionAllowsInsecureHTTPLoads</key>
-				<true/>
-				<key>NSIncludesSubdomains</key>
-				<true/>
-			</dict>
-		</dict>
-	</dict>
+
+
 </dict>
 </plist>
