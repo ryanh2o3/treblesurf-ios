@@ -7,7 +7,6 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		973A435E2DC6A6790070162F /* createFiles.sh in Resources */ = {isa = PBXBuildFile; fileRef = 973A435D2DC6A6730070162F /* createFiles.sh */; };
 		973A43F92DC949BC0070162F /* GoogleSignIn in Frameworks */ = {isa = PBXBuildFile; productRef = 973A43F82DC949BC0070162F /* GoogleSignIn */; };
 		973A43FB2DC949BC0070162F /* GoogleSignInSwift in Frameworks */ = {isa = PBXBuildFile; productRef = 973A43FA2DC949BC0070162F /* GoogleSignInSwift */; };
 /* End PBXBuildFile section */
@@ -30,7 +29,6 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
-		973A435D2DC6A6730070162F /* createFiles.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = createFiles.sh; sourceTree = "<group>"; };
 		97C14C192DC69B2200CA90C9 /* TrebleSurf.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = TrebleSurf.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		97C14C292DC69B2300CA90C9 /* TrebleSurfTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TrebleSurfTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		97C14C332DC69B2300CA90C9 /* TrebleSurfUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TrebleSurfUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -97,7 +95,6 @@
 		97C14C102DC69B2200CA90C9 = {
 			isa = PBXGroup;
 			children = (
-				973A435D2DC6A6730070162F /* createFiles.sh */,
 				97C14C1B2DC69B2200CA90C9 /* TrebleSurf */,
 				97C14C2C2DC69B2300CA90C9 /* TrebleSurfTests */,
 				97C14C362DC69B2300CA90C9 /* TrebleSurfUITests */,
@@ -240,7 +237,6 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				973A435E2DC6A6790070162F /* createFiles.sh in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
