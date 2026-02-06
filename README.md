@@ -2,6 +2,10 @@
 
 TrebleSurf is an iOS application for surf forecasting and reporting. It provides real-time conditions, swell predictions, and user-submitted surf reports.
 
+# CI/CD
+
+Connected to Xcode Cloud for CI/CD, auto deploys to testflight on push to main right now.
+
 ## Features
 
 - **Conditions**: Real-time data including wave height, wind speed, and water temperature.
