@@ -383,10 +383,7 @@ struct SpotForecastView: View {
     
     private func loadForecastData() {
         Task {
-            let success = await viewModel.fetchForecast(for: spotId)
-            if !success {
-                print("Failed to fetch forecast for spot: \(spotId)")
-            }
+            let _ = await viewModel.fetchForecast(for: spotId)
         }
     }
     

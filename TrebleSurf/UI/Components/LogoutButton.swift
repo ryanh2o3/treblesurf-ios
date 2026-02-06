@@ -45,16 +45,8 @@ struct LogoutButton: View {
         isLoggingOut = true
         
         Task { @MainActor in
-            let success = await authManager.logout()
+            let _ = await authManager.logout()
             isLoggingOut = false
-            if success {
-                print("Successfully logged out and cleared all app data")
-                // You might want to navigate to the sign-in screen here
-                // or trigger a navigation reset
-            } else {
-                print("Logout failed")
-                // Even if logout fails, the local data should still be cleared
-            }
         }
     }
 }

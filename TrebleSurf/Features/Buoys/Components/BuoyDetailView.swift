@@ -309,7 +309,7 @@ struct BuoyDetailView: View {
                                 .frame(height: 200)
                                 .chartYScale(domain: 0...calculateChartMaxY(for: currentBuoy))
                                 .chartXSelection(value: $selectedTimePoint)
-                                .onChange(of: selectedTimePoint) { newValue in
+                                .onChange(of: selectedTimePoint) { _, newValue in
                                     if let newTime = newValue {
                                         updateSelectedDataPoint(for: newTime, buoy: currentBuoy)
                                         
@@ -442,8 +442,7 @@ struct BuoyDetailView: View {
                 
                 // Then find the corresponding Buoy and load its historical data
                 if let currentBuoy = viewModel.buoys.first(where: { $0.name == buoy.name }) {
-                    await viewModel.loadHistoricalDataForBuoy(id: currentBuoy.id) { updatedBuoy in
-                        print("Historical data loaded for buoy: \(buoy.name)")
+                    await viewModel.loadHistoricalDataForBuoy(id: currentBuoy.id) { _ in
                     }
                     
                     // Load similar surf reports
@@ -493,15 +492,9 @@ struct BuoyDetailView: View {
         guard let waveHeight = Double(buoy.waveHeight),
               let waveDirection = Double(buoy.waveDirection),
               let period = Double(buoy.maxPeriod) else {
-            print("❌ Failed to parse buoy data for similar reports")
             isLoadingSimilarReports = false
             return
         }
-        
-        print("🌊 Fetching similar surf reports for buoy: \(buoy.name)")
-        print("   - Wave Height: \(waveHeight)m")
-        print("   - Wave Direction: \(waveDirection)°")
-        print("   - Period: \(period)s")
         
         Task {
             do {
@@ -514,8 +507,7 @@ struct BuoyDetailView: View {
                 )
                 
                 isLoadingSimilarReports = false
-                print("✅ Found \(responses.count) similar surf reports")
-                
+
                 // Convert responses to SurfReport objects
                 similarReports = responses.map { SurfReport(from: $0) }
                 
@@ -527,7 +519,6 @@ struct BuoyDetailView: View {
                 }
             } catch {
                 isLoadingSimilarReports = false
-                print("❌ Failed to fetch similar surf reports: \(error.localizedDescription)")
             }
         }
     }
@@ -541,7 +532,7 @@ struct BuoyDetailView: View {
                     report.imageData = imageData
                 }
             } catch {
-                print("❌ Failed to fetch image for report: \(error.localizedDescription)")
+                // Image fetch failed for report
             }
         }
     }
@@ -557,8 +548,7 @@ struct BuoyDetailView: View {
         
         Task {
             if let currentBuoy = viewModel.buoys.first(where: { $0.name == buoy.name }) {
-                await viewModel.loadHistoricalDataForBuoy(id: currentBuoy.id) { updatedBuoy in
-                    print("Loaded last 24h data for buoy: \(buoy.name)")
+                await viewModel.loadHistoricalDataForBuoy(id: currentBuoy.id) { _ in
                 }
             }
         }
@@ -588,8 +578,7 @@ struct BuoyDetailView: View {
                     id: currentBuoy.id,
                     startDate: startOfDay,
                     endDate: endDate
-                ) { updatedBuoy in
-                    print("Loaded custom date data for buoy: \(buoy.name)")
+                ) { _ in
                 }
             }
             
@@ -651,10 +640,8 @@ struct BuoyDetailView: View {
         // Match by finding the response with the closest timestamp
         if let closestResponse = findClosestBuoyResponse(to: closestDataPoint.time, in: buoy.historicalResponses) {
             selectedDataPoint = closestResponse
-            print("✅ Selected time: \(formatTime(time)), Wave Height: \(closestDataPoint.waveHeight)m")
         } else {
             selectedDataPoint = nil
-            print("⚠️ No matching BuoyResponse found for selected time")
         }
     }
     
@@ -756,10 +743,8 @@ struct BuoyDetailView: View {
         guard !isLoadingExtendedData else { return }
         
         isLoadingExtendedData = true
-        
-        print("📊 Loading data around time: \(formatTime(time))")
-        
-        // Calculate 24-hour range centered on selected time (±12 hours)
+
+        // Calculate 24-hour range centered on selected time (plus or minus 12 hours)
         let startDate = time.addingTimeInterval(-12 * 60 * 60) // 12 hours before
         let endDate = time.addingTimeInterval(12 * 60 * 60)    // 12 hours after
         
@@ -767,9 +752,7 @@ struct BuoyDetailView: View {
             id: buoy.id,
             startDate: startDate,
             endDate: endDate
-        ) { updatedBuoy in
-            print("✅ Extended data loaded for buoy: \(buoy.name)")
-            
+        ) { _ in
             // Re-select the time point to update the data point with new data
             if let selectedTime = self.selectedTimePoint {
                 if let currentBuoy = self.viewModel.buoys.first(where: { $0.name == buoy.name }) {

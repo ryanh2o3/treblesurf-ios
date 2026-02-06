@@ -173,8 +173,6 @@ struct AIPredictedForecastTest {
     
     /// Test the parsing of DynamoDB data
     static func testDynamoDBParsing() {
-        print("🧪 Testing DynamoDB data parsing...")
-        
         // Test AIPredictedForecastResponse
         let aiResponse = AIPredictedForecastResponse(
             arrival_time: testDynamoDBData["arrival_time"]!,
@@ -191,46 +189,19 @@ struct AIPredictedForecastTest {
             calibration_confidence: testDynamoDBData["calibration_confidence"]!,
             predicted_period: testDynamoDBData["predicted_period"]!
         )
-        
-        print("✅ AIPredictedForecastResponse created successfully")
-        print("   Spot ID: \(aiResponse.spotId)")
-        print("   Arrival Time: \(aiResponse.arrivalTime)")
-        print("   Predicted Height: \(aiResponse.predictedHeight)")
-        print("   Surf Size: \(aiResponse.surfSize)")
-        print("   Confidence: \(aiResponse.confidenceValue)")
-        print("   Hours Ahead: \(aiResponse.hoursAhead)")
-        
+
         // Test AIPredictedForecastEntry
-        let aiEntry = AIPredictedForecastEntry(from: aiResponse)
-        print("✅ AIPredictedForecastEntry created successfully")
-        print("   ID: \(aiEntry.id)")
-        print("   Formatted Arrival Time: \(aiEntry.formattedArrivalTime)")
-        print("   Formatted Hours Ahead: \(aiEntry.formattedHoursAhead)")
-        print("   Quality Assessment: \(aiEntry.qualityAssessment)")
-        print("   Surf Condition: \(aiEntry.surfConditionAssessment)")
-        
+        let _ = AIPredictedForecastEntry(from: aiResponse)
+
         // Test SwellPredictionResponse with DynamoDB data
         let swellResponse = SwellPredictionResponse(from: testDynamoDBData)
-        print("✅ SwellPredictionResponse created from DynamoDB data")
-        print("   Spot ID: \(swellResponse.spot_id)")
-        print("   Predicted Height: \(swellResponse.predicted_height)")
-        print("   Surf Size: \(swellResponse.surf_size)")
-        print("   Hours Ahead: \(swellResponse.hours_ahead ?? 0)")
-        
+
         // Test SwellPredictionEntry
-        let swellEntry = SwellPredictionEntry(from: swellResponse)
-        print("✅ SwellPredictionEntry created successfully")
-        print("   ID: \(swellEntry.id)")
-        print("   Formatted Hours Ahead: \(swellEntry.formattedHoursAhead)")
-        print("   Quality Assessment: \(swellEntry.qualityAssessment)")
-        
-        print("🎉 All tests passed!")
+        let _ = SwellPredictionEntry(from: swellResponse)
     }
     
     /// Test the conversion back to DynamoDB format
     static func testDynamoDBConversion() {
-        print("🧪 Testing DynamoDB conversion...")
-        
         let aiResponse = AIPredictedForecastResponse(
             arrival_time: testDynamoDBData["arrival_time"]!,
             direction_quality: testDynamoDBData["direction_quality"]!,
@@ -246,16 +217,8 @@ struct AIPredictedForecastTest {
             calibration_confidence: testDynamoDBData["calibration_confidence"]!,
             predicted_period: testDynamoDBData["predicted_period"]!
         )
-        
+
         let aiEntry = AIPredictedForecastEntry(from: aiResponse)
-        let convertedResponse = aiEntry.toAIPredictedForecastResponse()
-        
-        print("✅ Conversion back to DynamoDB format successful")
-        print("   Original Spot ID: \(aiResponse.spotId)")
-        print("   Converted Spot ID: \(convertedResponse.spotId)")
-        print("   Original Surf Size: \(aiResponse.surfSize)")
-        print("   Converted Surf Size: \(convertedResponse.surfSize)")
-        
-        print("🎉 Conversion test passed!")
+        let _ = aiEntry.toAIPredictedForecastResponse()
     }
 }

@@ -23,8 +23,6 @@ struct LocationData: Codable, Identifiable {
 
 @MainActor
 class LocationStore: NSObject, ObservableObject, LocationStoreProtocol {
-    nonisolated static let shared = LocationStore()
-    
     @Published var country: String = ""
     @Published var region: String = ""
     @Published var spot: String = ""
@@ -70,7 +68,7 @@ class LocationStore: NSObject, ObservableObject, LocationStoreProtocol {
         do {
             savedLocations = try JSONDecoder().decode([LocationData].self, from: savedLocationsData)
         } catch {
-            print("Error loading saved locations: \(error)")
+
         }
     }
     
@@ -106,7 +104,7 @@ class LocationStore: NSObject, ObservableObject, LocationStoreProtocol {
             let data = try JSONEncoder().encode(savedLocations)
             savedLocationsData = data
         } catch {
-            print("Error saving locations: \(error)")
+
         }
     }
     
@@ -144,8 +142,7 @@ extension LocationStore: CLLocationManagerDelegate {
         geocoder.reverseGeocodeLocation(location) { [weak self] placemarks, error in
             guard let self = self else { return }
             
-            if let error = error {
-                print("Reverse geocoding error: \(error.localizedDescription)")
+            if error != nil {
                 return
             }
             
@@ -166,7 +163,7 @@ extension LocationStore: CLLocationManagerDelegate {
     }
     
     nonisolated func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
-        print("Location manager error: \(error.localizedDescription)")
+
         Task { @MainActor in
             isLocationServiceEnabled = false
         }
@@ -191,6 +188,6 @@ extension LocationStore: CLLocationManagerDelegate {
         // Stop location updates
         self.locationManager.stopUpdatingLocation()
         
-        print("LocationStore reset to initial state")
+
     }
 }

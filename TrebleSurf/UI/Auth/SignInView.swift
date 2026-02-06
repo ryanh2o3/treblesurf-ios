@@ -100,7 +100,6 @@ struct SignInView: View {
             .compactMap({ $0 as? UIWindowScene })
             .flatMap({ $0.windows })
             .first(where: { $0.isKeyWindow })?.rootViewController else {
-            print("Unable to get root view controller")
             return
         }
 
@@ -109,19 +108,13 @@ struct SignInView: View {
             DispatchQueue.main.async {
                 isSigningIn = false
                 
-                if let error = error {
-                    print("Sign-in failed: \(error.localizedDescription)")
+                if error != nil {
                     return
                 }
 
                 if let result = signInResult {
                     Task { @MainActor in
-                        let (success, user) = await authManager.authenticateWithBackend(user: result.user)
-                        if success {
-                            print("Successfully authenticated user: \(user?.email ?? "Unknown")")
-                        } else {
-                            print("Backend authentication failed")
-                        }
+                        let _ = await authManager.authenticateWithBackend(user: result.user)
                     }
                 }
             }

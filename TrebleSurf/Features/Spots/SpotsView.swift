@@ -6,20 +6,17 @@ import UIKit
 extension String {
     func toUIImage() -> UIImage? {
         guard !self.isEmpty else {
-            print("Debug: Empty image string")
             return nil
         }
-        
+
         guard let data = Data(base64Encoded: self) else {
-            print("Debug: Failed to decode base64 string for image")
             return nil
         }
-        
+
         guard let image = UIImage(data: data) else {
-            print("Debug: Failed to create UIImage from data")
             return nil
         }
-        
+
         return image
     }
 }

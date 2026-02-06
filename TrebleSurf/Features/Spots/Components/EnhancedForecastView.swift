@@ -582,32 +582,25 @@ struct EnhancedForecastView: View {
     
     private func loadForecastData() {
         Task {
-            let success = await forecastViewModel.fetchForecast(for: spot.id)
-            if !success {
-                print("Failed to fetch forecast for spot: \(spot.id)")
-            }
+            let _ = await forecastViewModel.fetchForecast(for: spot.id)
         }
     }
     
     private func loadSwellPredictionData() {
-        
         isLoadingSwellPredictions = true
         swellPredictionError = nil
-        
-        swellPredictionService.fetchSwellPrediction(for: spot) { result in
-            DispatchQueue.main.async {
+
+        Task {
+            do {
+                let predictions = try await swellPredictionService.fetchSwellPrediction(for: spot)
                 self.isLoadingSwellPredictions = false
-                
-                switch result {
-                case .success(let predictions):
-                    self.swellPredictions = predictions
-                    // Notify with the first prediction for backward compatibility
-                    self.onSwellPredictionSelectionChanged?(predictions.first)
-                case .failure(let error):
-                    self.swellPredictionError = error
-                    self.swellPredictions = []
-                    self.onSwellPredictionSelectionChanged?(nil)
-                }
+                self.swellPredictions = predictions
+                self.onSwellPredictionSelectionChanged?(predictions.first)
+            } catch {
+                self.isLoadingSwellPredictions = false
+                self.swellPredictionError = error
+                self.swellPredictions = []
+                self.onSwellPredictionSelectionChanged?(nil)
             }
         }
     }

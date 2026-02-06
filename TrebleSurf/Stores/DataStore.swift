@@ -9,21 +9,25 @@ import SwiftUI
 
 @MainActor
 class DataStore: ObservableObject, DataStoreProtocol {
+    // Safety: These are immutable service references assigned once during init and never mutated.
     nonisolated(unsafe) private let config: any AppConfigurationProtocol
     nonisolated(unsafe) private let apiClient: any APIClientProtocol
-    nonisolated(unsafe) private let imageCache: ImageCacheService
+    private let imageCache: ImageCacheService
     nonisolated(unsafe) private let spotService: any SpotServiceProtocol
-    
+    nonisolated(unsafe) private let logger: ErrorLoggerProtocol
+
     nonisolated init(
         config: any AppConfigurationProtocol,
         apiClient: any APIClientProtocol,
         imageCache: ImageCacheService,
-        spotService: any SpotServiceProtocol
+        spotService: any SpotServiceProtocol,
+        logger: ErrorLoggerProtocol? = nil
     ) {
         self.config = config
         self.apiClient = apiClient
         self.imageCache = imageCache
         self.spotService = spotService
+        self.logger = logger ?? ErrorLogger(minimumLogLevel: .debug, enableConsoleOutput: true, enableOSLog: true)
     }
 
     @Published var currentConditions = ConditionData(from: [:])
@@ -53,7 +57,7 @@ class DataStore: ObservableObject, DataStoreProtocol {
             let minutes = Int(timeInterval / 60)
             let hours = Int(timeInterval / 3600)
             let days = Int(timeInterval / 86400)
-            print("current timestamp", currentConditionsTimestamp)
+            logger.log("current timestamp: \(currentConditionsTimestamp)", level: .debug, category: .dataProcessing)
             
             if days > 0 {
                 return "\(days) day\(days == 1 ? "" : "s") ago"
@@ -95,14 +99,14 @@ class DataStore: ObservableObject, DataStoreProtocol {
         // Split the spotId into components
         let components = spotId.split(separator: "#")
         guard components.count == 3 else {
-            print("Invalid spotId format")
+            logger.log("Invalid spotId format", level: .error, category: .dataProcessing)
             return false
         }
-        
+
         let country = String(components[0])
         let region = String(components[1])
         let spot = String(components[2])
-        
+
         // Make API call
         do {
             let responses = try await apiClient.fetchCurrentConditions(country: country, region: region, spot: spot)
@@ -121,7 +125,7 @@ class DataStore: ObservableObject, DataStoreProtocol {
             spotConditionsCache[spotId] = (firstResponse.data, firstResponse.generated_at, Date())
             return true
         } catch {
-            print("Error fetching conditions: \(error)")
+            logger.log("Error fetching conditions: \(error)", level: .error, category: .dataProcessing)
             return false
         }
     }
@@ -139,14 +143,14 @@ class DataStore: ObservableObject, DataStoreProtocol {
             // Split the spotId into components
             let components = spotId.split(separator: "#")
             guard components.count == 3 else {
-                print("Invalid spotId format")
+                logger.log("Invalid spotId format", level: .error, category: .dataProcessing)
                 return false
             }
-            
+
             let country = String(components[0])
             let region = String(components[1])
             let spot = String(components[2])
-            
+
             // Make API call and convert response to ForecastEntry objects directly
             do {
                 let responses = try await apiClient.fetchForecast(country: country, region: region, spot: spot)
@@ -160,7 +164,7 @@ class DataStore: ObservableObject, DataStoreProtocol {
                 spotForecastCache[spotId] = (entries, Date())
                 return true
             } catch {
-                print("Error fetching forecast: \(error)")
+                logger.log("Error fetching forecast: \(error)", level: .error, category: .dataProcessing)
                 return false
             }
         }
@@ -174,11 +178,11 @@ class DataStore: ObservableObject, DataStoreProtocol {
             return cached.spots
         }
 
-        print("Fetching spots for region: \(region)")
+        logger.log("Fetching spots for region: \(region)", level: .debug, category: .network)
         
         // For now we only handle Donegal, but this could be expanded
         let spots = try await spotService.fetchDonegalSpots()
-        print("Successfully fetched \(spots.count) spots for region: \(region)")
+        logger.log("Successfully fetched \(spots.count) spots for region: \(region)", level: .debug, category: .network)
         
         // Cache the data with current timestamp (on main thread)
         regionSpotsCache[region] = (spots, Date())
@@ -191,19 +195,15 @@ class DataStore: ObservableObject, DataStoreProtocol {
     }
     
     private func cachedSpotImage(for spotId: String) async -> Image? {
-        await withCheckedContinuation { continuation in
-            imageCache.getCachedSpotImage(for: spotId) { cachedImage in
-                continuation.resume(returning: cachedImage)
-            }
-        }
+        await imageCache.getCachedSpotImage(for: spotId)
     }
     
     func fetchSpotImage(for spotId: String) async -> Image? {
-        print("Fetching image for spotId: \(spotId)")
+        logger.log("Fetching image for spotId: \(spotId)", level: .debug, category: .cache)
         
         // First, check the dedicated image cache
         if let cachedImage = await cachedSpotImage(for: spotId) {
-            print("✅ Using cached spot image for spotId: \(spotId)")
+            logger.log("Using cached spot image for spotId: \(spotId)", level: .debug, category: .cache)
             return cachedImage
         }
         
@@ -213,7 +213,7 @@ class DataStore: ObservableObject, DataStoreProtocol {
                let imageData = cachedData.spots[spotIndex].imageString,
                !imageData.isEmpty,
                Date().timeIntervalSince(cachedData.timestamp) < spotCacheExpirationInterval {
-                print("Using cached image data from regionSpotsCache for spotId: \(spotId)")
+                logger.log("Using cached image data from regionSpotsCache for spotId: \(spotId)", level: .debug, category: .cache)
                 
                 // Convert base64 to UIImage if we have it cached
                 if let image = UIImage(data: Data(base64Encoded: imageData) ?? Data()) {
@@ -232,7 +232,7 @@ class DataStore: ObservableObject, DataStoreProtocol {
         // Split the spotId into components
         let components = spotId.split(separator: "#")
         guard components.count == 3 else {
-            print("Invalid spotId format")
+            logger.log("Invalid spotId format", level: .error, category: .dataProcessing)
             return nil
         }
         
@@ -280,7 +280,7 @@ class DataStore: ObservableObject, DataStoreProtocol {
             
             return nil
         } catch {
-            print("Error fetching spot image: \(error)")
+            logger.log("Error fetching spot image: \(error)", level: .error, category: .dataProcessing)
             return nil
         }
     }
@@ -348,24 +348,24 @@ class DataStore: ObservableObject, DataStoreProtocol {
     
     // Test the image cache system
     func testImageCache() {
-        print("🧪 Testing image cache system...")
-        
+        logger.log("Testing image cache system...", level: .debug, category: .cache)
+
         // Get cache statistics
         let stats = getDetailedImageCacheStats()
-        print("📊 Cache stats: \(stats.spotImages) spot images, \(stats.reportImages) report images, \(stats.totalImages) total")
-        print("💾 Memory usage: \(stats.memoryUsage), Disk usage: \(stats.diskUsage)")
-        
+        logger.log("Cache stats: \(stats.spotImages) spot images, \(stats.reportImages) report images, \(stats.totalImages) total", level: .debug, category: .cache)
+        logger.log("Memory usage: \(stats.memoryUsage), Disk usage: \(stats.diskUsage)", level: .debug, category: .cache)
+
         // Export detailed cache info
         let cacheInfo = exportImageCacheInfo()
-        print("📋 Cache info:\n\(cacheInfo)")
-        
-        print("✅ Image cache test completed")
+        logger.log("Cache info:\n\(cacheInfo)", level: .debug, category: .cache)
+
+        logger.log("Image cache test completed", level: .debug, category: .cache)
     }
     
     // Clean up any corrupted cache files
     func cleanupImageCache() {
         imageCache.cleanExpiredCache()
-        print("🧹 Image cache cleanup completed")
+        logger.log("Image cache cleanup completed", level: .info, category: .cache)
     }
     
     // Refresh image cache for a specific spot
@@ -380,7 +380,7 @@ class DataStore: ObservableObject, DataStoreProtocol {
     // Refresh all image caches
     func refreshAllImageCaches() {
         clearImageCache()
-        print("🔄 All image caches cleared and ready for refresh")
+        logger.log("All image caches cleared and ready for refresh", level: .info, category: .cache)
     }
     
     // Clear region spots cache for refresh
@@ -400,7 +400,7 @@ class DataStore: ObservableObject, DataStoreProtocol {
         currentConditions = ConditionData(from: [:])
         currentConditionsTimestamp = ""
         currentForecastEntries = []
-        print("🔄 All data and image caches cleared")
+        logger.log("All data and image caches cleared", level: .info, category: .cache)
     }
     
     // Refresh data for a specific spot
@@ -412,7 +412,7 @@ class DataStore: ObservableObject, DataStoreProtocol {
             currentConditions = ConditionData(from: [:])
             currentConditionsTimestamp = ""
         }
-        print("🔄 Cleared spot data and image cache for \(spotId)")
+        logger.log("Cleared spot data and image cache for \(spotId)", level: .info, category: .cache)
     }
     
     // Refresh all data for a specific region
@@ -426,7 +426,7 @@ class DataStore: ObservableObject, DataStoreProtocol {
             }
         }
         
-        print("🔄 Cleared region spots cache and associated image caches for \(region)")
+        logger.log("Cleared region spots cache and associated image caches for \(region)", level: .info, category: .cache)
     }
     
     /// Reset the store to its initial state - clears all data and caches
@@ -444,6 +444,6 @@ class DataStore: ObservableObject, DataStoreProtocol {
         regionSpotsCache.removeAll()
         clearImageCache() // Also clear all image caches
         
-        print("DataStore reset to initial state including image caches")
+        logger.log("DataStore reset to initial state including image caches", level: .info, category: .general)
     }
 }

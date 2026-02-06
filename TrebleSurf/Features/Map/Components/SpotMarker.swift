@@ -57,11 +57,9 @@ struct SpotMarker_Previews: PreviewProvider {
         
         VStack(spacing: 20) {
             SpotMarker(spot: sampleSpot, isSelected: false) {
-                print("Spot tapped")
             }
-            
+
             SpotMarker(spot: sampleSpot, isSelected: true) {
-                print("Selected spot tapped")
             }
         }
         .padding()

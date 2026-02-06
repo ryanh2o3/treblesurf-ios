@@ -58,7 +58,6 @@ struct TimestampParser {
         }
         
         // Format 4: Failed to parse
-        print("Failed to parse timestamp: \(timestamp)")
         return nil
     }
     

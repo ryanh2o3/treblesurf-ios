@@ -28,8 +28,6 @@ enum ThemeMode: String, CaseIterable, Identifiable {
 
 @MainActor
 class SettingsStore: ObservableObject, SettingsStoreProtocol {
-    nonisolated static let shared = SettingsStore()
-    
     @Published var selectedTheme: ThemeMode = .system {
         didSet {
             UserDefaults.standard.set(selectedTheme.rawValue, forKey: "selectedTheme")
@@ -140,6 +138,6 @@ class SettingsStore: ObservableObject, SettingsStoreProtocol {
         // Update color scheme
         self.updateColorScheme()
         
-        print("SettingsStore reset to initial state")
+
     }
 }

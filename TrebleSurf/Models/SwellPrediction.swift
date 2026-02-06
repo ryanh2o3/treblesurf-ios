@@ -109,18 +109,15 @@ struct SwellPredictionResponse: Codable, Identifiable {
         // Handle arrival_time as either String or numeric timestamp
         if let arrivalTimeString = try? container.decode(String.self, forKey: .arrival_time) {
             arrival_time = arrivalTimeString
-            print("🔍 Parsed arrival_time: \(arrivalTimeString)")
         } else if let arrivalTimeNumber = try? container.decode(Double.self, forKey: .arrival_time) {
             // Convert numeric timestamp to ISO8601 string
             let date = Date(timeIntervalSince1970: arrivalTimeNumber)
             let formatter = ISO8601DateFormatter()
             arrival_time = formatter.string(from: date)
-            print("🔍 Converted numeric arrival_time: \(arrivalTimeNumber) -> \(arrival_time)")
         } else {
             // Fallback to current time if neither works
             let formatter = ISO8601DateFormatter()
             arrival_time = formatter.string(from: Date())
-            print("⚠️ Using fallback arrival_time: \(arrival_time)")
         }
     }
     
@@ -206,12 +203,6 @@ struct SwellPredictionEntry: Codable, Identifiable, Equatable {
         } else {
             self.arrivalTime = Date()
         }
-        
-        // Debug: Print the arrival time conversion
-        let timeFormatter = DateFormatter()
-        timeFormatter.dateFormat = "HH:mm"
-        timeFormatter.timeZone = TimeZone(abbreviation: "UTC")
-        print("🕐 Converted arrival_time '\(response.arrival_time)' to \(timeFormatter.string(from: arrivalTime)) (UTC)")
         
         // Generate ID from spot and arrival time to ensure uniqueness
         self.id = "\(spotId)-\(arrivalTime.timeIntervalSince1970)"

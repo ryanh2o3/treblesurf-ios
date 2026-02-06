@@ -22,8 +22,6 @@ protocol AppConfigurationProtocol {
 
 /// Centralized app configuration
 final class AppConfiguration: AppConfigurationProtocol {
-    static let shared = AppConfiguration()
-    
     var apiBaseURL: String {
         #if DEBUG
         return UIDevice.current.isSimulator ? "http://localhost:8080" : "https://treblesurf.com"

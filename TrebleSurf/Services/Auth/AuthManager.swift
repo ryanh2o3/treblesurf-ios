@@ -11,40 +11,42 @@ import UIKit
 
 @MainActor
 class AuthManager: ObservableObject, AuthManagerProtocol {
-    nonisolated static let shared = AuthManager()
-    
     @Published var currentUser: User?
     @Published var isAuthenticated: Bool = false
     
     private weak var dataStore: (any DataStoreProtocol)?
     private weak var locationStore: (any LocationStoreProtocol)?
     private weak var settingsStore: (any SettingsStoreProtocol)?
-    
+
+    // Safety: Immutable service reference assigned once during init and never mutated.
+    nonisolated(unsafe) private let keychain: KeychainHelper
+    // Safety: Immutable service reference assigned once during init and never mutated.
+    nonisolated(unsafe) private let logger: ErrorLoggerProtocol
     private let csrfKey = "com.treblesurf.csrfToken"
     private let sessionKey = "com.treblesurf.sessionId"
-    
+
     nonisolated var csrfToken: String? {
         get {
-            return KeychainHelper.shared.retrieve(key: csrfKey)
+            return keychain.retrieve(key: csrfKey)
         }
         set {
             if let token = newValue {
-                KeychainHelper.shared.save(key: csrfKey, value: token)
+                keychain.save(key: csrfKey, value: token)
             } else {
-                KeychainHelper.shared.delete(key: csrfKey)
+                keychain.delete(key: csrfKey)
             }
         }
     }
-    
+
     nonisolated var sessionId: String? {
         get {
-            return KeychainHelper.shared.retrieve(key: sessionKey)
+            return keychain.retrieve(key: sessionKey)
         }
         set {
             if let token = newValue {
-                KeychainHelper.shared.save(key: sessionKey, value: token)
+                keychain.save(key: sessionKey, value: token)
             } else {
-                KeychainHelper.shared.delete(key: sessionKey)
+                keychain.delete(key: sessionKey)
             }
         }
     }
@@ -59,8 +61,11 @@ class AuthManager: ObservableObject, AuthManagerProtocol {
     }
     
     // MARK: - Initialization
-    
-    nonisolated init() {}
+
+    nonisolated init(keychain: KeychainHelper = KeychainHelper(), logger: ErrorLoggerProtocol? = nil) {
+        self.keychain = keychain
+        self.logger = logger ?? ErrorLogger(minimumLogLevel: .debug, enableConsoleOutput: true, enableOSLog: true)
+    }
     
     func setStores(
         dataStore: any DataStoreProtocol,
@@ -82,25 +87,25 @@ class AuthManager: ObservableObject, AuthManagerProtocol {
     
     /// Debug method to print current authentication state
     func debugPrintAuthState() {
-        print("🔐 === Authentication State ===")
-        print("📱 Device: \(UIDevice.current.isSimulator ? "Simulator" : "Physical Device")")
-        print("🔑 Session ID: \(sessionId ?? "None")")
-        print("🎫 CSRF Token: \(csrfToken != nil ? "Present (\(csrfToken!.prefix(10)))..." : "None")")
-        print("👤 Current User: \(currentUser?.email ?? "None")")
-        print("✅ Is Authenticated: \(isAuthenticated)")
-        print("================================")
+        logger.log("=== Authentication State ===", level: .debug, category: .authentication)
+        logger.log("Device: \(UIDevice.current.isSimulator ? "Simulator" : "Physical Device")", level: .debug, category: .authentication)
+        logger.log("Session ID: \(sessionId ?? "None")", level: .debug, category: .authentication)
+        logger.log("CSRF Token: \(csrfToken != nil ? "Present (\(csrfToken!.prefix(10)))..." : "None")", level: .debug, category: .authentication)
+        logger.log("Current User: \(currentUser?.email ?? "None")", level: .debug, category: .authentication)
+        logger.log("Is Authenticated: \(isAuthenticated)", level: .debug, category: .authentication)
+        logger.log("================================", level: .debug, category: .authentication)
     }
     
     func authenticateWithBackend(user: GIDGoogleUser) async -> (Bool, User?) {
-        print("🔐 Starting Google authentication with backend...")
-        print("👤 Google user: \(user.profile?.email ?? "Unknown email")")
+        logger.log("Starting Google authentication with backend...", level: .debug, category: .authentication)
+        logger.log("Google user: \(user.profile?.email ?? "Unknown email")", level: .debug, category: .authentication)
         
         guard let idToken = user.idToken?.tokenString else {
-            print("❌ No ID token available from Google user")
+            logger.log("No ID token available from Google user", level: .error, category: .authentication)
             return (false, nil)
         }
         
-        print("✅ ID token received, length: \(idToken.count) characters")
+        logger.log("ID token received, length: \(idToken.count) characters", level: .debug, category: .authentication)
         
         // Create request to your backend
         var request = URLRequest(url: URL(string: "https://treblesurf.com/api/auth/google")!)
@@ -109,18 +114,18 @@ class AuthManager: ObservableObject, AuthManagerProtocol {
         
         let body: [String: Any] = ["id_token": idToken]
         request.httpBody = try? JSONSerialization.data(withJSONObject: body)
-        print("📤 Sending request to backend: \(request.url?.absoluteString ?? "Invalid URL")")
+        logger.log("Sending request to backend: \(request.url?.absoluteString ?? "Invalid URL")", level: .debug, category: .network)
 
         do {
             let (data, response) = try await URLSession.shared.data(for: request)
             
             if let httpResponse = response as? HTTPURLResponse {
-                print("Received HTTP response: \(httpResponse.statusCode)")
+                logger.log("Received HTTP response: \(httpResponse.statusCode)", level: .debug, category: .authentication)
                 
                 // Extract CSRF token from response headers
                 if let csrfToken = httpResponse.value(forHTTPHeaderField: "X-CSRF-Token") {
                     self.csrfToken = csrfToken
-                    print("CSRF token extracted from response header: \(csrfToken)")
+                    logger.log("CSRF token extracted from response header: \(csrfToken)", level: .debug, category: .authentication)
                 }
                 
                 // Extract session ID from cookies
@@ -134,13 +139,13 @@ class AuthManager: ObservableObject, AuthManagerProtocol {
             self.isAuthenticated = true
             return (true, authResponse.user)
         } catch {
-            print("Request failed with error: \(error.localizedDescription)")
+            logger.log("Request failed with error: \(error.localizedDescription)", level: .error, category: .authentication)
             return (false, nil)
         }
     }
     
     nonisolated private func extractSessionId(from cookieString: String) {
-        print("Extracting session ID from cookies: \(cookieString)")
+        logger.log("Extracting session ID from cookies: \(cookieString)", level: .debug, category: .authentication)
         
         // Parse Set-Cookie header to extract session_id
         // The cookie string might contain multiple cookies separated by commas
@@ -155,7 +160,7 @@ class AuthManager: ObservableObject, AuthManagerProtocol {
                 // Remove any additional attributes after the value (like Path, Expires, etc.)
                 let sessionId = sessionIdPart.components(separatedBy: ";").first ?? sessionIdPart
                 self.sessionId = sessionId
-                print("Session ID extracted: \(sessionId)")
+                logger.log("Session ID extracted: \(sessionId)", level: .debug, category: .authentication)
                 return
             }
         }
@@ -170,22 +175,22 @@ class AuthManager: ObservableObject, AuthManagerProtocol {
                     let sessionIdPart = String(trimmed.dropFirst("session_id=".count))
                     let sessionId = sessionIdPart.components(separatedBy: ";").first ?? sessionIdPart
                     self.sessionId = sessionId
-                    print("Session ID extracted (fallback): \(sessionId)")
+                    logger.log("Session ID extracted (fallback): \(sessionId)", level: .debug, category: .authentication)
                     return
                 }
             }
         }
         
-        print("Failed to extract session ID from cookies")
-        print("Cookie string format: \(cookieString)")
+        logger.log("Failed to extract session ID from cookies", level: .error, category: .authentication)
+        logger.log("Cookie string format: \(cookieString)", level: .debug, category: .authentication)
     }
     
     func validateSession() async -> (Bool, User?) {
-        print("🔐 Starting session validation...")
-        print("📱 Device: \(UIDevice.current.isSimulator ? "Simulator" : "Physical Device")")
-        print("🔑 Stored session ID: \(sessionId ?? "None")")
-        print("🎫 Stored CSRF token: \(csrfToken != nil ? "Present" : "None")")
-        print("👤 Stored user: \(currentUser?.email ?? "None")")
+        logger.log("Starting session validation...", level: .debug, category: .authentication)
+        logger.log("Device: \(UIDevice.current.isSimulator ? "Simulator" : "Physical Device")", level: .debug, category: .authentication)
+        logger.log("Stored session ID: \(sessionId ?? "None")", level: .debug, category: .authentication)
+        logger.log("Stored CSRF token: \(csrfToken != nil ? "Present" : "None")", level: .debug, category: .authentication)
+        logger.log("Stored user: \(currentUser?.email ?? "None")", level: .debug, category: .authentication)
         
         #if DEBUG
         // Check if running on simulator vs device
@@ -194,18 +199,18 @@ class AuthManager: ObservableObject, AuthManagerProtocol {
         let baseURL = "https://treblesurf.com"
         #endif
         
-        print("🌐 Using base URL: \(baseURL)")
+        logger.log("Using base URL: \(baseURL)", level: .debug, category: .network)
         
         // In development environment, check if we have local session data
         #if DEBUG
         if UIDevice.current.isSimulator {
             // Check if we have a valid session ID locally
             if let sessionId = sessionId, !sessionId.isEmpty {
-                print("Development mode: Using local session validation")
+                logger.log("Development mode: Using local session validation", level: .debug, category: .authentication)
                 // Return the current user if available
                 return (true, currentUser)
             } else {
-                print("Development mode: No local session available")
+                logger.log("Development mode: No local session available", level: .debug, category: .authentication)
                 return (false, nil)
             }
         }
@@ -223,9 +228,9 @@ class AuthManager: ObservableObject, AuthManagerProtocol {
         // Add session cookie if available
         if let sessionId = sessionId, !sessionId.isEmpty {
             request.addValue("session_id=\(sessionId)", forHTTPHeaderField: "Cookie")
-            print("Adding session cookie for validation: session_id=\(sessionId)")
+            logger.log("Adding session cookie for validation: session_id=\(sessionId)", level: .debug, category: .network)
         } else {
-            print("No local session ID available, attempting validation without cookie")
+            logger.log("No local session ID available, attempting validation without cookie", level: .debug, category: .network)
         }
         
         do {
@@ -235,14 +240,14 @@ class AuthManager: ObservableObject, AuthManagerProtocol {
                 // Check if we received HTML instead of JSON (indicates wrong endpoint)
                 if let contentType = httpResponse.value(forHTTPHeaderField: "Content-Type"),
                    contentType.contains("text/html") {
-                    print("Received HTML response instead of JSON - wrong endpoint or backend issue")
+                    logger.log("Received HTML response instead of JSON - wrong endpoint or backend issue", level: .error, category: .authentication)
                     return (false, nil)
                 }
-                
+
                 // Extract CSRF token from response headers
                 if let csrfToken = httpResponse.value(forHTTPHeaderField: "X-CSRF-Token") {
                     self.csrfToken = csrfToken
-                    print("CSRF token extracted: \(csrfToken)")
+                    logger.log("CSRF token extracted: \(csrfToken)", level: .debug, category: .authentication)
                 }
                 
                 // Extract session ID from cookies if we don't have one locally
@@ -253,7 +258,7 @@ class AuthManager: ObservableObject, AuthManagerProtocol {
                 
                 if httpResponse.statusCode != 200 {
                     // Session is invalid
-                    print("Session validation failed with status: \(httpResponse.statusCode)")
+                    logger.log("Session validation failed with status: \(httpResponse.statusCode)", level: .error, category: .authentication)
                     self.clearAllAppData()
                     return (false, nil)
                 }
@@ -262,8 +267,8 @@ class AuthManager: ObservableObject, AuthManagerProtocol {
             // Check if response is HTML (wrong endpoint)
             if let responseString = String(data: data, encoding: .utf8),
                responseString.contains("<!DOCTYPE html>") {
-                print("Received HTML response instead of JSON - wrong endpoint or backend issue")
-                print("Response data: \(responseString)")
+                logger.log("Received HTML response instead of JSON - wrong endpoint or backend issue", level: .error, category: .authentication)
+                logger.log("Response data: \(responseString)", level: .debug, category: .authentication)
                 return (false, nil)
             }
             
@@ -271,15 +276,15 @@ class AuthManager: ObservableObject, AuthManagerProtocol {
             if validateResponse.valid {
                 self.currentUser = validateResponse.user
                 self.isAuthenticated = true
-                print("Session validation successful for user: \(validateResponse.user.email)")
+                logger.log("Session validation successful for user: \(validateResponse.user.email)", level: .debug, category: .authentication)
                 return (true, validateResponse.user)
             } else {
-                print("Session validation returned invalid")
+                logger.log("Session validation returned invalid", level: .error, category: .authentication)
                 self.clearAllAppData()
                 return (false, nil)
             }
         } catch {
-            print("Validation request failed: \(error.localizedDescription)")
+            logger.log("Validation request failed: \(error.localizedDescription)", level: .error, category: .authentication)
             
             // In development, if server is not available, use local validation
             #if DEBUG
@@ -287,7 +292,7 @@ class AuthManager: ObservableObject, AuthManagerProtocol {
                 if let nsError = error as NSError? {
                     if nsError.code == NSURLErrorCannotConnectToHost ||
                        nsError.code == NSURLErrorTimedOut {
-                        print("Development server not available, using local session validation")
+                        logger.log("Development server not available, using local session validation", level: .debug, category: .authentication)
                         if let sessionId = self.sessionId, !sessionId.isEmpty {
                             return (true, self.currentUser)
                         }
@@ -322,28 +327,28 @@ class AuthManager: ObservableObject, AuthManagerProtocol {
         // Add session cookie if available
         if let sessionId = sessionId {
             request.addValue("session_id=\(sessionId)", forHTTPHeaderField: "Cookie")
-            print("Adding session cookie for logout: session_id=\(sessionId)")
+            logger.log("Adding session cookie for logout: session_id=\(sessionId)", level: .debug, category: .network)
         }
         
         // Add CSRF token if available
         if let csrfToken = csrfToken {
             request.addValue(csrfToken, forHTTPHeaderField: "X-CSRF-Token")
-            print("Adding CSRF token for logout: \(csrfToken)")
+            logger.log("Adding CSRF token for logout: \(csrfToken)", level: .debug, category: .network)
         }
         
         do {
             let (_, response) = try await URLSession.shared.data(for: request)
             if let httpResponse = response as? HTTPURLResponse {
-                print("Logout HTTP response: \(httpResponse.statusCode)")
+                logger.log("Logout HTTP response: \(httpResponse.statusCode)", level: .debug, category: .authentication)
                 
                 // Check if we received HTML instead of JSON (indicates wrong endpoint)
                 if let contentType = httpResponse.value(forHTTPHeaderField: "Content-Type"),
                    contentType.contains("text/html") {
-                    print("Received HTML response instead of JSON during logout - wrong endpoint or backend issue")
+                    logger.log("Received HTML response instead of JSON during logout - wrong endpoint or backend issue", level: .error, category: .authentication)
                 }
             }
         } catch {
-            print("Logout request failed: \(error.localizedDescription)")
+            logger.log("Logout request failed: \(error.localizedDescription)", level: .error, category: .authentication)
         }
         
         // Always clear local data regardless of server response
@@ -378,7 +383,7 @@ class AuthManager: ObservableObject, AuthManagerProtocol {
         // Sign out from Google
         self.signOutFromGoogle()
         
-        print("All app data cleared successfully")
+        logger.log("All app data cleared successfully", level: .info, category: .authentication)
     }
     
     /// Clear all UserDefaults values
@@ -386,7 +391,7 @@ class AuthManager: ObservableObject, AuthManagerProtocol {
         let domain = Bundle.main.bundleIdentifier!
         UserDefaults.standard.removePersistentDomain(forName: domain)
         UserDefaults.standard.synchronize()
-        print("All UserDefaults cleared")
+        logger.log("All UserDefaults cleared", level: .info, category: .authentication)
     }
     
     /// Clear all @AppStorage values
@@ -398,7 +403,7 @@ class AuthManager: ObservableObject, AuthManagerProtocol {
         // Add more keys here as needed
         
         UserDefaults.standard.synchronize()
-        print("All @AppStorage values cleared")
+        logger.log("All @AppStorage values cleared", level: .info, category: .authentication)
     }
     
     /// Clear all caches
@@ -409,7 +414,7 @@ class AuthManager: ObservableObject, AuthManagerProtocol {
         // Clear image cache if you have any
         // ImageCache.shared.clearAll() // Uncomment if you have an image cache
         
-        print("All caches cleared")
+        logger.log("All caches cleared", level: .info, category: .authentication)
     }
     
     /// Reset all stores to initial state
@@ -421,13 +426,13 @@ class AuthManager: ObservableObject, AuthManagerProtocol {
             settingsStore?.resetToInitialState()
         }
         
-        print("All stores reset to initial state")
+        logger.log("All stores reset to initial state", level: .info, category: .authentication)
     }
     
     /// Sign out from Google
     nonisolated private func signOutFromGoogle() {
         GIDSignIn.sharedInstance.signOut()
-        print("Signed out from Google")
+        logger.log("Signed out from Google", level: .info, category: .authentication)
     }
     
     // MARK: - Development Mode Support
@@ -457,30 +462,30 @@ class AuthManager: ObservableObject, AuthManagerProtocol {
         do {
             let (_, response) = try await URLSession.shared.data(for: request)
             if let httpResponse = response as? HTTPURLResponse {
-                print("Dev session HTTP response: \(httpResponse.statusCode)")
-                print("Dev session response headers: \(httpResponse.allHeaderFields)")
+                logger.log("Dev session HTTP response: \(httpResponse.statusCode)", level: .debug, category: .authentication)
+                logger.log("Dev session response headers: \(httpResponse.allHeaderFields)", level: .debug, category: .authentication)
                 
                 // Check if we received HTML instead of JSON (indicates wrong endpoint)
                 if let contentType = httpResponse.value(forHTTPHeaderField: "Content-Type"),
                    contentType.contains("text/html") {
-                    print("Received HTML response instead of JSON during dev session creation - wrong endpoint or backend issue")
+                    logger.log("Received HTML response instead of JSON during dev session creation - wrong endpoint or backend issue", level: .error, category: .authentication)
                     return false
                 }
                 
                 // Extract CSRF token from response headers
                 if let csrfToken = httpResponse.value(forHTTPHeaderField: "X-CSRF-Token") {
                     self.csrfToken = csrfToken
-                    print("CSRF token extracted: \(csrfToken)")
+                    logger.log("CSRF token extracted: \(csrfToken)", level: .debug, category: .authentication)
                 }
-                
+
                 // Extract session ID from cookies
                 if let cookies = httpResponse.allHeaderFields["Set-Cookie"] as? String {
                     self.extractSessionId(from: cookies)
                 } else {
-                    print("No Set-Cookie header found in response")
-                    print("Available headers: \(httpResponse.allHeaderFields.keys)")
+                    logger.log("No Set-Cookie header found in response", level: .debug, category: .authentication)
+                    logger.log("Available headers: \(httpResponse.allHeaderFields.keys)", level: .debug, category: .authentication)
                 }
-                
+
                 if httpResponse.statusCode == 200 {
                     // Create a mock user for development
                     let devUser = User(
@@ -493,21 +498,21 @@ class AuthManager: ObservableObject, AuthManagerProtocol {
                         lastLogin: nil, // Optional field
                         theme: "dark"
                     )
-                    
+
                     self.currentUser = devUser
                     self.isAuthenticated = true
-                    print("Development session created successfully for: \(email)")
+                    logger.log("Development session created successfully for: \(email)", level: .debug, category: .authentication)
                     return true
                 } else {
-                    print("Dev session creation failed with status: \(httpResponse.statusCode)")
+                    logger.log("Dev session creation failed with status: \(httpResponse.statusCode)", level: .error, category: .authentication)
                     return false
                 }
             } else {
-                print("No HTTP response received")
+                logger.log("No HTTP response received", level: .error, category: .authentication)
                 return false
             }
         } catch {
-            print("Dev session creation failed: \(error.localizedDescription)")
+            logger.log("Dev session creation failed: \(error.localizedDescription)", level: .error, category: .authentication)
             return false
         }
     }
@@ -545,13 +550,13 @@ class AuthManager: ObservableObject, AuthManagerProtocol {
     
     // Debug method to print current authentication state
     func printAuthState() {
-        print("=== Authentication State ===")
-        print("Is Simulator: \(isSimulator)")
-        print("Has Session ID: \(sessionId != nil)")
-        print("Has CSRF Token: \(csrfToken != nil)")
-        print("Is Authenticated: \(isAuthenticated)")
-        print("Current User: \(currentUser?.email ?? "None")")
-        print("==========================")
+        logger.log("=== Authentication State ===", level: .debug, category: .authentication)
+        logger.log("Is Simulator: \(isSimulator)", level: .debug, category: .authentication)
+        logger.log("Has Session ID: \(sessionId != nil)", level: .debug, category: .authentication)
+        logger.log("Has CSRF Token: \(csrfToken != nil)", level: .debug, category: .authentication)
+        logger.log("Is Authenticated: \(isAuthenticated)", level: .debug, category: .authentication)
+        logger.log("Current User: \(currentUser?.email ?? "None")", level: .debug, category: .authentication)
+        logger.log("==========================", level: .debug, category: .authentication)
     }
     
 

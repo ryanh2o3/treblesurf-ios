@@ -53,11 +53,9 @@ struct BuoyMarker_Previews: PreviewProvider {
         
         VStack(spacing: 20) {
             BuoyMarker(buoy: sampleBuoy, isSelected: false) {
-                print("Buoy tapped")
             }
-            
+
             BuoyMarker(buoy: sampleBuoy, isSelected: true) {
-                print("Selected buoy tapped")
             }
         }
         .padding()

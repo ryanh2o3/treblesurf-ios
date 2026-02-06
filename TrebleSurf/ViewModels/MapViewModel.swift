@@ -36,6 +36,7 @@ class MapViewModel: BaseViewModel {
             try await withThrowingTaskGroup(of: Void.self) { group in
                 group.addTask { try await self.loadSurfSpots() }
                 group.addTask { try await self.loadBuoys() }
+                for try await _ in group { }
             }
         }
     }

@@ -4,8 +4,6 @@ import Combine
 // MARK: - Buoy Cache Service
 @MainActor
 class BuoyCacheService: ObservableObject {
-    nonisolated static let shared = BuoyCacheService()
-    
     @Published var cachedBuoyData: [String: BuoyResponse] = [:]
     @Published var lastFetchTime: Date?
     

@@ -92,21 +92,11 @@ struct SwellPredictionTestView: View {
             imageString: nil
         )
         
-        swellPredictionService.fetchSwellPrediction(for: testSpot) { result in
-            DispatchQueue.main.async {
-                switch result {
-                case .success(let predictions):
-                    print("✅ Swell predictions fetched successfully: \(predictions.count) predictions")
-                    for (index, prediction) in predictions.enumerated() {
-                        let timeFormatter = DateFormatter()
-                        timeFormatter.dateFormat = "HH:mm"
-                        timeFormatter.timeZone = TimeZone(abbreviation: "UTC")
-                        let timeString = timeFormatter.string(from: prediction.arrivalTime)
-                        print("  Prediction \(index + 1): \(prediction.surfSize)m surf size, arrives at \(prediction.formattedArrivalTime) (\(timeString) UTC)")
-                    }
-                case .failure(let error):
-                    print("❌ Failed to fetch swell predictions: \(error.localizedDescription)")
-                }
+        Task {
+            do {
+                let _ = try await swellPredictionService.fetchSwellPrediction(for: testSpot)
+            } catch {
+                // Swell prediction fetch failed
             }
         }
     }

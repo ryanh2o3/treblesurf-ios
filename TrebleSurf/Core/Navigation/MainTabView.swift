@@ -57,13 +57,13 @@ struct MainTabView: View {
         .onAppear {
             configureTabBarAppearance(for: effectiveColorScheme)
         }
-        .onChange(of: settingsStore.selectedTheme) { _ in
+        .onChange(of: settingsStore.selectedTheme) {
             // Configure new appearance first, then recreate TabView to pick it up
             configureTabBarAppearance(for: effectiveColorScheme)
             // Force TabView to recreate with new appearance
             tabViewId = UUID()
         }
-        .onChange(of: systemColorScheme) { _ in
+        .onChange(of: systemColorScheme) {
             // Also react to system theme changes (for .system mode)
             if settingsStore.selectedTheme == .system {
                 configureTabBarAppearance(for: effectiveColorScheme)

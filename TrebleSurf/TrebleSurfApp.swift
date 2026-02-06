@@ -77,15 +77,12 @@ struct RootView: View {
         #if DEBUG
         if UIDevice.current.isSimulator {
             // Skip authentication check in simulator (debug builds only)
-            print("Running in simulator - skipping authentication")
             isLoading = false
             return
         }
         #endif
         
         // Production builds and physical devices always check authentication
-        print("Running on device - checking authentication state")
-        
         #if DEBUG
         // Debug: Print current auth state (debug builds only)
         authManager.debugPrintAuthState()
@@ -93,21 +90,16 @@ struct RootView: View {
         
         // Check if we have any stored authentication data
         if authManager.hasStoredAuthData() {
-            print("Found stored authentication data, attempting to validate session")
-            
             // First, try to validate existing session with backend
             Task { @MainActor in
-                let (success, user) = await authManager.validateSession()
+                let (success, _) = await authManager.validateSession()
                 if success {
-                    print("Successfully validated existing session for user: \(user?.email ?? "Unknown")")
                     self.isLoading = false
                 } else {
-                    print("Session validation failed, checking for Google Sign-In")
                     self.checkGoogleSignIn()
                 }
             }
         } else {
-            print("No stored authentication data found, checking for Google Sign-In")
             checkGoogleSignIn()
         }
     }
@@ -116,25 +108,17 @@ struct RootView: View {
         // Try to restore Google Sign-In
         GIDSignIn.sharedInstance.restorePreviousSignIn { user, error in
             if let user = user {
-                print("Restored previous Google Sign-In for user: \(user.profile?.name ?? "Unknown")")
-                
                 // Now authenticate with backend
                 Task { @MainActor in
-                    let (success, _) = await authManager.authenticateWithBackend(user: user)
-                    if success {
-                        print("Successfully restored authentication")
-                    } else {
-                        print("Failed to restore backend authentication")
-                    }
+                    let (_, _) = await authManager.authenticateWithBackend(user: user)
+                    // Authentication restoration completed
                     self.isLoading = false
                 }
-            } else if let error = error {
-                print("Failed to restore previous sign-in: \(error.localizedDescription)")
+            } else if error != nil {
                 DispatchQueue.main.async {
                     self.isLoading = false
                 }
             } else {
-                print("No previous sign-in found")
                 DispatchQueue.main.async {
                     self.isLoading = false
                 }

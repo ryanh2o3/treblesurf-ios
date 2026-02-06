@@ -13,8 +13,9 @@ struct SurfReportSubmissionView: View {
         _viewModel = StateObject(
             wrappedValue: SurfReportSubmissionViewModel(
                 apiClient: dependencies.apiClient,
-                legacyErrorHandler: dependencies.legacyErrorHandler,
                 imageValidationService: dependencies.imageValidationService,
+                mediaProcessingService: dependencies.mediaProcessingService,
+                mediaUploadService: dependencies.mediaUploadService,
                 errorHandler: dependencies.errorHandler,
                 logger: dependencies.errorLogger
             )
@@ -33,8 +34,6 @@ struct SurfReportSubmissionView: View {
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
                     Button("Cancel") {
-                        print("🚪 [CANCEL] ===== CANCEL BUTTON PRESSED =====")
-                        print("🚪 [CANCEL] User canceled surf report form")
                         viewModel.cleanupUnusedUploads()
                         dismiss()
                     }

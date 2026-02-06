@@ -19,8 +19,9 @@ struct QuickPhotoReportView: View {
             wrappedValue: QuickPhotoReportViewModel(
                 apiClient: dependencies.apiClient,
                 authManager: dependencies.authManager,
-                legacyErrorHandler: dependencies.legacyErrorHandler,
                 imageValidationService: dependencies.imageValidationService,
+                mediaProcessingService: dependencies.mediaProcessingService,
+                mediaUploadService: dependencies.mediaUploadService,
                 errorHandler: dependencies.errorHandler,
                 logger: dependencies.errorLogger
             )
@@ -449,7 +450,6 @@ struct QuickPhotoReportView: View {
                 }
             }
             .onDisappear {
-                print("🚪 [QUICK_CANCEL] ===== QUICK PHOTO REPORT DISMISSED =====")
                 // Clean up any uploaded media when the view is dismissed
                 viewModel.cleanupUnusedUploads()
             }

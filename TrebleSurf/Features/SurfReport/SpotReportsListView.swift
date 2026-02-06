@@ -279,7 +279,6 @@ struct ReportCardView: View {
                     report.imageData = response.imageData
                 } catch {
                     isLoadingImage = false
-                    print("Failed to load image: \(error)")
                 }
             }
         }
@@ -300,7 +299,6 @@ struct ReportCardView: View {
                 }
             } catch {
                 self.isLoadingVideo = false
-                print("Failed to generate video view URL: \(error)")
             }
         }
     }

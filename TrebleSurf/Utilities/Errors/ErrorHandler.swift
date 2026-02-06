@@ -227,15 +227,30 @@ extension ErrorPresentation {
     func errorForField(_ fieldName: String) -> String? {
         return fieldErrors[fieldName]
     }
-    
+
     /// Check if there are any field errors
     var hasFieldErrors: Bool {
         return !fieldErrors.isEmpty
     }
-    
+
     /// Get all field names with errors
     var errorFieldNames: [String] {
         return Array(fieldErrors.keys)
+    }
+
+    /// Whether the error requires re-authentication
+    var requiresAuthentication: Bool {
+        return actions.contains(.signIn)
+    }
+
+    /// Whether the error requires choosing a new image
+    var requiresImageRetry: Bool {
+        return actions.contains(.chooseNewImage)
+    }
+
+    /// The field name associated with this error (first field error key, if any)
+    var fieldName: String? {
+        return fieldErrors.keys.first
     }
 }
 

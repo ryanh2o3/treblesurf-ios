@@ -68,15 +68,18 @@ class APIClient: APIClientProtocol {
     private let config: any AppConfigurationProtocol
     private let authManager: any AuthManagerProtocol
     private let urlSession: URLSession
-    
+    private let logger: ErrorLoggerProtocol
+
     init(
         config: any AppConfigurationProtocol,
         authManager: any AuthManagerProtocol,
-        urlSession: URLSession = .shared
+        urlSession: URLSession = .shared,
+        logger: ErrorLoggerProtocol? = nil
     ) {
         self.config = config
         self.authManager = authManager
         self.urlSession = urlSession
+        self.logger = logger ?? ErrorLogger(minimumLogLevel: .debug, enableConsoleOutput: true, enableOSLog: true)
     }
     
     // MARK: - Environment Configuration
@@ -121,7 +124,7 @@ class APIClient: APIClientProtocol {
             if let nsError = error as NSError? {
                 if nsError.code == NSURLErrorCannotConnectToHost ||
                     nsError.code == NSURLErrorTimedOut {
-                    print("Development server not available")
+                    logger.log("Development server not available", level: .warning, category: .network)
                 }
             }
             return false
@@ -130,7 +133,7 @@ class APIClient: APIClientProtocol {
     
     // MARK: - Mock Data for Development
     private func provideMockData<T: Decodable>(for endpoint: String) throws -> T {
-        print("Providing mock data for development endpoint: \(endpoint)")
+        logger.log("Providing mock data for development endpoint: \(endpoint)", level: .debug, category: .api)
         
         // Create appropriate mock data based on the endpoint
         if endpoint.contains("getTodaySpotReports") {
@@ -178,17 +181,16 @@ class APIClient: APIClientProtocol {
 
     // MARK: - Development Mode Handler
     private func handleDevelopmentMode<T: Decodable>(for endpoint: String) throws -> T {
-        print("Development mode: Server not available, providing fallback behavior")
-        
+        logger.log("Development mode: Server not available, providing fallback behavior", level: .info, category: .api)
+
         // Check if this is an endpoint that can work without the server
         if endpoint.contains("spots") || endpoint.contains("buoys") {
-            // These endpoints might have local data or can work offline
-            print("Development mode: Endpoint \(endpoint) might work with local data")
+            logger.log("Development mode: Endpoint \(endpoint) might work with local data", level: .info, category: .api)
             // For now, just return an error, but in the future we could implement local data storage
             throw NSError(domain: "APIClient", code: APIClientError.endpointNotAvailableOffline.rawValue, userInfo: [NSLocalizedDescriptionKey: APIClientError.endpointNotAvailableOffline.localizedDescription])
         } else if endpoint.contains("getTodaySpotReports") || endpoint.contains("submitSurfReport") {
             // These endpoints require authentication and server interaction
-            print("Development mode: Providing mock data for authenticated endpoint: \(endpoint)")
+            logger.log("Development mode: Providing mock data for authenticated endpoint: \(endpoint)", level: .debug, category: .api)
             return try provideMockData(for: endpoint)
         } else {
             // Generic fallback
@@ -267,13 +269,13 @@ class APIClient: APIClientProtocol {
             // Check if this is an authentication error (401)
             if let nsError = error as NSError?,
                nsError.code == 401 {
-                print("🔐 Received 401, attempting session refresh...")
+                logger.log("Received 401, attempting session refresh", level: .warning, category: .authentication)
                 let (success, _) = await authManager.validateSession()
                 if success {
-                    print("✅ Session refreshed, retrying original request...")
+                    logger.log("Session refreshed, retrying original request", level: .info, category: .authentication)
                     return try await request(endpoint, method: method, body: body)
                 } else {
-                    print("❌ Session refresh failed, clearing auth state")
+                    logger.log("Session refresh failed, clearing auth state", level: .error, category: .authentication)
                     authManager.clearAllAppData()
                 }
             }
@@ -284,11 +286,11 @@ class APIClient: APIClientProtocol {
     
     // MARK: - POST Request with CSRF Protection
     func postRequest<T: Decodable>(to endpoint: String, body: Data) async throws -> T {
-        print("🌐 [API_CLIENT] Starting POST request to: \(endpoint)")
-        print("📦 [API_CLIENT] Request body size: \(body.count) bytes")
-        
+        logger.log("Starting POST request to: \(endpoint)", level: .info, category: .api)
+        logger.log("Request body size: \(body.count) bytes", level: .debug, category: .api)
+
         guard let url = URL(string: "\(baseURL)\(endpoint)") else {
-            print("❌ [API_CLIENT] Invalid URL for POST request: \(baseURL)\(endpoint)")
+            logger.log("Invalid URL for POST request: \(baseURL)\(endpoint)", level: .error, category: .api)
             throw NSError(domain: "APIClient", code: APIClientError.invalidURLForPost.rawValue, userInfo: [NSLocalizedDescriptionKey: APIClientError.invalidURLForPost.localizedDescription])
         }
         
@@ -299,30 +301,28 @@ class APIClient: APIClientProtocol {
         
         // Add session cookie
         if let sessionCookie = authManager.getSessionCookie() {
-            print("🍪 [API_CLIENT] Adding session cookies")
+            logger.log("Adding session cookies", level: .debug, category: .authentication)
             for (key, value) in sessionCookie {
                 request.addValue(value, forHTTPHeaderField: key)
-                print("🍪 [API_CLIENT] Cookie: \(key) = \(value.prefix(20))...")
             }
         } else {
-            print("⚠️ [API_CLIENT] No session cookies available")
+            logger.log("No session cookies available", level: .warning, category: .authentication)
         }
-        
+
         // Add CSRF token for POST requests
         if let csrfHeader = authManager.getCsrfHeader() {
-            print("🔐 [API_CLIENT] Adding CSRF token")
+            logger.log("Adding CSRF token", level: .debug, category: .authentication)
             for (key, value) in csrfHeader {
                 request.addValue(value, forHTTPHeaderField: key)
-                print("🔐 [API_CLIENT] CSRF: \(key) = \(value.prefix(10))...")
             }
         } else {
-            print("⚠️ [API_CLIENT] No CSRF token available")
+            logger.log("No CSRF token available", level: .warning, category: .authentication)
         }
-        
-        print("🚀 [API_CLIENT] Sending POST request...")
+
+        logger.log("Sending POST request", level: .debug, category: .api)
         let (data, response) = try await urlSession.data(for: request)
         let validatedData = try validateResponse(data: data, response: response, error: nil, context: endpoint)
-        print("📦 [API_CLIENT] Response data size: \(validatedData.count) bytes")
+        logger.log("Response data size: \(validatedData.count) bytes", level: .debug, category: .api)
         return try decodeResponse(validatedData, context: endpoint)
     }
     
@@ -363,11 +363,11 @@ class APIClient: APIClientProtocol {
     
     // MARK: - CSRF Token Management
     func refreshCSRFToken() async -> Bool {
-        print("🔄 Refreshing CSRF token...")
-        
+        logger.log("Refreshing CSRF token", level: .info, category: .authentication)
+
         // Make a request to get a fresh CSRF token
         guard let url = URL(string: "\(baseURL)/api/auth/csrf") else {
-            print("❌ Invalid CSRF endpoint URL")
+            logger.log("Invalid CSRF endpoint URL", level: .error, category: .authentication)
             return false
         }
         
@@ -388,22 +388,22 @@ class APIClient: APIClientProtocol {
                     // Extract CSRF token from response headers
                     if let csrfToken = httpResponse.value(forHTTPHeaderField: "X-CSRF-Token") {
                         authManager.updateCsrfToken(csrfToken)
-                        print("✅ CSRF token refreshed: \(csrfToken.prefix(10))...")
+                        logger.log("CSRF token refreshed successfully", level: .info, category: .authentication)
                         return true
                     } else {
-                        print("⚠️  No CSRF token in response headers")
+                        logger.log("No CSRF token in response headers", level: .warning, category: .authentication)
                         return false
                     }
                 } else {
-                    print("❌ CSRF refresh failed with status: \(httpResponse.statusCode)")
+                    logger.log("CSRF refresh failed with status: \(httpResponse.statusCode)", level: .error, category: .authentication)
                     return false
                 }
             } else {
-                print("❌ No HTTP response received")
+                logger.log("No HTTP response received", level: .error, category: .network)
                 return false
             }
         } catch {
-            print("❌ Failed to refresh CSRF token: \(error.localizedDescription)")
+            logger.log("Failed to refresh CSRF token: \(error.localizedDescription)", level: .error, category: .authentication)
             return false
         }
     }
@@ -433,9 +433,7 @@ extension APIClient {
         
         let endpoint = "/api/getMultipleBuoyData?buoys=\(encodedBuoysParam)"
         
-        print("Debug: Fetching buoy data with endpoint: \(endpoint)")
-        print("Debug: Original buoy names: \(buoyNames)")
-        print("Debug: Encoded buoys param: \(encodedBuoysParam)")
+        logger.log("Fetching buoy data for: \(buoyNames)", level: .debug, category: .api)
         
         return try await request(endpoint, method: "GET")
     }
@@ -448,7 +446,7 @@ extension APIClient {
         
         let endpoint = "/api/getLast24BuoyData?buoyName=\(encodedBuoyName)"
         
-        print("Debug: Fetching historical data for buoy: \(buoyName) -> encoded: \(encodedBuoyName)")
+        logger.log("Fetching historical data for buoy: \(buoyName)", level: .debug, category: .api)
         
         return try await request(endpoint, method: "GET")
     }
@@ -472,7 +470,7 @@ extension APIClient {
         
         let endpoint = "/api/getBuoyDataRange?buoyName=\(encodedBuoyName)&startTime=\(encodedStartTime)&endTime=\(encodedEndTime)"
         
-        print("Debug: Fetching buoy data range for: \(buoyName) from \(startTimeStr) to \(endTimeStr)")
+        logger.log("Fetching buoy data range for: \(buoyName) from \(startTimeStr) to \(endTimeStr)", level: .debug, category: .api)
         
         return try await request(endpoint, method: "GET")
     }
@@ -514,7 +512,7 @@ extension APIClient {
         
         let endpoint = "\(Endpoints.surfReportsWithSimilarBuoyData)?\(queryParams.joined(separator: "&"))"
         
-        print("🌊 [API_CLIENT] Fetching surf reports with similar buoy data: \(buoyName)")
+        logger.log("Fetching surf reports with similar buoy data: \(buoyName)", level: .info, category: .api)
         
         return try await makeFlexibleRequest(to: endpoint, requiresAuth: true)
     }
@@ -557,7 +555,7 @@ extension APIClient {
         
         let endpoint = "/api/getSurfReportsWithMatchingConditions?\(queryParams.joined(separator: "&"))"
         
-        print("🎯 [API_CLIENT] Fetching surf reports with matching conditions for: \(spot)")
+        logger.log("Fetching surf reports with matching conditions for: \(spot)", level: .info, category: .api)
         
         return try await makeFlexibleRequest(to: endpoint, requiresAuth: true)
     }
@@ -568,13 +566,13 @@ extension APIClient {
 extension APIClient {
     func fetchCurrentConditions(country: String, region: String, spot: String) async throws -> [CurrentConditionsResponse] {
         let endpoint = "/api/currentConditions?country=\(country)&region=\(region)&spot=\(spot)"
-        print("Fetching current conditions: \(spot)")
+        logger.log("Fetching current conditions: \(spot)", level: .debug, category: .api)
         return try await request(endpoint, method: "GET")
     }
     
     func fetchForecast(country: String, region: String, spot: String) async throws -> [ForecastResponse] {
         let endpoint = "/api/forecast?country=\(country)&region=\(region)&spot=\(spot)"
-        print("Fetching forecast: \(spot)")
+        logger.log("Fetching forecast: \(spot)", level: .debug, category: .api)
         return try await request(endpoint, method: "GET")
     }
 }
@@ -583,14 +581,14 @@ extension APIClient {
 extension APIClient {
     func fetchSwellPrediction(country: String, region: String, spot: String) async throws -> [SwellPredictionResponse] {
         let endpoint = "\(Endpoints.swellPrediction)?spot=\(spot)&region=\(region)&country=\(country)"
-        print("Fetching swell prediction: \(spot)")
+        logger.log("Fetching swell prediction: \(spot)", level: .debug, category: .api)
         return try await request(endpoint, method: "GET")
     }
-    
+
     /// Fetch swell prediction in DynamoDB format
     func fetchSwellPredictionDynamoDB(country: String, region: String, spot: String) async throws -> [String: DynamoDBAttributeValue] {
         let endpoint = "\(Endpoints.swellPrediction)?spot=\(spot)&region=\(region)&country=\(country)"
-        print("Fetching swell prediction (DynamoDB format): \(spot)")
+        logger.log("Fetching swell prediction (DynamoDB format): \(spot)", level: .debug, category: .api)
         
         // Create URL
         guard let url = URL(string: "\(baseURL)/\(endpoint)") else {
@@ -659,13 +657,13 @@ extension APIClient {
     func fetchMultipleSpotsSwellPrediction(country: String, region: String, spots: [String]) async throws -> [[SwellPredictionResponse]] {
         let spotsParam = spots.joined(separator: ",")
         let endpoint = "\(Endpoints.listSpotsSwellPrediction)?spots=\(spotsParam)&region=\(region)&country=\(country)"
-        print("Fetching swell predictions for multiple spots: \(spots)")
+        logger.log("Fetching swell predictions for multiple spots: \(spots)", level: .debug, category: .api)
         return try await request(endpoint, method: "GET")
     }
     
     func fetchRegionSwellPrediction(country: String, region: String) async throws -> [SwellPredictionResponse] {
         let endpoint = "\(Endpoints.regionSwellPrediction)?region=\(region)&country=\(country)"
-        print("Fetching region swell predictions: \(region)")
+        logger.log("Fetching region swell predictions: \(region)", level: .debug, category: .api)
         return try await request(endpoint, method: "GET")
     }
     
@@ -675,25 +673,25 @@ extension APIClient {
         let endTimeString = dateFormatter.string(from: endTime)
         
         let endpoint = "\(Endpoints.swellPredictionRange)?spot=\(spot)&region=\(region)&country=\(country)&startTime=\(startTimeString)&endTime=\(endTimeString)"
-        print("Fetching swell prediction range: \(spot) from \(startTimeString) to \(endTimeString)")
+        logger.log("Fetching swell prediction range: \(spot) from \(startTimeString) to \(endTimeString)", level: .debug, category: .api)
         return try await request(endpoint, method: "GET")
     }
     
     func fetchRecentSwellPredictions(hours: Int = 24) async throws -> [SwellPredictionResponse] {
         let endpoint = "\(Endpoints.recentSwellPredictions)?hours=\(hours)"
-        print("Fetching recent swell predictions: last \(hours) hours")
+        logger.log("Fetching recent swell predictions: last \(hours) hours", level: .debug, category: .api)
         return try await request(endpoint, method: "GET")
     }
     
     func fetchSwellPredictionStatus() async throws -> SwellPredictionStatusResponse {
         let endpoint = Endpoints.swellPredictionStatus
-        print("Fetching swell prediction status")
+        logger.log("Fetching swell prediction status", level: .debug, category: .api)
         return try await request(endpoint, method: "GET")
     }
     
     func fetchClosestAIPrediction(country: String, region: String, spot: String) async throws -> SwellPredictionResponse {
         let endpoint = "/api/closestAIPrediction?spot=\(spot)&region=\(region)&country=\(country)"
-        print("Fetching closest AI prediction: \(spot)")
+        logger.log("Fetching closest AI prediction: \(spot)", level: .debug, category: .api)
         return try await request(endpoint, method: "GET")
     }
 }

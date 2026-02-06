@@ -7,8 +7,6 @@
 import Security
 import Foundation
 class KeychainHelper {
-    static let shared = KeychainHelper()
-
     func save(key: String, value: String) {
         let data = value.data(using: .utf8)!
         let query: [String: Any] = [

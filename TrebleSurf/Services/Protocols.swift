@@ -128,9 +128,9 @@ protocol AuthManagerProtocol: ObservableObject {
 // MARK: - ImageCacheProtocol
 
 protocol ImageCacheProtocol {
-    func getCachedSpotImage(for spotId: String, completion: @escaping (Image?) -> Void)
-    func getCachedSurfReportImage(for imageKey: String, completion: @escaping (Image?) -> Void)
-    func getCachedSurfReportImageData(for imageKey: String, completion: @escaping (Data?) -> Void)
+    func getCachedSpotImage(for spotId: String) async -> Image?
+    func getCachedSurfReportImage(for imageKey: String) async -> Image?
+    func getCachedSurfReportImageData(for imageKey: String) async -> Data?
     func cacheSpotImage(_ imageData: Data, for spotId: String)
     func cacheSurfReportImage(_ imageData: Data, for imageKey: String)
     func removeCachedSpotImage(for spotId: String)

@@ -207,34 +207,27 @@ struct SpotDetailView: View {
     }
     
     private func fetchLiveAIPrediction() {
-        print("🤖 [SpotDetailView] Starting AI prediction fetch for spot: \(spot.id)")
-        
         // Convert spotId back to country/region/spot format
         let components = spot.id.split(separator: "#")
         guard components.count >= 3 else {
-            print("❌ [SpotDetailView] Invalid spot ID format: \(spot.id)")
             aiErrorMessage = "Invalid spot ID format"
             return
         }
-        
+
         let country = String(components[0])
         let region = String(components[1])
         let spotName = String(components[2])
-        
-        print("🤖 [SpotDetailView] Fetching AI prediction for: \(country)/\(region)/\(spotName)")
-        
+
         isLoadingAI = true
         aiErrorMessage = nil
-        
+
         Task {
             do {
                 let response = try await dependencies.apiClient.fetchClosestAIPrediction(country: country, region: region, spot: spotName)
                 self.isLoadingAI = false
-                print("✅ [SpotDetailView] AI prediction loaded successfully: surfSize=\(response.surf_size)")
                 self.liveAIPrediction = SwellPredictionEntry(from: response)
             } catch {
                 self.isLoadingAI = false
-                print("❌ [SpotDetailView] AI prediction failed: \(error.localizedDescription)")
                 self.aiErrorMessage = "Failed to load AI prediction: \(error.localizedDescription)"
             }
         }

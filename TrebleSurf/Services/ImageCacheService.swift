@@ -23,17 +23,17 @@ struct CachedImageData: Codable {
 }
 
 // MARK: - Image Cache Service
-class ImageCacheService: ObservableObject, ImageCacheProtocol {
-    static let shared = ImageCacheService()
-    
+class ImageCacheService: ObservableObject, ImageCacheProtocol, @unchecked Sendable {
     // MARK: - Properties
     private var imageCache: [String: CachedImageData] = [:]
     private let cacheQueue = DispatchQueue(label: "com.treblesurf.imagecache", qos: .utility)
     private let fileManager = FileManager.default
     private let cacheDirectory: URL
-    
+    private let logger: ErrorLoggerProtocol
+
     // MARK: - Initialization
-    init() {
+    init(logger: ErrorLoggerProtocol? = nil) {
+        self.logger = logger ?? ErrorLogger(minimumLogLevel: .debug, enableConsoleOutput: true, enableOSLog: true)
         // Create cache directory in app's documents folder
         let documentsPath = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first!
         cacheDirectory = documentsPath.appendingPathComponent("ImageCache")
@@ -51,78 +51,59 @@ class ImageCacheService: ObservableObject, ImageCacheProtocol {
     // MARK: - Public Methods
     
     /// Get a cached image for a given key
-    /// - Parameters:
-    ///   - key: Unique identifier for the image
-    ///   - completion: Completion handler with the cached image or nil if not found/expired
-    func getCachedImage(for key: String, completion: @escaping (Image?) -> Void) {
-        cacheQueue.async { [weak self] in
-            guard let self = self else {
-                DispatchQueue.main.async { completion(nil) }
-                return
-            }
-            
-            if let cachedData = self.imageCache[key], !cachedData.isExpired {
-                // Image found in memory cache
-                if let uiImage = UIImage(data: cachedData.imageData) {
-                    let swiftUIImage = Image(uiImage: uiImage)
-                    DispatchQueue.main.async {
-                        completion(swiftUIImage)
-                    }
+    /// - Parameter key: Unique identifier for the image
+    /// - Returns: The cached image or nil if not found/expired
+    func getCachedImage(for key: String) async -> Image? {
+        await withCheckedContinuation { continuation in
+            cacheQueue.async { [weak self] in
+                guard let self = self else {
+                    continuation.resume(returning: nil)
                     return
                 }
-            }
-            
-            // Try to load from disk cache
-            if let diskCachedData = self.loadImageFromDisk(for: key) {
-                // Update memory cache
-                self.imageCache[key] = diskCachedData
-                
-                if let uiImage = UIImage(data: diskCachedData.imageData) {
-                    let swiftUIImage = Image(uiImage: uiImage)
-                    DispatchQueue.main.async {
-                        completion(swiftUIImage)
-                    }
+
+                if let cachedData = self.imageCache[key], !cachedData.isExpired,
+                   let uiImage = UIImage(data: cachedData.imageData) {
+                    continuation.resume(returning: Image(uiImage: uiImage))
                     return
                 }
+
+                if let diskCachedData = self.loadImageFromDisk(for: key) {
+                    self.imageCache[key] = diskCachedData
+                    if let uiImage = UIImage(data: diskCachedData.imageData) {
+                        continuation.resume(returning: Image(uiImage: uiImage))
+                        return
+                    }
+                }
+
+                continuation.resume(returning: nil)
             }
-            
-            // No cached image found
-            DispatchQueue.main.async { completion(nil) }
         }
     }
-    
+
     /// Get cached image data for a given key (returns raw Data instead of SwiftUI Image)
-    /// - Parameters:
-    ///   - key: Unique identifier for the image
-    ///   - completion: Completion handler with the cached image data or nil if not found/expired
-    func getCachedImageData(for key: String, completion: @escaping (Data?) -> Void) {
-        cacheQueue.async { [weak self] in
-            guard let self = self else {
-                DispatchQueue.main.async { completion(nil) }
-                return
-            }
-            
-            if let cachedData = self.imageCache[key], !cachedData.isExpired {
-                // Image found in memory cache
-                DispatchQueue.main.async {
-                    completion(cachedData.imageData)
+    /// - Parameter key: Unique identifier for the image
+    /// - Returns: The cached image data or nil if not found/expired
+    func getCachedImageData(for key: String) async -> Data? {
+        await withCheckedContinuation { continuation in
+            cacheQueue.async { [weak self] in
+                guard let self = self else {
+                    continuation.resume(returning: nil)
+                    return
                 }
-                return
-            }
-            
-            // Try to load from disk cache
-            if let diskCachedData = self.loadImageFromDisk(for: key) {
-                // Update memory cache
-                self.imageCache[key] = diskCachedData
-                
-                DispatchQueue.main.async {
-                    completion(diskCachedData.imageData)
+
+                if let cachedData = self.imageCache[key], !cachedData.isExpired {
+                    continuation.resume(returning: cachedData.imageData)
+                    return
                 }
-                return
+
+                if let diskCachedData = self.loadImageFromDisk(for: key) {
+                    self.imageCache[key] = diskCachedData
+                    continuation.resume(returning: diskCachedData.imageData)
+                    return
+                }
+
+                continuation.resume(returning: nil)
             }
-            
-            // No cached image data found
-            DispatchQueue.main.async { completion(nil) }
         }
     }
     
@@ -131,22 +112,23 @@ class ImageCacheService: ObservableObject, ImageCacheProtocol {
     ///   - imageData: The image data to cache
     ///   - key: Unique identifier for the image
     func cacheImage(_ imageData: Data, for key: String) {
+        let logger = self.logger
         cacheQueue.async { [weak self] in
             guard let self = self else { return }
-            
+
             let cachedData = CachedImageData(
                 imageData: imageData,
                 timestamp: Date(),
                 key: key
             )
-            
+
             // Update memory cache
             self.imageCache[key] = cachedData
-            
+
             // Save to disk
             self.saveImageToDisk(cachedData)
-            
-            print("✅ Cached image for key: \(key)")
+
+            logger.log("Cached image for key: \(key)", level: .debug, category: .cache)
         }
     }
     
@@ -174,7 +156,7 @@ class ImageCacheService: ObservableObject, ImageCacheProtocol {
             try? self.fileManager.removeItem(at: self.cacheDirectory)
             try? self.fileManager.createDirectory(at: self.cacheDirectory, withIntermediateDirectories: true)
             
-            print("🗑️ Cleared all image cache")
+            self.logger.log("Cleared all image cache", level: .info, category: .cache)
         }
     }
     
@@ -190,7 +172,7 @@ class ImageCacheService: ObservableObject, ImageCacheProtocol {
             // Remove from disk cache
             self.removeImageFromDisk(for: key)
             
-            print("🗑️ Removed cached image for key: \(key)")
+            self.logger.log("Removed cached image for key: \(key)", level: .debug, category: .cache)
         }
     }
     
@@ -209,7 +191,7 @@ class ImageCacheService: ObservableObject, ImageCacheProtocol {
             }
             
             if !expiredKeys.isEmpty {
-                print("🧹 Cleaned \(expiredKeys.count) expired image cache entries")
+                self.logger.log("Cleaned \(expiredKeys.count) expired image cache entries", level: .info, category: .cache)
             }
         }
     }
@@ -235,7 +217,7 @@ class ImageCacheService: ObservableObject, ImageCacheProtocol {
                 }
             }
         } catch {
-            print("❌ Failed to calculate disk usage: \(error)")
+            logger.log("Failed to calculate disk usage: \(error)", level: .error, category: .cache)
         }
         let diskUsageMB = Double(diskUsage) / (1024 * 1024)
         
@@ -271,7 +253,7 @@ class ImageCacheService: ObservableObject, ImageCacheProtocol {
                 }
             }
         } catch {
-            print("❌ Failed to calculate disk usage: \(error)")
+            logger.log("Failed to calculate disk usage: \(error)", level: .error, category: .cache)
         }
         let diskUsageMB = Double(diskUsage) / (1024 * 1024)
         
@@ -339,18 +321,19 @@ class ImageCacheService: ObservableObject, ImageCacheProtocol {
     /// Preload images for better user experience
     /// - Parameter keys: Array of image keys to preload
     func preloadImages(for keys: [String]) {
+        let logger = self.logger
         cacheQueue.async { [weak self] in
             guard let self = self else { return }
-            
+
             for key in keys {
                 // Check if already cached
                 if self.hasCachedImage(for: key) {
                     continue
                 }
-                
+
                 // For now, we can't preload without the actual image data
                 // This method could be extended to work with a preloader service
-                print("📱 Preload requested for key: \(key) (already cached or not available)")
+                logger.log("Preload requested for key: \(key) (already cached or not available)", level: .debug, category: .cache)
             }
         }
     }
@@ -384,9 +367,9 @@ class ImageCacheService: ObservableObject, ImageCacheProtocol {
                 }
             }
             
-            print("📱 Loaded \(imageCache.count) cached images from disk")
+            logger.log("Loaded \(imageCache.count) cached images from disk", level: .info, category: .cache)
         } catch {
-            print("❌ Failed to load cache from disk: \(error)")
+            logger.log("Failed to load cache from disk: \(error)", level: .error, category: .cache)
         }
     }
     
@@ -399,7 +382,7 @@ class ImageCacheService: ObservableObject, ImageCacheProtocol {
             let data = try encoder.encode(cachedData)
             try data.write(to: fileURL)
         } catch {
-            print("❌ Failed to save image to disk: \(error)")
+            logger.log("Failed to save image to disk: \(error)", level: .error, category: .cache)
         }
     }
     
@@ -477,7 +460,7 @@ class ImageCacheService: ObservableObject, ImageCacheProtocol {
     }
     
     @objc private func handleAppWillTerminate() {
-        print("📱 App terminating, ensuring cache is saved to disk")
+        logger.log("App terminating, ensuring cache is saved to disk", level: .info, category: .cache)
         // Force save all cached data to disk
         for (_, cachedData) in imageCache {
             saveImageToDisk(cachedData)
@@ -485,13 +468,13 @@ class ImageCacheService: ObservableObject, ImageCacheProtocol {
     }
     
     @objc private func handleAppDidEnterBackground() {
-        print("📱 App entering background, saving cache to disk")
+        logger.log("App entering background, saving cache to disk", level: .info, category: .cache)
         // The cache is already saved to disk, but we can perform additional cleanup
         cleanExpiredCache()
     }
     
     @objc private func handleAppWillEnterForeground() {
-        print("📱 App entering foreground, loading cache from disk")
+        logger.log("App entering foreground, loading cache from disk", level: .info, category: .cache)
         // Reload cache from disk in case it was cleared by the system
         loadCacheFromDisk()
     }
@@ -502,7 +485,7 @@ class ImageCacheService: ObservableObject, ImageCacheProtocol {
     }
     
     @objc private func handleMemoryPressure() {
-        print("⚠️ Memory pressure detected, clearing memory cache")
+        logger.log("Memory pressure detected, clearing memory cache", level: .warning, category: .cache)
         
         // Keep only the most recently accessed images in memory
         let sortedKeys = imageCache.keys.sorted { key1, key2 in
@@ -519,7 +502,7 @@ class ImageCacheService: ObservableObject, ImageCacheProtocol {
         }
         
         if !keysToRemove.isEmpty {
-            print("🧹 Removed \(keysToRemove.count) images from memory cache due to memory pressure")
+            logger.log("Removed \(keysToRemove.count) images from memory cache due to memory pressure", level: .info, category: .cache)
         }
     }
 }
@@ -528,19 +511,17 @@ class ImageCacheService: ObservableObject, ImageCacheProtocol {
 
 extension ImageCacheService {
     /// Get a cached image for a spot ID
-    /// - Parameters:
-    ///   - spotId: The spot identifier
-    ///   - completion: Completion handler with the cached image or nil if not found
-    func getCachedSpotImage(for spotId: String, completion: @escaping (Image?) -> Void) {
-        getCachedImage(for: "spot_\(spotId)", completion: completion)
+    /// - Parameter spotId: The spot identifier
+    /// - Returns: The cached image or nil if not found
+    func getCachedSpotImage(for spotId: String) async -> Image? {
+        await getCachedImage(for: "spot_\(spotId)")
     }
-    
+
     /// Get cached image data for a spot ID (returns raw Data instead of SwiftUI Image)
-    /// - Parameters:
-    ///   - spotId: The spot identifier
-    ///   - completion: Completion handler with the cached image data or nil if not found
-    func getCachedSpotImageData(for spotId: String, completion: @escaping (Data?) -> Void) {
-        getCachedImageData(for: "spot_\(spotId)", completion: completion)
+    /// - Parameter spotId: The spot identifier
+    /// - Returns: The cached image data or nil if not found
+    func getCachedSpotImageData(for spotId: String) async -> Data? {
+        await getCachedImageData(for: "spot_\(spotId)")
     }
     
     /// Cache a spot image
@@ -552,19 +533,17 @@ extension ImageCacheService {
     }
     
     /// Get a cached image for a surf report
-    /// - Parameters:
-    ///   - imageKey: The surf report image key
-    ///   - completion: Completion handler with the cached image or nil if not found
-    func getCachedSurfReportImage(for imageKey: String, completion: @escaping (Image?) -> Void) {
-        getCachedImage(for: "report_\(imageKey)", completion: completion)
+    /// - Parameter imageKey: The surf report image key
+    /// - Returns: The cached image or nil if not found
+    func getCachedSurfReportImage(for imageKey: String) async -> Image? {
+        await getCachedImage(for: "report_\(imageKey)")
     }
-    
+
     /// Get cached image data for a surf report (returns raw Data instead of SwiftUI Image)
-    /// - Parameters:
-    ///   - imageKey: The surf report image key
-    ///   - completion: Completion handler with the cached image data or nil if not found
-    func getCachedSurfReportImageData(for imageKey: String, completion: @escaping (Data?) -> Void) {
-        getCachedImageData(for: "report_\(imageKey)", completion: completion)
+    /// - Parameter imageKey: The surf report image key
+    /// - Returns: The cached image data or nil if not found
+    func getCachedSurfReportImageData(for imageKey: String) async -> Data? {
+        await getCachedImageData(for: "report_\(imageKey)")
     }
     
     /// Cache a surf report image

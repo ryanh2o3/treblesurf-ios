@@ -8,15 +8,17 @@ class SpotReportsListViewModel: ObservableObject {
     @Published var isLoadingMore = false
     @Published var hasMore = true
     @Published var errorMessage: String?
-    
+
     private let spotId: String
     private let surfReportService: SurfReportService
+    private let logger: ErrorLoggerProtocol
     private let reportsPerPage = 20
     private var currentPage = 0
-    
-    init(spotId: String, surfReportService: SurfReportService) {
+
+    init(spotId: String, surfReportService: SurfReportService, logger: ErrorLoggerProtocol? = nil) {
         self.spotId = spotId
         self.surfReportService = surfReportService
+        self.logger = logger ?? ErrorLogger(minimumLogLevel: .info, enableConsoleOutput: true, enableOSLog: true)
     }
     
     func loadInitialReports() {
@@ -86,12 +88,12 @@ class SpotReportsListViewModel: ObservableObject {
                 // Replace all reports (since we're fetching from the beginning each time)
                 self.reports = newReports
                 
-                print("📋 Loaded \(newReports.count) reports, hasMore: \(self.hasMore)")
+                self.logger.log("Loaded \(newReports.count) reports, hasMore: \(self.hasMore)", level: .info, category: .api)
             } catch {
                 self.isLoading = false
                 self.isLoadingMore = false
                 self.errorMessage = "Failed to load reports: \(error.localizedDescription)"
-                print("❌ Failed to fetch reports: \(error)")
+                self.logger.log("Failed to fetch reports: \(error)", level: .error, category: .api)
             }
         }
     }

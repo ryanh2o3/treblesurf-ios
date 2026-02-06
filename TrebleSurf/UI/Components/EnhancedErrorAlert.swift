@@ -1,20 +1,20 @@
 import SwiftUI
 
 struct EnhancedErrorAlert: View {
-    let error: APIErrorHandler.ErrorDisplay
+    let error: ErrorPresentation
     let onDismiss: () -> Void
     let onRetry: (() -> Void)?
     let onAuthenticate: (() -> Void)?
     let onImageRetry: (() -> Void)?
-    
-    init(error: APIErrorHandler.ErrorDisplay, onDismiss: @escaping () -> Void, onRetry: (() -> Void)? = nil, onAuthenticate: (() -> Void)? = nil, onImageRetry: (() -> Void)? = nil) {
+
+    init(error: ErrorPresentation, onDismiss: @escaping () -> Void, onRetry: (() -> Void)? = nil, onAuthenticate: (() -> Void)? = nil, onImageRetry: (() -> Void)? = nil) {
         self.error = error
         self.onDismiss = onDismiss
         self.onRetry = onRetry
         self.onAuthenticate = onAuthenticate
         self.onImageRetry = onImageRetry
     }
-    
+
     var body: some View {
         VStack(spacing: 16) {
             // Error Icon
@@ -22,14 +22,14 @@ struct EnhancedErrorAlert: View {
                 .font(.system(size: 48))
                 .foregroundColor(.red)
                 .padding(.top, 8)
-            
+
             // Error Title
             Text(error.title)
                 .font(.title2)
                 .fontWeight(.bold)
                 .foregroundColor(.primary)
                 .multilineTextAlignment(.center)
-            
+
             // Error Message
             if !error.requiresImageRetry {
             Text(error.message)
@@ -38,7 +38,7 @@ struct EnhancedErrorAlert: View {
                 .multilineTextAlignment(.center)
                 .padding(.horizontal)
             }
-            
+
             // Help Text - only show when not an image validation error
             if !error.requiresImageRetry {
                 VStack(alignment: .leading, spacing: 8) {
@@ -46,8 +46,8 @@ struct EnhancedErrorAlert: View {
                         .font(.subheadline)
                         .fontWeight(.semibold)
                         .foregroundColor(.primary)
-                    
-                    Text(error.help)
+
+                    Text(error.helpText)
                         .font(.subheadline)
                         .foregroundColor(.secondary)
                         .multilineTextAlignment(.leading)
@@ -57,7 +57,7 @@ struct EnhancedErrorAlert: View {
                 .background(Color(.systemGray6))
                 .cornerRadius(8)
             }
-            
+
             // Special guidance for image validation errors
             if error.requiresImageRetry {
                 VStack(alignment: .leading, spacing: 6) {
@@ -65,7 +65,7 @@ struct EnhancedErrorAlert: View {
                         .font(.subheadline)
                         .fontWeight(.semibold)
                         .foregroundColor(.primary)
-                    
+
                     VStack(alignment: .leading, spacing: 3) {
                         Text("• Show ocean, waves, beach, or coastline")
                         Text("• Be clear and focused on surf conditions")
@@ -83,7 +83,7 @@ struct EnhancedErrorAlert: View {
                         .stroke(Color.orange.opacity(0.3), lineWidth: 1)
                 )
             }
-            
+
             // Action Buttons
             VStack(spacing: 12) {
                 // Prioritize image retry button for image validation errors
@@ -106,7 +106,7 @@ struct EnhancedErrorAlert: View {
                         .cornerRadius(10)
                     }
                 }
-                
+
                 if let onAuthenticate = onAuthenticate, error.requiresAuthentication {
                     Button(action: onAuthenticate) {
                         HStack {
@@ -120,7 +120,7 @@ struct EnhancedErrorAlert: View {
                         .cornerRadius(10)
                     }
                 }
-                
+
                 if let onRetry = onRetry, error.isRetryable {
                     Button(action: onRetry) {
                         HStack {
@@ -134,7 +134,7 @@ struct EnhancedErrorAlert: View {
                         .cornerRadius(10)
                     }
                 }
-                
+
                 Button(action: onDismiss) {
                     Text("Dismiss")
                         .frame(maxWidth: .infinity)
@@ -151,7 +151,7 @@ struct EnhancedErrorAlert: View {
         .cornerRadius(16)
         .shadow(radius: 10)
     }
-    
+
     private func getErrorIcon() -> String {
         if error.requiresAuthentication {
             return "person.crop.circle.badge.exclamationmark"
@@ -166,17 +166,15 @@ struct EnhancedErrorAlert: View {
 }
 
 #Preview {
-    let sampleError = APIErrorHandler.ErrorDisplay(
+    let sampleError = ErrorPresentation(
         title: "Image not surf-related",
         message: "The image does not appear to show surf conditions",
-        help: "Please upload a photo that clearly shows the ocean, waves, beach, or coastline.",
-        errorType: .imageNotSurfRelated,
-        fieldName: "image",
-        isRetryable: false,
-        requiresAuthentication: false,
-        requiresImageRetry: true
+        helpText: "Please upload a photo that clearly shows the ocean, waves, beach, or coastline.",
+        actions: [.chooseNewImage],
+        fieldErrors: ["image": "Please upload a photo that clearly shows the ocean, waves, beach, or coastline."],
+        isRetryable: false
     )
-    
+
     return EnhancedErrorAlert(
         error: sampleError,
         onDismiss: {},

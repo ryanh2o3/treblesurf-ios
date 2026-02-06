@@ -25,14 +25,15 @@ final class AppDependencies: ObservableObject {
     let imageCache: ImageCacheService
     let buoyCacheService: BuoyCacheService
     let imageValidationService: ImageValidationService
-    let legacyErrorHandler: APIErrorHandler
     let apiClient: APIClient
     let dataStore: DataStore
     let surfReportService: SurfReportService
     let weatherBuoyService: WeatherBuoyService
     let swellPredictionService: SwellPredictionService
     let spotService: SpotService
-    
+    let mediaProcessingService: MediaProcessingService
+    let mediaUploadService: MediaUploadService
+
     // MARK: - Initialization
     
     init() {
@@ -49,16 +50,16 @@ final class AppDependencies: ObservableObject {
         self.errorLogger = errorLogger
         self.errorHandler = ErrorHandler(logger: errorLogger)
         
-        let authManager = AuthManager()
+        let keychain = KeychainHelper()
+        let authManager = AuthManager(keychain: keychain, logger: errorLogger)
         let settingsStore = SettingsStore()
         let locationStore = LocationStore()
-        let imageCache = ImageCacheService()
+        let imageCache = ImageCacheService(logger: errorLogger)
         let buoyCacheService = BuoyCacheService()
         let imageValidationService = ImageValidationService()
-        let legacyErrorHandler = APIErrorHandler()
         let apiClient = APIClient(config: config, authManager: authManager)
         let spotService = SpotService(apiClient: apiClient)
-        let dataStore = DataStore(config: config, apiClient: apiClient, imageCache: imageCache, spotService: spotService)
+        let dataStore = DataStore(config: config, apiClient: apiClient, imageCache: imageCache, spotService: spotService, logger: errorLogger)
         
         authManager.setStores(
             dataStore: dataStore,
@@ -72,13 +73,16 @@ final class AppDependencies: ObservableObject {
         self.imageCache = imageCache
         self.buoyCacheService = buoyCacheService
         self.imageValidationService = imageValidationService
-        self.legacyErrorHandler = legacyErrorHandler
         self.apiClient = apiClient
         self.spotService = spotService
         self.dataStore = dataStore
-        self.surfReportService = SurfReportService(apiClient: apiClient, imageCacheService: imageCache, spotService: spotService)
+        self.surfReportService = SurfReportService(apiClient: apiClient, imageCacheService: imageCache, spotService: spotService, logger: errorLogger)
         self.weatherBuoyService = WeatherBuoyService(apiClient: apiClient, buoyCacheService: buoyCacheService, logger: errorLogger)
         self.swellPredictionService = SwellPredictionService(apiClient: apiClient)
+
+        let mediaProcessingService = MediaProcessingService(logger: errorLogger)
+        self.mediaProcessingService = mediaProcessingService
+        self.mediaUploadService = MediaUploadService(apiClient: apiClient, mediaProcessingService: mediaProcessingService, logger: errorLogger)
     }
     
     // MARK: - Testing Support

@@ -280,7 +280,6 @@ struct SurfReportDetailView: View {
         let cachedURL = cacheDirectory.appendingPathComponent(fileName)
         
         if FileManager.default.fileExists(atPath: cachedURL.path) {
-            print("🎬 [SURF_REPORT_DETAIL] Found cached video: \(cachedURL.path)")
             self.cachedVideoURL = cachedURL
         }
     }
@@ -301,7 +300,6 @@ struct SurfReportDetailView: View {
         guard let videoKey = report.videoKey else { return }
         
         isLoadingVideo = true
-        print("🎬 [SURF_REPORT_DETAIL] Loading video view URL for key: \(videoKey)")
         
         Task {
             do {
@@ -309,27 +307,20 @@ struct SurfReportDetailView: View {
                 self.isLoadingVideo = false
                 if let viewURL = viewResponse.viewURL {
                     self.videoViewURL = viewURL
-                    print("✅ [SURF_REPORT_DETAIL] Video view URL loaded successfully")
-                    
+
                     // Download and cache the video
                     self.downloadAndCacheVideo(from: viewURL, videoKey: videoKey)
-                } else {
-                    print("❌ [SURF_REPORT_DETAIL] No viewURL in response")
                 }
             } catch {
                 self.isLoadingVideo = false
-                print("❌ [SURF_REPORT_DETAIL] Failed to load video view URL: \(error)")
             }
         }
     }
     
     private func downloadAndCacheVideo(from urlString: String, videoKey: String) {
         guard let url = URL(string: urlString) else {
-            print("❌ [SURF_REPORT_DETAIL] Invalid video URL: \(urlString)")
             return
         }
-        
-        print("📥 [SURF_REPORT_DETAIL] Starting video download and cache...")
         
         let cacheDirectory = getVideoCacheDirectory()
         let fileName = "\(videoKey.replacingOccurrences(of: "/", with: "_")).mp4"
@@ -338,27 +329,24 @@ struct SurfReportDetailView: View {
         // Download video in background
         URLSession.shared.downloadTask(with: url) { tempURL, response, error in
             DispatchQueue.main.async {
-                if let error = error {
-                    print("❌ [SURF_REPORT_DETAIL] Video download failed: \(error)")
+                if error != nil {
                     return
                 }
-                
+
                 guard let tempURL = tempURL else {
-                    print("❌ [SURF_REPORT_DETAIL] No temporary URL from download")
                     return
                 }
-                
+
                 do {
                     // Move downloaded file to cache directory
                     if FileManager.default.fileExists(atPath: cachedURL.path) {
                         try FileManager.default.removeItem(at: cachedURL)
                     }
                     try FileManager.default.moveItem(at: tempURL, to: cachedURL)
-                    
-                    print("✅ [SURF_REPORT_DETAIL] Video cached successfully: \(cachedURL.path)")
+
                     self.cachedVideoURL = cachedURL
                 } catch {
-                    print("❌ [SURF_REPORT_DETAIL] Failed to cache video: \(error)")
+                    // Video caching failed
                 }
             }
         }.resume()
@@ -366,17 +354,14 @@ struct SurfReportDetailView: View {
     
     private func playVideoFromURL(_ urlString: String) {
         guard let url = URL(string: urlString) else {
-            print("❌ [SURF_REPORT_DETAIL] Invalid video URL: \(urlString)")
             return
         }
-        
-        print("🎬 [SURF_REPORT_DETAIL] Playing video from URL: \(urlString)")
+
         self.videoURL = url
         showingVideoPlayer = true
     }
     
     private func playVideoFromCachedURL(_ cachedURL: URL) {
-        print("🎬 [SURF_REPORT_DETAIL] Playing cached video: \(cachedURL.path)")
         self.videoURL = cachedURL
         showingVideoPlayer = true
     }
@@ -393,18 +378,16 @@ struct SurfReportDetailView: View {
                 if let creationDate = try file.resourceValues(forKeys: [.creationDateKey]).creationDate {
                     if now.timeIntervalSince(creationDate) > maxCacheAge {
                         try FileManager.default.removeItem(at: file)
-                        print("🗑️ [SURF_REPORT_DETAIL] Cleaned up old cached video: \(file.lastPathComponent)")
                     }
                 }
             }
         } catch {
-            print("❌ [SURF_REPORT_DETAIL] Failed to cleanup cached videos: \(error)")
+            // Cleanup of cached videos failed
         }
     }
     
     private func playVideoFromBase64(_ base64String: String) {
         guard let videoData = Data(base64Encoded: base64String) else {
-            print("❌ [SURF_REPORT_DETAIL] Failed to decode video data")
             return
         }
         
@@ -418,7 +401,7 @@ struct SurfReportDetailView: View {
             self.videoURL = tempURL
             showingVideoPlayer = true
         } catch {
-            print("❌ [SURF_REPORT_DETAIL] Failed to write video data to temporary file: \(error)")
+            // Failed to write video data to temporary file
         }
     }
     
