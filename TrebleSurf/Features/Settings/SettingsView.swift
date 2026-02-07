@@ -193,6 +193,30 @@ struct SettingsView: View {
                 } header: {
                     Text("About")
                 }
+                
+                // Community Guidelines Section
+                Section {
+                    NavigationLink {
+                        CommunityGuidelinesView()
+                    } label: {
+                        HStack {
+                            Image(systemName: "doc.text.fill")
+                                .foregroundColor(.blue)
+                                .frame(width: 24)
+                            
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Community Guidelines")
+                                    .font(.subheadline)
+                                    .fontWeight(.medium)
+                                Text("Content policies and reporting")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                    }
+                } header: {
+                    Text("Community")
+                }
             }
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.large)

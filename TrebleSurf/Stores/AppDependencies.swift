@@ -33,6 +33,7 @@ final class AppDependencies: ObservableObject {
     let spotService: SpotService
     let mediaProcessingService: MediaProcessingService
     let mediaUploadService: MediaUploadService
+    let contentModerationService: ContentModerationService
 
     // MARK: - Initialization
     
@@ -83,6 +84,7 @@ final class AppDependencies: ObservableObject {
         let mediaProcessingService = MediaProcessingService(logger: errorLogger)
         self.mediaProcessingService = mediaProcessingService
         self.mediaUploadService = MediaUploadService(apiClient: apiClient, mediaProcessingService: mediaProcessingService, logger: errorLogger)
+        self.contentModerationService = ContentModerationService(apiClient: apiClient, logger: errorLogger)
     }
     
     // MARK: - Testing Support

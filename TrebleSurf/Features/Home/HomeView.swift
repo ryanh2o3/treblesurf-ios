@@ -8,9 +8,11 @@ struct HomeView: View {
     @State private var showingVideoPlayer = false
     @State private var videoURL: URL?
     private let surfReportService: SurfReportService
+    private let contentModerationService: ContentModerationService
     
     init(dependencies: AppDependencies) {
         self.surfReportService = dependencies.surfReportService
+        self.contentModerationService = dependencies.contentModerationService
         _viewModel = StateObject(
             wrappedValue: HomeViewModel(
                 config: dependencies.config,
@@ -77,7 +79,11 @@ struct HomeView: View {
                     }
                 }
                 .sheet(item: $selectedReport) { report in
-                    SurfReportDetailView(report: report, surfReportService: surfReportService)
+                    SurfReportDetailView(
+                        report: report,
+                        surfReportService: surfReportService,
+                        contentModerationService: contentModerationService
+                    )
                 }
                 .sheet(isPresented: $showingVideoPlayer) {
                     if let videoURL = videoURL {

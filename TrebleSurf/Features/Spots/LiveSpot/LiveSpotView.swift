@@ -257,7 +257,8 @@ struct LiveSpotView: View {
             SurfReportDetailView(
                 report: report,
                 backButtonText: "Back to \(viewModel.getSpotName(from: spotId))",
-                surfReportService: dependencies.surfReportService
+                surfReportService: dependencies.surfReportService,
+                contentModerationService: dependencies.contentModerationService
             )
         }
         .sheet(isPresented: $viewModel.showReportForm) {

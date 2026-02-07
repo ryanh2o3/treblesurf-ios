@@ -15,18 +15,26 @@ struct SurfReportDetailView: View {
     @State private var videoViewURL: String?
     @State private var isLoadingVideo = false
     @State private var cachedVideoURL: URL?
+    @State private var showReportSheet = false
+    @State private var contentModerationService: ContentModerationService?
     
-    init(report: SurfReport, backButtonText: String = "Back to Reports", surfReportService: SurfReportService) {
+    init(
+        report: SurfReport,
+        backButtonText: String = "Back to Reports",
+        surfReportService: SurfReportService,
+        contentModerationService: ContentModerationService
+    ) {
         self.report = report
         self.backButtonText = backButtonText
         self.surfReportService = surfReportService
+        self._contentModerationService = State(initialValue: contentModerationService)
     }
     
     var body: some View {
         NavigationView {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
-                    // Header with back button
+                    // Header with back button and report menu
                     HStack {
                         Button {
                             dismiss()
@@ -39,6 +47,19 @@ struct SurfReportDetailView: View {
                         }
                         
                         Spacer()
+                        
+                        // Report menu button
+                        Menu {
+                            Button(role: .destructive) {
+                                showReportSheet = true
+                            } label: {
+                                Label("Report Content", systemImage: "flag")
+                            }
+                        } label: {
+                            Image(systemName: "ellipsis.circle")
+                                .font(.title3)
+                                .foregroundColor(.blue)
+                        }
                     }
                     .padding(.horizontal)
                     
@@ -266,6 +287,20 @@ struct SurfReportDetailView: View {
                         // Clean up video URL when sheet is dismissed
                         self.videoURL = nil
                     }
+            }
+        }
+        .sheet(isPresented: $showReportSheet) {
+            ReportContentSheet(surfReportId: report.id.uuidString) { reason, description in
+                guard let service = contentModerationService else { return false }
+                do {
+                    return try await service.submitReport(
+                        surfReportId: report.id.uuidString,
+                        reason: reason,
+                        description: description
+                    )
+                } catch {
+                    return false
+                }
             }
         }
     }

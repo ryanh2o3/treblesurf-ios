@@ -114,7 +114,8 @@ struct SpotReportsListView: View {
             SurfReportDetailView(
                 report: report,
                 backButtonText: "Back to \(spotName)",
-                surfReportService: dependencies.surfReportService
+                surfReportService: dependencies.surfReportService,
+                contentModerationService: dependencies.contentModerationService
             )
         }
         }

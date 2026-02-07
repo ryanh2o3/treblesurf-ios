@@ -8,6 +8,7 @@ struct BuoyDetailView: View {
     
     @StateObject private var viewModel: BuoysViewModel
     private let surfReportService: SurfReportService
+    private let contentModerationService: ContentModerationService
     private let apiClient: APIClientProtocol
     @State private var similarReports: [SurfReport] = []
     @State private var isLoadingSimilarReports = false
@@ -36,6 +37,7 @@ struct BuoyDetailView: View {
         self.onBack = onBack
         self.showBackButton = showBackButton
         self.surfReportService = dependencies.surfReportService
+        self.contentModerationService = dependencies.contentModerationService
         self.apiClient = dependencies.apiClient
         _viewModel = StateObject(
             wrappedValue: BuoysViewModel(
@@ -454,7 +456,8 @@ struct BuoyDetailView: View {
             SurfReportDetailView(
                 report: report,
                 backButtonText: "Back to Buoy",
-                surfReportService: surfReportService
+                surfReportService: surfReportService,
+                contentModerationService: contentModerationService
             )
         }
         .onDisappear {

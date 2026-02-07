@@ -169,3 +169,12 @@ protocol LocationStoreProtocol: ObservableObject {
     func resetToInitialState()
 }
 
+// MARK: - ContentModeration Protocol
+
+protocol ContentModerationServiceProtocol {
+    func submitReport(
+        surfReportId: String,
+        reason: ReportReason,
+        description: String?
+    ) async throws -> Bool
+}
