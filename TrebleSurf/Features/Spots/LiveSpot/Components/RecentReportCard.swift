@@ -2,7 +2,7 @@
 import SwiftUI
 
 struct RecentReportCard: View {
-    let report: SurfReport
+    @ObservedObject var report: SurfReport
 
     var body: some View {
         HStack {

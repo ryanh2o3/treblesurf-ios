@@ -2,7 +2,7 @@
 import SwiftUI
 
 struct MatchingReportCard: View {
-    let report: SurfReport
+    @ObservedObject var report: SurfReport
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
